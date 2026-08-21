@@ -72,11 +72,11 @@ test('sanitizeToken - boş/undefined girdi çökmez', () => {
 
 test('config - kaydet/oku/temizle', () => {
   clearSyncConfig();
-  assert.deepEqual(getSyncConfig(), { token: '', gistId: '' });
-  setSyncConfig({ token: 'ghp_x', gistId: 'abc' });
-  assert.deepEqual(getSyncConfig(), { token: 'ghp_x', gistId: 'abc' });
+  assert.deepEqual(getSyncConfig(), { token: '', gistId: '', login: '' });
+  setSyncConfig({ token: 'ghp_x', gistId: 'abc', login: 'Eyupbayuk31' });
+  assert.deepEqual(getSyncConfig(), { token: 'ghp_x', gistId: 'abc', login: 'Eyupbayuk31' });
   clearSyncConfig();
-  assert.deepEqual(getSyncConfig(), { token: '', gistId: '' });
+  assert.deepEqual(getSyncConfig(), { token: '', gistId: '', login: '' });
 });
 
 test('verifyToken - kullanıcı adını ve izinleri döner', async () => {

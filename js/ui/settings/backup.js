@@ -5,7 +5,8 @@ import { entryAmount } from '../../payroll.js';
 import { profileName } from '../../profile.js';
 import {
   getSyncConfig, setSyncConfig, clearSyncConfig,
-  verifyToken, gistScopeProblem, sanitizeToken, pushBackup, pullBackup, backupFileName, SyncError,
+  verifyToken, gistScopeProblem, sanitizeToken, pushBackup, pullBackup, backupFileName,
+  findBackupGist, listBackups, readGistFile, SyncError,
 } from '../../githubSync.js';
 import { todayStamp } from './shared.js';
 
@@ -32,8 +33,8 @@ export function render(container, state, ctx) {
       ${connected ? `
         <div class="rows" style="margin-bottom:14px;">
           <div class="row">
-            <span class="row__label">Durum</span>
-            <span class="row__value is-positive">Bağlı</span>
+            <span class="row__label">GitHub hesabı</span>
+            <span class="row__value">${sync.login ? '@' + escapeHTML(sync.login) : 'Bağlı'}</span>
           </div>
           <div class="row">
             <span class="row__label">Yedek dosyası</span>
@@ -54,6 +55,7 @@ export function render(container, state, ctx) {
             <b>Getir</b> hesabındaki <b>${backupFileName(ctx.profileId)}</b> yedeğini bulur.
           </p>
         `}
+        <div class="link-row" id="cloudListRow" style="margin-top:12px;"><span>Buluttaki yedekleri gör</span><span class="link-row__chevron">›</span></div>
         <button class="btn btn--ghost btn--sm" id="cloudDisconnectBtn" type="button" style="margin-top:8px;">Bağlantıyı kes</button>
       ` : `
         <p class="field__hint" style="margin:-4px 0 14px;">
@@ -181,8 +183,17 @@ function wireCloudSync(container, state, ctx) {
         done();
         return;
       }
-      setSyncConfig({ token });
-      showToast(`${login} olarak bağlanıldı`);
+      setSyncConfig({ token, login });
+      // Bağlanır bağlanmaz hesapta yedek var mı diye bakılır: kullanıcı
+      // "Getir"e basmadan da diğer cihazdaki yedeğin görüldüğünü anlar.
+      let found = null;
+      try {
+        found = await findBackupGist({ token, profileId: ctx.profileId });
+        if (found.gistId) setSyncConfig({ gistId: found.gistId });
+      } catch {}
+      showToast(found?.gistId
+        ? `${login} olarak bağlanıldı — bulutta yedek bulundu`
+        : `${login} olarak bağlanıldı`);
       ctx.rerender();
     } catch (err) {
       // Token'ın kendisini asla gösterme; teşhis için uzunluk ve temizlenen
@@ -238,6 +249,22 @@ function wireCloudSync(container, state, ctx) {
       reportError(err);
       done();
     }
+  });
+
+  container.querySelector('#cloudListRow')?.addEventListener('click', async () => {
+    const { token } = getSyncConfig();
+    openSheet({
+      title: 'Buluttaki yedekler',
+      build(bodyEl) {
+        bodyEl.innerHTML = `<p class="field__hint" style="margin:0;">Hesap taranıyor…</p>`;
+        listBackups({ token })
+          .then((rows) => renderBackupList(bodyEl, rows, ctx, token))
+          .catch((err) => {
+            bodyEl.innerHTML = `<p style="font-size:14px; color:var(--danger); line-height:1.5;">
+              ${escapeHTML(err instanceof SyncError ? err.message : 'Liste alınamadı')}</p>`;
+          });
+      },
+    });
   });
 
   container.querySelector('#cloudDisconnectBtn')?.addEventListener('click', () => {
@@ -322,5 +349,65 @@ function confirmImport(ctx, parsed, result, fileInput) {
       });
     },
     onClose() { fileInput.value = ''; },
+  });
+}
+
+// Hesaptaki her yedeği tek tek gösterir: hangi profil, ne zaman, hangi gist.
+// Profil adı bu cihazdakiyle tutmasa bile getirilebilir — asıl amaç "telefonda
+// kaydettim, PC'de yok" ikilemini gözle görülür veriye çevirmek.
+function renderBackupList(bodyEl, rows, ctx, token) {
+  const mine = backupFileName(ctx.profileId);
+  if (rows.length === 0) {
+    bodyEl.innerHTML = `
+      <p style="font-size:14.5px; color:var(--text-secondary); line-height:1.6;">
+        Bu GitHub hesabında <b style="color:var(--text);">hiç mesai yedeği yok</b>.
+        Kaydeden cihaz büyük ihtimalle <b style="color:var(--text);">başka bir GitHub
+        hesabının</b> token'ıyla bağlı. O cihazda Ayarlar → Yedekleme'yi açıp hangi
+        hesapla bağlı olduğuna bak; iki cihazda da aynı hesabın token'ı olmalı.
+      </p>`;
+    return;
+  }
+  bodyEl.innerHTML = `
+    <p class="field__hint" style="margin:0 0 12px;">
+      Bu cihaz <b>${escapeHTML(profileName(ctx.profileId))}</b> profilinde
+      (<b>${escapeHTML(mine)}</b>). Aşağıdaki yedeklerden istediğini getirebilirsin.
+    </p>
+    <ul class="list">
+      ${rows.map((r, i) => `
+        <li class="list__item" style="display:flex; align-items:center; gap:12px;">
+          <div style="flex:1; min-width:0;">
+            <div style="font-weight:700; font-size:14.5px;">
+              ${escapeHTML(r.file)}${r.file === mine ? ' <span class="is-positive">· bu profil</span>' : ''}
+            </div>
+            <div class="field__hint" style="margin:2px 0 0;">
+              ${escapeHTML(formatWhen(r.updatedAt) || 'tarih yok')}${r.size ? ` · ${Math.round(r.size / 1024)} KB` : ''}
+            </div>
+          </div>
+          <button class="btn btn--secondary btn--sm" data-row="${i}" type="button">Getir</button>
+        </li>
+      `).join('')}
+    </ul>
+  `;
+
+  bodyEl.querySelector('.list').addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-row]');
+    if (!btn) return;
+    const row = rows[Number(btn.dataset.row)];
+    btn.disabled = true;
+    btn.textContent = 'Getiriliyor…';
+    try {
+      const { json, updatedAt } = await readGistFile({ token, gistId: row.gistId, file: row.file });
+      const parsed = JSON.parse(json);
+      const check = ctx.store.validateImport(parsed);
+      if (!check.valid) throw new SyncError(check.error || 'Yedek dosyası geçersiz');
+      // Getirilen yedek bu profilinse, sonraki Kaydet'ler aynı gist'e gitsin.
+      if (row.file === backupFileName(ctx.profileId)) setSyncConfig({ gistId: row.gistId });
+      closeSheet();
+      setTimeout(() => confirmCloudRestore(ctx, parsed, check, updatedAt), 220);
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = 'Getir';
+      showToast(err instanceof SyncError ? err.message : 'Yedek okunamadı');
+    }
   });
 }

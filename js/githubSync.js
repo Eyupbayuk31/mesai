@@ -11,6 +11,7 @@
 const API = 'https://api.github.com';
 const TOKEN_KEY = 'mesai.sync.token';
 const GIST_KEY = 'mesai.sync.gistId';
+const LOGIN_KEY = 'mesai.sync.login';
 const GIST_DESCRIPTION = 'Mesai Takip yedeği (gizli)';
 
 export class SyncError extends Error {}
@@ -34,13 +35,14 @@ export function getSyncConfig() {
     return {
       token: localStorage.getItem(TOKEN_KEY) || '',
       gistId: localStorage.getItem(GIST_KEY) || '',
+      login: localStorage.getItem(LOGIN_KEY) || '',
     };
   } catch {
-    return { token: '', gistId: '' };
+    return { token: '', gistId: '', login: '' };
   }
 }
 
-export function setSyncConfig({ token, gistId }) {
+export function setSyncConfig({ token, gistId, login }) {
   try {
     if (token !== undefined) {
       if (token) localStorage.setItem(TOKEN_KEY, token);
@@ -50,11 +52,15 @@ export function setSyncConfig({ token, gistId }) {
       if (gistId) localStorage.setItem(GIST_KEY, gistId);
       else localStorage.removeItem(GIST_KEY);
     }
+    if (login !== undefined) {
+      if (login) localStorage.setItem(LOGIN_KEY, login);
+      else localStorage.removeItem(LOGIN_KEY);
+    }
   } catch {}
 }
 
 export function clearSyncConfig() {
-  setSyncConfig({ token: '', gistId: '' });
+  setSyncConfig({ token: '', gistId: '', login: '' });
 }
 
 // Kendi tahminimiz yerine GitHub'ın söylediğini de gösteririz; yanlış teşhis
@@ -125,27 +131,50 @@ export function gistScopeProblem(scopes) {
   return null;
 }
 
-// Bu hesapta bu profilin yedeği hangi gist'te? gistId yalnızca kaydı yapan
-// cihazda saklandığı için, ikinci cihaz yedeği ada göre bulmak zorunda —
-// yoksa "önce kaydet" der ya da ikinci bir kopya gist açıp veriyi ikiye böler.
-export async function findBackupGist({ token, profileId }) {
-  const name = backupFileName(profileId);
+// Hesaptaki tüm gist'leri getirir (sayfa başına 100, en fazla 5 sayfa).
+async function allGists(token) {
   const all = [];
-  // GitHub sayfa başına en fazla 100 gist döner, updated_at'e göre yeniden eskiye.
   for (let page = 1; page <= 5; page += 1) {
     const { data } = await ghRaw(`/gists?per_page=100&page=${page}`, { token });
     const chunk = Array.isArray(data) ? data : [];
     all.push(...chunk);
     if (chunk.length < 100) break;
   }
-  const match = all.find((g) => Object.keys(g.files || {}).includes(name));
-  // Aynı hesapta başka profilin yedeği varsa söyleyelim: çoğu zaman kullanıcı
-  // yanlış profildedir (Eyüp'te kaydedip Fuat'ta Getir demek gibi).
-  const otherBackups = [...new Set(
-    all.flatMap((g) => Object.keys(g.files || {}))
-      .filter((f) => /^mesai-.+\.json$/.test(f) && f !== name),
-  )];
-  return { gistId: match?.id || null, updatedAt: match?.updated_at || null, otherBackups };
+  return all;
+}
+
+// Hesapta duran BÜTÜN mesai yedeklerini listeler — profil adı tutmasa da
+// görünür. "Telefonda kaydettim, PC'de yok" gibi durumlarda tek doğruyu
+// gösteren yer burası: hangi hesapta ne var.
+export async function listBackups({ token }) {
+  const rows = [];
+  for (const g of await allGists(token)) {
+    for (const [file, meta] of Object.entries(g.files || {})) {
+      const m = /^mesai-(.+)\.json$/.exec(file);
+      if (!m) continue;
+      rows.push({
+        gistId: g.id,
+        file,
+        profileId: m[1],
+        size: meta?.size ?? null,
+        updatedAt: g.updated_at,
+        htmlUrl: g.html_url,
+      });
+    }
+  }
+  rows.sort((a, b) => (String(a.updatedAt) < String(b.updatedAt) ? 1 : -1));
+  return rows;
+}
+
+// Bu hesapta bu profilin yedeği hangi gist'te? gistId yalnızca kaydı yapan
+// cihazda saklandığı için, ikinci cihaz yedeği ada göre bulmak zorunda —
+// yoksa "önce kaydet" der ya da ikinci bir kopya gist açıp veriyi ikiye böler.
+export async function findBackupGist({ token, profileId }) {
+  const name = backupFileName(profileId);
+  const rows = await listBackups({ token });
+  const match = rows.find((r) => r.file === name);
+  const otherBackups = [...new Set(rows.map((r) => r.file).filter((f) => f !== name))];
+  return { gistId: match?.gistId || null, updatedAt: match?.updatedAt || null, otherBackups };
 }
 
 // Yedeği yükler. gistId bu cihazda yoksa önce hesapta aranır (aynı gist'e
@@ -178,23 +207,28 @@ export async function pullBackup({ token, gistId, profileId }) {
     }
     id = found.gistId;
   }
-  const gist = await gh(`/gists/${id}`, { token });
-  const name = backupFileName(profileId);
-  const file = gist.files?.[name];
-  if (!file) {
+  return readGistFile({ token, gistId: id, file: backupFileName(profileId) });
+}
+
+// Belirli bir gist'teki belirli dosyayı indirir. Profil adı eşleşmese de
+// çalışır: kullanıcı listeden hangi yedeği seçtiyse onu getirebilsin.
+export async function readGistFile({ token, gistId, file }) {
+  const gist = await gh(`/gists/${gistId}`, { token });
+  const entry = gist.files?.[file];
+  if (!entry) {
     const others = Object.keys(gist.files || {}).join(', ') || 'yok';
-    throw new SyncError(`Bu yedekte "${name}" dosyası yok. Gist'teki dosyalar: ${others}`);
+    throw new SyncError(`Bu yedekte "${file}" dosyası yok. Gist'teki dosyalar: ${others}`);
   }
   // 1 MB üstü dosyalar kısaltılmış gelir; ham içeriği ayrıca çekilir.
-  let content = file.content;
-  if (file.truncated) {
+  let content = entry.content;
+  if (entry.truncated) {
     try {
-      const raw = await fetch(file.raw_url);
+      const raw = await fetch(entry.raw_url);
       if (!raw.ok) throw new Error();
       content = await raw.text();
     } catch {
       throw new SyncError('Yedek çok büyük ve indirilemedi.');
     }
   }
-  return { json: content, updatedAt: gist.updated_at, gistId: id };
+  return { json: content, updatedAt: gist.updated_at, gistId };
 }
