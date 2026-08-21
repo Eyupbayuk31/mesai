@@ -31,10 +31,32 @@ export function categoryOf(key, settings) {
   return all.find((c) => c.key === key) || all[all.length - 1];
 }
 
-// Dönemin bütçe özeti: harcamalar, kategori kırılımı, tahmini ödemeden kalan
-// ve (dönem içindeysek) günlük harcayabileceğin tutar.
+// Ayın `day`'i o ayda yoksa (örn. 31 çekmeyen ay) ayın son gününe kırpılır.
+function clampDay(periodKey, day) {
+  const [y, m] = periodKey.split('-').map(Number);
+  const last = new Date(y, m, 0).getDate();
+  return Math.min(Math.max(1, day || 1), last);
+}
+
+// Dönemin bütçe özeti: harcamalar (gerçek + sürekli gider sanalları), kategori
+// kırılımı, tahmini ödemeden kalan ve (dönem içindeysek) günlük pay.
+// Sürekli gider tanımı, girildiği dönemden SONRAKİ dönemlerden itibaren sanal
+// harcama üretir — girildiği ay zaten gerçek harcaması var, çifte sayım olmasın.
 export function budgetSummary(state, periodKey, todayStr = todayISO()) {
-  const expenses = (state.expenses || []).filter((e) => e.date.slice(0, 7) === periodKey);
+  const realExpenses = (state.expenses || []).filter((e) => e.date.slice(0, 7) === periodKey);
+  const virtualExpenses = (state.recurring || [])
+    .filter((r) => r.active !== false && periodKey > (r.since || '0000-00'))
+    .map((r) => ({
+      id: `vr_${r.id}`,
+      date: `${periodKey}-${String(clampDay(periodKey, r.day)).padStart(2, '0')}`,
+      amount: Number(r.amount) || 0,
+      category: r.category,
+      note: r.label,
+      recurringId: r.id,
+      virtual: true,
+      createdAt: `${periodKey}-01T00:00:00.000Z`,
+    }));
+  const expenses = [...realExpenses, ...virtualExpenses];
   const pay = periodSummary(state, periodKey);
 
   const byCategory = new Map();
@@ -64,12 +86,14 @@ export function budgetSummary(state, periodKey, todayStr = todayISO()) {
   return {
     periodKey,
     isCurrent,
-    expenseCount: expenses.length,
+    expenseCount: realExpenses.length,
+    virtualCount: virtualExpenses.length,
     expenses,
     spent,
     byCategory: [...byCategory.entries()]
       .map(([key, amount]) => ({ ...categoryOf(key, state.settings), amount }))
       .sort((a, b) => b.amount - a.amount),
+    recurring: (state.recurring || []).filter((r) => r.active !== false && periodKey > (r.since || '0000-00')),
     expectedTotal,
     advances: pay.advances,
     hasSalary,

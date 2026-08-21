@@ -2,6 +2,7 @@
 
 import { currentPeriodKey, periodLabel, shiftPeriod } from '../period.js';
 import { budgetSummary, budgetTips, allCategories } from '../budget.js';
+import { openRecurringSheet } from './expenseSheet.js';
 import { formatMoney, formatDayMonthShort, formatWeekdayShort, todayISO } from '../format.js';
 import { enableSwipeToDelete } from './swipe.js';
 import { showToast } from './toast.js';
@@ -21,7 +22,7 @@ export function renderBudget(container, state, ctx) {
       </button>
       <div class="period-card__body">
         <div class="period-card__label">${periodLabel(periodKey)}</div>
-        <div class="period-card__sub">${summary.expenseCount} harcama · ${formatMoney(summary.spent, { decimals: false })}</div>
+        <div class="period-card__sub">${summary.expenseCount} harcama${summary.virtualCount > 0 ? ` · ${summary.virtualCount} sürekli` : ''} · ${formatMoney(summary.spent, { decimals: false })}</div>
       </div>
       <button class="period-card__nav" id="nextPeriod" type="button" aria-label="Sonraki dönem">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
@@ -84,11 +85,17 @@ export function renderBudget(container, state, ctx) {
   if (listEl) {
     enableSwipeToDelete(listEl, {
       onDelete: (id) => {
+        if (id.startsWith('vr_')) return; // sanal satır silinmez, tanımı düzenle
         const expense = state.expenses.find((e) => e.id === id);
         ctx.store.removeExpense(id);
         showToast('Harcama silindi', { actionLabel: 'Geri al', onAction: () => ctx.store.addExpense(expense) });
       },
       onTap: (id) => {
+        if (id.startsWith('vr_')) {
+          const def = (state.recurring || []).find((r) => `vr_${r.id}` === id);
+          if (def) openRecurringSheet(ctx.store, def);
+          return;
+        }
         const expense = state.expenses.find((e) => e.id === id);
         ctx.openExpense(expense);
       },
@@ -100,15 +107,15 @@ function expenseRowHTML(e, settings) {
   const [, , day] = e.date.split('-');
   const category = categoryLabel(e.category, settings);
   return `
-    <li class="entry-row entry-row--expense" data-id="${e.id}">
+    <li class="entry-row entry-row--expense ${e.virtual ? 'entry-row--recurring' : ''}" data-id="${e.id}">
       <div class="entry-row__content">
         <div class="entry-row__date">
           <div class="entry-row__day">${Number(day)}</div>
-          <div class="entry-row__weekday">${formatWeekdayShort(e.date).replace('.', '')}</div>
+          <div class="entry-row__weekday">${e.virtual ? 'sürekli' : formatWeekdayShort(e.date).replace('.', '')}</div>
         </div>
         <div class="entry-row__mid">
           <div class="entry-row__hours"><span class="dot" style="background:${category.color}; display:inline-block;"></span>&nbsp;${category.label}</div>
-          <div class="entry-row__meta">${formatDayMonthShort(e.date)}${e.note ? ' · ' + escapeHTML(e.note) : ''}</div>
+          <div class="entry-row__meta">${formatDayMonthShort(e.date)}${e.note ? ' · ' + escapeHTML(e.note) : ''}${e.virtual ? ' · <span class="recurring-tag">otomatik</span>' : ''}</div>
         </div>
         <div class="entry-row__amount entry-row__amount--expense">− ${formatMoney(Number(e.amount) || 0, { decimals: false })}</div>
       </div>

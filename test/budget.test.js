@@ -243,3 +243,72 @@ test('Store - harcama ekle/güncelle/sil + varsayılan durum boş', async () => 
   const check = store.validateImport({ entries: [], expenses: [{ id: 'x', date: '2026-08-01', amount: 5, category: 'diger' }] });
   assert.equal(check.expenseCount, 1);
 });
+
+test('budgetSummary - sürekli gider sonraki aylarda otomatik sanal harcama üretir', () => {
+  const state = {
+    settings: baseSettings,
+    entries: [],
+    expenses: [{ id: 'x1', date: '2026-08-05', amount: 5000, category: 'kira' }], // ilk giriş anı
+    recurring: [{ id: 'r1', label: 'Kira', amount: 5000, category: 'kira', day: 5, since: '2026-08' }],
+    adjustments: [],
+  };
+  // Girildiği ay: sanal üretilmez (gerçek harcama zaten var, çifte sayım olmasın)
+  const aug = budgetSummary(state, '2026-08', '2026-08-21');
+  assert.equal(aug.virtualCount, 0);
+  assert.equal(aug.spent, 5000);
+  // Sonraki ay: otomatik gelir
+  const sep = budgetSummary(state, '2026-09', '2026-09-10');
+  assert.equal(sep.virtualCount, 1);
+  assert.equal(sep.expenseCount, 0); // gerçek harcama yok
+  assert.equal(sep.spent, 5000);
+  assert.equal(sep.remaining, 25000); // 30000 - 5000
+  const virtual = sep.expenses.find((e) => e.virtual);
+  assert.equal(virtual.date, '2026-09-05');
+  assert.equal(virtual.category, 'kira');
+});
+
+test('budgetSummary - sürekli gider günü kısa ayda ayın sonuna kırpılır', () => {
+  const state = {
+    settings: baseSettings,
+    entries: [],
+    expenses: [],
+    recurring: [{ id: 'r1', label: 'Kredi', amount: 3000, category: 'kredi', day: 31, since: '2026-08' }],
+    adjustments: [],
+  };
+  const feb = budgetSummary(state, '2027-02', '2027-02-10');
+  const virtual = feb.expenses.find((e) => e.virtual);
+  assert.equal(virtual.date, '2027-02-28'); // 2027 artık yıl değil
+});
+
+test('budgetSummary - pasif tanım sanal üretmez, kategori kırılımına girer', () => {
+  const state = {
+    settings: baseSettings,
+    entries: [],
+    expenses: [],
+    recurring: [
+      { id: 'r1', label: 'Kredi', amount: 3000, category: 'kredi', day: 10, since: '2026-08' },
+      { id: 'r2', label: 'Eski', amount: 999, category: 'fatura', day: 1, since: '2026-08', active: false },
+    ],
+    adjustments: [],
+  };
+  const sep = budgetSummary(state, '2026-09', '2026-09-10');
+  assert.equal(sep.virtualCount, 1);
+  assert.equal(sep.byCategory.find((c) => c.key === 'kredi')?.amount, 3000);
+});
+
+test('Store - sürekli gider ekle/güncelle/kaldır', async () => {
+  globalThis.window = { localStorage: makeMemoryLocalStorage() };
+  const { Store } = await import('../js/store.js');
+  const store = new Store();
+  assert.equal(store.getState().recurring.length, 0);
+
+  const def = store.addRecurring({ label: 'İnternet', amount: 450, category: 'fatura', day: 15, since: '2026-08' });
+  assert.ok(def.id.startsWith('r_'));
+  assert.equal(def.active, true);
+
+  store.updateRecurring(def.id, { amount: 500 });
+  assert.equal(store.getState().recurring[0].amount, 500);
+
+  store.removeRecurring(def.id);
+  assert.equal(store.getState().recurring.length, 0);
+});

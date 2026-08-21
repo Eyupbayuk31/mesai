@@ -49,6 +49,9 @@ function defaultState() {
     },
     entries: [],
     expenses: [],
+    // Sürekli giderler: [{id, label, amount, category, day, since, active}]
+    // Her dönem için otomatik sanal harcama üretirler (budget.js).
+    recurring: [],
     adjustments: [],
   };
 }
@@ -79,6 +82,7 @@ function migrate(raw) {
   state.settings = mergeSettings(raw?.settings);
   state.entries = Array.isArray(raw?.entries) ? raw.entries : [];
   state.expenses = Array.isArray(raw?.expenses) ? raw.expenses : [];
+  state.recurring = Array.isArray(raw?.recurring) ? raw.recurring : [];
   state.adjustments = Array.isArray(raw?.adjustments) ? raw.adjustments : [];
   state.schemaVersion = SCHEMA_VERSION;
   return state;
@@ -199,6 +203,24 @@ export class Store {
 
   removeExpense(id) {
     this.update((s) => ({ ...s, expenses: s.expenses.filter((e) => e.id !== id) }));
+  }
+
+  addRecurring(def) {
+    const id = def.id || `r_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    const record = { active: true, ...def, id, createdAt: new Date().toISOString() };
+    this.update((s) => ({ ...s, recurring: [...s.recurring, record] }));
+    return record;
+  }
+
+  updateRecurring(id, partial) {
+    this.update((s) => ({
+      ...s,
+      recurring: s.recurring.map((r) => (r.id === id ? { ...r, ...partial, updatedAt: new Date().toISOString() } : r)),
+    }));
+  }
+
+  removeRecurring(id) {
+    this.update((s) => ({ ...s, recurring: s.recurring.filter((r) => r.id !== id) }));
   }
 
   addAdjustment(adj) {

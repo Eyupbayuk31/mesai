@@ -2,6 +2,7 @@
 // kategorilerini (ad + renk) ekleyip sildiği sayfa.
 
 import { allCategories } from '../../budget.js';
+import { formatMoney } from '../../format.js';
 import { showToast } from '../toast.js';
 
 export const title = 'Bütçe kategorileri';
@@ -14,9 +15,31 @@ const COLOR_POOL = [
 export function render(container, state, ctx) {
   const settings = state.settings;
   const custom = Array.isArray(settings.customCategories) ? settings.customCategories : [];
+  const recurring = (state.recurring || []).filter((r) => r.active !== false);
   let selectedColor = COLOR_POOL[0];
 
   container.innerHTML = `
+    <div class="section-title">Sürekli giderler</div>
+    <div class="card">
+      ${recurring.length === 0 ? `
+        <p class="field__hint" style="margin:4px 0;">Kira, kredi, internet gibi sabit giderleri harcama eklerken "Her ay tekrarla" ile işaretle — sonraki aylarda bütçeye otomatik düşer.</p>
+      ` : `
+        <div class="rows">
+          ${recurring.map((r) => `
+          <div class="row">
+            <span class="row__label"><span class="dot" style="background:${catColor(r.category, settings)};"></span>${escapeHTML(r.label || 'Sürekli gider')} <span style="color:var(--text-tertiary);">her ayın ${r.day}'i</span></span>
+            <span style="display:flex; align-items:center; gap:10px;">
+              <span class="row__value">${formatMoneyLocal(r.amount)}</span>
+              <button class="cat-del" data-del-recurring="${r.id}" type="button" aria-label="Sürekli gideri kaldır">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+              </button>
+            </span>
+          </div>`).join('')}
+        </div>
+        <p class="field__hint" style="margin:12px 0 0;">Düzenlemek için Bütçe sekmesindeki "otomatik" etiketli satıra dokun.</p>
+      `}
+    </div>
+
     <div class="section-title">Özel kategoriler</div>
     <div class="card">
       ${custom.length === 0 ? `
@@ -72,6 +95,15 @@ export function render(container, state, ctx) {
     });
   });
 
+  container.querySelectorAll('[data-del-recurring]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.delRecurring;
+      const def = recurring.find((r) => r.id === id);
+      ctx.store.removeRecurring(id);
+      showToast(`${def?.label || 'Sürekli gider'} kaldırıldı — bir daha otomatik gelmeyecek`);
+    });
+  });
+
   const nameInput = container.querySelector('#newCatName');
   container.querySelector('#addCatBtn').addEventListener('click', () => {
     const label = nameInput.value.trim();
@@ -89,6 +121,15 @@ export function render(container, state, ctx) {
     ctx.store.updateSettings({ customCategories: [...custom, record] });
     showToast(`${label} eklendi`);
   });
+}
+
+function catColor(key, settings) {
+  const all = allCategories(settings);
+  return (all.find((c) => c.key === key) || all[all.length - 1]).color;
+}
+
+function formatMoneyLocal(v) {
+  return formatMoney(Number(v) || 0, { decimals: false });
 }
 
 function escapeHTML(str) {

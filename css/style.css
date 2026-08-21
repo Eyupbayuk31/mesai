@@ -1306,6 +1306,19 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
 .tip-row + .tip-row { border-top: 1px dashed var(--divider); }
 .tip-row__icon { color: var(--accent-strong); flex-shrink: 0; margin-top: 3px; }
 
+.recurring-tag {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border-radius: 4px;
+  padding: 1.5px 5px;
+}
+.entry-row--recurring .entry-row__weekday { color: var(--accent-strong); font-weight: 700; }
+
 /* Skip-link visually hidden helper */
 .sr-only {
   position: absolute;
