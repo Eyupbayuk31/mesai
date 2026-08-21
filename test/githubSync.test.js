@@ -14,7 +14,7 @@ globalThis.localStorage = makeMemoryLocalStorage();
 
 const {
   backupFileName, getSyncConfig, setSyncConfig, clearSyncConfig,
-  pushBackup, pullBackup, verifyToken, gistScopeProblem, sanitizeToken, SyncError,
+  pushBackup, pullBackup, verifyToken, gistScopeProblem, sanitizeToken, findBackupGist, SyncError,
 } = await import('../js/githubSync.js');
 
 // Çağrıları kaydeden sahte fetch.
@@ -123,11 +123,12 @@ test('pushBackup - gistId yokken GİZLİ gist oluşturur', async () => {
   const calls = mockFetch(() => jsonResponse(201, { id: 'gist123', updated_at: '2026-08-21T10:00:00Z', html_url: 'u' }));
   const res = await pushBackup({ token: 't', gistId: '', profileId: 'eyup', json: '{"a":1}' });
 
-  assert.equal(calls[0].url, 'https://api.github.com/gists');
-  assert.equal(calls[0].method, 'POST');
-  assert.equal(calls[0].body.public, false, 'gist gizli olmalı');
-  assert.deepEqual(Object.keys(calls[0].body.files), ['mesai-eyup.json']);
-  assert.equal(calls[0].body.files['mesai-eyup.json'].content, '{"a":1}');
+  // İlk çağrı hesapta mevcut yedeği arar (kopya gist açmamak için), sonra oluşturur.
+  const post = calls.find((c) => c.method === 'POST');
+  assert.equal(post.url, 'https://api.github.com/gists');
+  assert.equal(post.body.public, false, 'gist gizli olmalı');
+  assert.deepEqual(Object.keys(post.body.files), ['mesai-eyup.json']);
+  assert.equal(post.body.files['mesai-eyup.json'].content, '{"a":1}');
   assert.equal(res.gistId, 'gist123');
 });
 
@@ -146,6 +147,89 @@ test('pushBackup - profiller aynı gist içinde ayrı dosyalara yazar', async ()
   const calls = mockFetch(() => jsonResponse(200, { id: 'g', updated_at: 'x' }));
   await pushBackup({ token: 't', gistId: 'g', profileId: 'fuat', json: '{}' });
   assert.deepEqual(Object.keys(calls[0].body.files), ['mesai-fuat.json']);
+});
+
+
+// --- Cihazlar arası: gistId yalnızca kaydı yapan cihazda durur ---
+
+const gistListResponse = (gists) => jsonResponse(200, gists);
+
+test('findBackupGist - profilin dosyasını içeren gist bulunur', async () => {
+  mockFetch(() => gistListResponse([
+    { id: 'other', files: { 'notlar.txt': {} }, updated_at: 'a' },
+    { id: 'g_eyup', files: { 'mesai-eyup.json': {} }, updated_at: 'b' },
+  ]));
+  const res = await findBackupGist({ token: 't', profileId: 'eyup' });
+  assert.equal(res.gistId, 'g_eyup');
+});
+
+test('findBackupGist - yedek yoksa null, diğer profillerin yedeklerini bildirir', async () => {
+  mockFetch(() => gistListResponse([{ id: 'g', files: { 'mesai-eyup.json': {} } }]));
+  const res = await findBackupGist({ token: 't', profileId: 'fuat' });
+  assert.equal(res.gistId, null);
+  assert.deepEqual(res.otherBackups, ['mesai-eyup.json']);
+});
+
+test('pullBackup - gistId olmayan cihaz yedeği hesapta bulup indirir', async () => {
+  // Telefonda kaydedilmiş, PC bu gist'i hiç görmemiş.
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('/gists?')) {
+      return gistListResponse([{ id: 'g_phone', files: { 'mesai-eyup.json': {} } }]);
+    }
+    return jsonResponse(200, {
+      updated_at: '2026-08-21T20:00:00Z',
+      files: { 'mesai-eyup.json': { content: '{"who":"telefon"}' } },
+    });
+  };
+  const res = await pullBackup({ token: 't', gistId: '', profileId: 'eyup' });
+  assert.equal(res.json, '{"who":"telefon"}');
+  assert.equal(res.gistId, 'g_phone', 'bulunan gist id geri dönmeli (cihaza kaydedilecek)');
+});
+
+test('pullBackup - hesapta hiç yedek yoksa "önce Kaydet" der', async () => {
+  mockFetch(() => gistListResponse([]));
+  await assert.rejects(
+    () => pullBackup({ token: 't', gistId: '', profileId: 'eyup' }),
+    (err) => err instanceof SyncError
+      && err.message.includes('mesai-eyup.json')
+      && /Kaydet/.test(err.message),
+  );
+});
+
+test('pullBackup - yanlış profildeyken mevcut yedeği söyler', async () => {
+  mockFetch(() => gistListResponse([{ id: 'g', files: { 'mesai-eyup.json': {} } }]));
+  await assert.rejects(
+    () => pullBackup({ token: 't', gistId: '', profileId: 'fuat' }),
+    (err) => err.message.includes('mesai-eyup.json') && /profili değiştir/i.test(err.message),
+  );
+});
+
+test('pushBackup - ikinci cihaz kopya gist açmaz, mevcut gist\'i günceller', async () => {
+  const calls = [];
+  globalThis.fetch = async (url, opts = {}) => {
+    calls.push({ url: String(url), method: opts.method || 'GET' });
+    if (String(url).includes('/gists?')) {
+      return gistListResponse([{ id: 'g_phone', files: { 'mesai-eyup.json': {} } }]);
+    }
+    return jsonResponse(200, { id: 'g_phone', updated_at: 'x' });
+  };
+  const res = await pushBackup({ token: 't', gistId: '', profileId: 'eyup', json: '{"a":1}' });
+  assert.equal(res.gistId, 'g_phone');
+  assert.ok(calls.some((c) => c.method === 'PATCH' && c.url.includes('/gists/g_phone')), 'PATCH beklenirdi');
+  assert.ok(!calls.some((c) => c.method === 'POST'), 'yeni gist AÇILMAMALI');
+});
+
+test('pushBackup - hesapta yedek yoksa yeni gizli gist açılır', async () => {
+  const calls = [];
+  globalThis.fetch = async (url, opts = {}) => {
+    calls.push({ url: String(url), method: opts.method || 'GET', body: opts.body ? JSON.parse(opts.body) : null });
+    if (String(url).includes('/gists?')) return gistListResponse([]);
+    return jsonResponse(201, { id: 'g_new', updated_at: 'x' });
+  };
+  const res = await pushBackup({ token: 't', gistId: '', profileId: 'eyup', json: '{}' });
+  assert.equal(res.gistId, 'g_new');
+  const post = calls.find((c) => c.method === 'POST');
+  assert.equal(post.body.public, false);
 });
 
 test('pullBackup - doğru profilin dosyasını döner', async () => {

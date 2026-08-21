@@ -48,6 +48,12 @@ export function render(container, state, ctx) {
           <button class="btn btn--primary btn--sm" id="cloudSaveBtn" type="button">Kaydet</button>
           <button class="btn btn--secondary btn--sm" id="cloudLoadBtn" type="button">Getir</button>
         </div>
+        ${sync.gistId ? '' : `
+          <p class="field__hint" style="margin:10px 0 0;">
+            Bu cihazda kayıtlı yedek yok. Başka cihazda aldıysan
+            <b>Getir</b> hesabındaki <b>${backupFileName(ctx.profileId)}</b> yedeğini bulur.
+          </p>
+        `}
         <button class="btn btn--ghost btn--sm" id="cloudDisconnectBtn" type="button" style="margin-top:8px;">Bağlantıyı kes</button>
       ` : `
         <p class="field__hint" style="margin:-4px 0 14px;">
@@ -211,13 +217,13 @@ function wireCloudSync(container, state, ctx) {
 
   container.querySelector('#cloudLoadBtn')?.addEventListener('click', async () => {
     const { token, gistId } = getSyncConfig();
-    if (!gistId) {
-      showToast('Önce bir kez "Kaydet" ile yedek oluştur');
-      return;
-    }
-    const done = setBusy(container.querySelector('#cloudLoadBtn'), 'Getiriliyor…');
+    // gistId yoksa hata verilmez: yedek başka cihazda alınmış olabilir,
+    // pullBackup hesapta dosya adına göre arar.
+    const done = setBusy(container.querySelector('#cloudLoadBtn'), gistId ? 'Getiriliyor…' : 'Yedek aranıyor…');
     try {
-      const { json, updatedAt } = await pullBackup({ token, gistId, profileId: ctx.profileId });
+      const { json, updatedAt, gistId: foundId } = await pullBackup({ token, gistId, profileId: ctx.profileId });
+      // Bulunan gist bu cihaza da yazılır; sonraki Kaydet aynı yedeğin üstüne gider.
+      if (foundId && foundId !== gistId) setSyncConfig({ gistId: foundId });
       let parsed;
       try {
         parsed = JSON.parse(json);

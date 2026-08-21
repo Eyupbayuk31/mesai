@@ -125,11 +125,38 @@ export function gistScopeProblem(scopes) {
   return null;
 }
 
-// Yedeği yükler. gistId yoksa gizli bir gist oluşturur ve id'sini döner.
+// Bu hesapta bu profilin yedeği hangi gist'te? gistId yalnızca kaydı yapan
+// cihazda saklandığı için, ikinci cihaz yedeği ada göre bulmak zorunda —
+// yoksa "önce kaydet" der ya da ikinci bir kopya gist açıp veriyi ikiye böler.
+export async function findBackupGist({ token, profileId }) {
+  const name = backupFileName(profileId);
+  const all = [];
+  // GitHub sayfa başına en fazla 100 gist döner, updated_at'e göre yeniden eskiye.
+  for (let page = 1; page <= 5; page += 1) {
+    const { data } = await ghRaw(`/gists?per_page=100&page=${page}`, { token });
+    const chunk = Array.isArray(data) ? data : [];
+    all.push(...chunk);
+    if (chunk.length < 100) break;
+  }
+  const match = all.find((g) => Object.keys(g.files || {}).includes(name));
+  // Aynı hesapta başka profilin yedeği varsa söyleyelim: çoğu zaman kullanıcı
+  // yanlış profildedir (Eyüp'te kaydedip Fuat'ta Getir demek gibi).
+  const otherBackups = [...new Set(
+    all.flatMap((g) => Object.keys(g.files || {}))
+      .filter((f) => /^mesai-.+\.json$/.test(f) && f !== name),
+  )];
+  return { gistId: match?.id || null, updatedAt: match?.updated_at || null, otherBackups };
+}
+
+// Yedeği yükler. gistId bu cihazda yoksa önce hesapta aranır (aynı gist'e
+// yazmak için), yoksa yeni bir gizli gist oluşturulur.
 export async function pushBackup({ token, gistId, profileId, json }) {
+  let id = gistId;
+  if (!id) id = (await findBackupGist({ token, profileId })).gistId;
+
   const files = { [backupFileName(profileId)]: { content: json } };
-  const gist = gistId
-    ? await gh(`/gists/${gistId}`, { token, method: 'PATCH', body: { files } })
+  const gist = id
+    ? await gh(`/gists/${id}`, { token, method: 'PATCH', body: { files } })
     : await gh('/gists', {
       token,
       method: 'POST',
@@ -140,7 +167,18 @@ export async function pushBackup({ token, gistId, profileId, json }) {
 
 // Yedeği indirir; JSON metnini ve gist'in güncellenme zamanını döner.
 export async function pullBackup({ token, gistId, profileId }) {
-  const gist = await gh(`/gists/${gistId}`, { token });
+  let id = gistId;
+  if (!id) {
+    const found = await findBackupGist({ token, profileId });
+    if (!found.gistId) {
+      const others = found.otherBackups.length
+        ? ` Bu hesapta bulunan yedekler: ${found.otherBackups.join(', ')} — profili değiştirip tekrar dene.`
+        : ' Yedeği alan cihazda bir kez "Kaydet" demelisin.';
+      throw new SyncError(`Bu GitHub hesabında "${backupFileName(profileId)}" yedeği bulunamadı.${others}`);
+    }
+    id = found.gistId;
+  }
+  const gist = await gh(`/gists/${id}`, { token });
   const name = backupFileName(profileId);
   const file = gist.files?.[name];
   if (!file) {
@@ -158,5 +196,5 @@ export async function pullBackup({ token, gistId, profileId }) {
       throw new SyncError('Yedek çok büyük ve indirilemedi.');
     }
   }
-  return { json: content, updatedAt: gist.updated_at };
+  return { json: content, updatedAt: gist.updated_at, gistId: id };
 }
