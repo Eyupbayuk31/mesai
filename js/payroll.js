@@ -155,7 +155,8 @@ export function periodSummary(state, periodKey) {
     : 0;
   const mealPay = allowanceDays * mealAllowance;
   const transportPay = allowanceDays * transportAllowance;
-  const netTotal = baseSalary + overtimePay + mealPay + transportPay + bonuses - advances - deductions;
+  const totalIncome = baseSalary + overtimePay + mealPay + transportPay + bonuses;
+  const netTotal = totalIncome - advances - deductions;
 
   return {
     periodKey,
@@ -169,6 +170,7 @@ export function periodSummary(state, periodKey) {
     mealPay,
     transportAllowance,
     transportPay,
+    totalIncome,
     bonuses,
     advances,
     deductions,

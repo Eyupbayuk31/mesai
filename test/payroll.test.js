@@ -83,6 +83,7 @@ test('periodSummary - avans/prim/kesinti netTotal\'a yansır', () => {
   assert.equal(summary.bonuses, 500);
   assert.equal(summary.advances, 1000);
   assert.equal(summary.deductions, 200);
+  assert.equal(summary.totalIncome, 30500); // kesintiler düşülmeden toplam kazanılan
   assert.equal(summary.netTotal, 30000 + 500 - 1000 - 200);
 });
 
@@ -152,7 +153,8 @@ test('periodSummary - yemek ve yol parası gün x bedel olarak netTotal\'a eklen
   assert.equal(summary.allowanceDays, 22);
   assert.equal(summary.mealPay, 5500);      // 22 x 250
   assert.equal(summary.transportPay, 1210); // 22 x 55
-  assert.equal(Math.round(summary.netTotal * 100) / 100, 30000 + 400 + 5500 + 1210); // maaş + mesai + yemek + yol
+  assert.equal(summary.totalIncome, 30000 + 400 + 5500 + 1210); // maaş + mesai + yemek + yol
+  assert.equal(Math.round(summary.netTotal * 100) / 100, 30000 + 400 + 5500 + 1210); // kesinti yok, net = gelir
 });
 
 test('periodSummary - bedeller 0/boşsa yan ödeme 0, netTotal değişmez', () => {
