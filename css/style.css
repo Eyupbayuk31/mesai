@@ -134,7 +134,26 @@ ul { margin: 0; padding: 0; list-style: none; }
   font-size: 20px;
   font-weight: 750;
   letter-spacing: -0.02em;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+.topbar__back {
+  width: 34px;
+  height: 34px;
+  margin-left: -8px;
+  margin-right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  color: var(--text);
+  flex-shrink: 0;
+}
+.topbar__back:active { background: var(--divider); }
+.topbar__back[hidden] { display: none; }
 .topbar__action {
   font-size: 15px;
   font-weight: 600;
@@ -179,7 +198,7 @@ ul { margin: 0; padding: 0; list-style: none; }
   color: var(--text-tertiary);
   transition: color 0.18s ease, transform 0.18s ease;
 }
-.tabbar__item span { font-size: 11px; font-weight: 600; letter-spacing: -0.01em; }
+.tabbar__item span { font-size: 10.5px; font-weight: 600; letter-spacing: -0.015em; }
 .tabbar__item svg { transition: transform 0.18s ease; }
 .tabbar__item.is-active { color: var(--accent); }
 .tabbar__item.is-active svg { transform: translateY(-1px) scale(1.05); }
@@ -204,6 +223,8 @@ ul { margin: 0; padding: 0; list-style: none; }
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 .fab:active { transform: translateX(calc(-50% + 168px)) scale(0.92); box-shadow: var(--shadow-md); }
+/* display:flex, [hidden]'ın varsayılan display:none'ını ezdiği için açıkça gerekli */
+.fab[hidden] { display: none; }
 @media (max-width: 380px) {
   .fab { transform: translateX(calc(-50% + 140px)); }
   .fab:active { transform: translateX(calc(-50% + 140px)) scale(0.92); }
@@ -719,6 +740,219 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
   font-weight: 650;
   box-shadow: var(--shadow-md);
   z-index: 45;
+}
+
+/* ===== Özet: kıyas rozeti ve istatistik şeridi ===== */
+.hero__compare {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 12.5px;
+  font-weight: 700;
+  background: var(--bg);
+  color: var(--text-tertiary);
+}
+.hero__compare.is-up { background: var(--positive-soft); color: var(--positive); }
+.hero__compare.is-down { background: var(--negative-soft); color: var(--negative); }
+
+.stat-strip {
+  display: flex;
+  align-items: stretch;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 14px 8px;
+  margin-top: 12px;
+}
+.stat-strip__item { flex: 1; text-align: center; min-width: 0; }
+.stat-strip__label { font-size: 11.5px; color: var(--text-tertiary); font-weight: 650; }
+.stat-strip__value {
+  font-size: 16px;
+  font-weight: 750;
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.stat-strip__divider { width: 1px; background: var(--divider); flex-shrink: 0; }
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 24px 4px 10px;
+}
+.section-header__link {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.section-header__link:active { opacity: 0.6; }
+
+/* ===== Sayfalama ===== */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+.pagination__page,
+.pagination__nav {
+  min-width: 38px;
+  height: 38px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.12s ease;
+}
+.pagination__page:active,
+.pagination__nav:active { transform: scale(0.94); }
+.pagination__page.is-active {
+  background: linear-gradient(155deg, var(--accent) 0%, var(--accent-strong) 100%);
+  color: var(--accent-contrast);
+  border-color: transparent;
+}
+.pagination__nav[disabled] { opacity: 0.35; pointer-events: none; }
+.pagination__gap { color: var(--text-tertiary); padding: 0 2px; font-weight: 700; }
+
+.list-meta {
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+  margin-top: 10px;
+}
+
+/* ===== Ay takvimi ===== */
+.cal {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 12px 10px;
+}
+.cal__head,
+.cal__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.cal__head {
+  margin-bottom: 6px;
+}
+.cal__head span {
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.cal-cell {
+  aspect-ratio: 1 / 1.15;
+  border-radius: 9px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  background: transparent;
+  transition: background 0.14s ease, transform 0.12s ease;
+}
+.cal-cell:active { transform: scale(0.92); background: var(--divider); }
+.cal-cell__day { font-size: 13.5px; font-weight: 650; color: var(--text); line-height: 1; }
+.cal-cell--outside { opacity: 0.28; }
+.cal-cell--off .cal-cell__day { color: var(--text-tertiary); }
+.cal-cell--today { background: var(--accent-soft); }
+.cal-cell--today .cal-cell__day { color: var(--accent-strong); font-weight: 800; }
+.cal-cell--has { background: var(--bg-elevated); box-shadow: inset 0 0 0 1px var(--card-border); }
+.cal-cell--has.cal-cell--today { background: var(--accent-soft); }
+.cal-cell__badge {
+  font-size: 9.5px;
+  font-weight: 750;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 5px;
+  font-variant-numeric: tabular-nums;
+}
+.cal-cell__badge--empty { visibility: hidden; }
+.cal-cell__badge--normal { background: var(--type-normal-soft); color: var(--type-normal); }
+.cal-cell__badge--weekend { background: var(--type-weekend-soft); color: var(--type-weekend); }
+.cal-cell__badge--holiday { background: var(--type-holiday-soft); color: var(--type-holiday); }
+
+/* ===== Ayarlar kategori menüsü ===== */
+.card--menu { padding: 6px 8px; }
+.menu-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 13px 8px;
+  text-align: left;
+  border-radius: var(--radius-sm);
+}
+.menu-row + .menu-row { border-top: 1px solid var(--divider); }
+.menu-row:active { background: var(--divider); }
+.menu-row__icon {
+  width: 34px; height: 34px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.menu-row__label { font-size: 15px; font-weight: 650; flex-shrink: 0; }
+.menu-row__value {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.menu-row__chevron { color: var(--text-tertiary); display: flex; flex-shrink: 0; }
+
+.profile-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  cursor: pointer;
+  padding: 16px 18px;
+}
+.profile-row:active { background: var(--divider); }
+.profile-row__avatar {
+  width: 44px; height: 44px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(155deg, var(--accent) 0%, var(--accent-strong) 100%);
+  color: var(--accent-contrast);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; font-weight: 800;
+  flex-shrink: 0;
+}
+.profile-row__body { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.profile-row__name { font-size: 16px; font-weight: 750; }
+.profile-row__hint { font-size: 12.5px; color: var(--text-tertiary); }
+.profile-row__action { font-size: 13.5px; font-weight: 650; color: var(--accent); flex-shrink: 0; }
+
+/* Seçili durum bilgisi taşıyan çipler (hafta tatili günleri vb.) */
+.quick-chip.is-active {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  border-color: transparent;
 }
 
 /* ===== Profil seçim ekranı ===== */

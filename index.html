@@ -19,6 +19,9 @@
 <body>
 <div id="app" class="app">
   <header class="topbar">
+    <button class="topbar__back" id="topbarBack" type="button" aria-label="Geri" hidden>
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
     <h1 class="topbar__title" id="topbarTitle">Özet</h1>
     <button class="topbar__action" id="topbarAction" type="button" aria-label="Eylem" hidden></button>
   </header>
@@ -38,6 +41,15 @@
         <path d="M6 10v9a1 1 0 0 0 1 1h3v-6h4v6h3a1 1 0 0 0 1-1v-9" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
       <span>Özet</span>
+    </button>
+    <button class="tabbar__item" data-tab="entries" type="button">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M8 6h12M8 12h12M8 18h12"/>
+        <circle cx="4" cy="6" r="1.2" fill="currentColor" stroke="none"/>
+        <circle cx="4" cy="12" r="1.2" fill="currentColor" stroke="none"/>
+        <circle cx="4" cy="18" r="1.2" fill="currentColor" stroke="none"/>
+      </svg>
+      <span>Kayıtlar</span>
     </button>
     <button class="tabbar__item" data-tab="report" type="button">
       <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">

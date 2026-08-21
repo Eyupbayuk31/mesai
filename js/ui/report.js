@@ -75,8 +75,13 @@ export function renderReport(container, state, ctx) {
       `}
     </div>
 
-    <div class="section-title">Kayıtlar</div>
-    ${summary.entries.length === 0 ? emptyState(isFuture) : `<ul class="list" id="entryList">${[...summary.entries].sort((a, b) => (a.date < b.date ? 1 : -1)).map((e) => entryRowHTML(e, settings)).join('')}</ul>`}
+    <div class="section-header">
+      <span class="section-title" style="margin:0;">Kayıtlar</span>
+      ${summary.entryCount > 0
+        ? `<button class="section-header__link" id="seeAllEntries" type="button">Kayıtlarda gör (${summary.entryCount}) ›</button>`
+        : ''}
+    </div>
+    ${summary.entries.length === 0 ? emptyState(isFuture) : `<ul class="list" id="entryList">${previewEntries(summary.entries).map((e) => entryRowHTML(e, settings)).join('')}</ul>`}
 
     <div class="section-title">${year} yılı</div>
     <div class="card">
@@ -101,6 +106,11 @@ export function renderReport(container, state, ctx) {
 
   container.querySelector('#prevPeriod').addEventListener('click', () => ctx.setReportPeriod(shiftPeriod(periodKey, -1)));
   container.querySelector('#nextPeriod').addEventListener('click', () => ctx.setReportPeriod(shiftPeriod(periodKey, 1)));
+
+  container.querySelector('#seeAllEntries')?.addEventListener('click', () => {
+    ctx.setEntriesView({ periodKey, allTime: false, type: 'all', page: 1, mode: 'list' });
+    ctx.setTab('entries');
+  });
 
   container.querySelector('#addAdvance').addEventListener('click', () => openAdjustmentSheet(ctx.store, periodKey, 'advance'));
   container.querySelector('#addDeduction').addEventListener('click', () => openAdjustmentSheet(ctx.store, periodKey, 'deduction'));
@@ -130,9 +140,20 @@ export function renderReport(container, state, ctx) {
   }
 
   container.querySelector('#exportHtml').addEventListener('click', () => {
-    const html = buildHtmlReport({ profileName: profileName(ctx.profileId), periodKey, summary, settings });
-    downloadFile(`mesai-raporu-${periodKey}.html`, html, 'text/html;charset=utf-8');
-    showToast('HTML rapor indirildi');
+    openReportScopeSheet({
+      periodKey,
+      year,
+      onPick(scope) {
+        const html = buildHtmlReport({
+          profileName: profileName(ctx.profileId),
+          periodKey, summary, settings, scope,
+          yearSummary: scope === 'year' ? ySummary : null,
+        });
+        const name = scope === 'year' ? `mesai-raporu-${year}` : `mesai-raporu-${periodKey}`;
+        downloadFile(`${name}.html`, html, 'text/html;charset=utf-8');
+        showToast('HTML rapor indirildi');
+      },
+    });
   });
   container.querySelector('#exportCsv').addEventListener('click', () => {
     const csv = csvForEntries(summary.entries, settings, entryAmount);
@@ -143,6 +164,41 @@ export function renderReport(container, state, ctx) {
     downloadFile(`mesai-yedek-${periodKey}.json`, ctx.store.exportJSON(), 'application/json');
     showToast('JSON indirildi');
   });
+}
+
+function openReportScopeSheet({ periodKey, year, onPick }) {
+  openSheet({
+    title: 'HTML rapor',
+    build(bodyEl) {
+      bodyEl.innerHTML = `
+        <p class="field__hint" style="margin-top:-4px; margin-bottom:14px;">Rapor hangi dönemi kapsasın?</p>
+        <div class="card card--menu">
+          <button class="menu-row" type="button" data-scope="period">
+            <span class="menu-row__label">${periodLabel(periodKey)}</span>
+            <span class="menu-row__value">Bu dönem</span>
+            <span class="menu-row__chevron">›</span>
+          </button>
+          <button class="menu-row" type="button" data-scope="year">
+            <span class="menu-row__label">${year} yılı</span>
+            <span class="menu-row__value">12 ayın tamamı</span>
+            <span class="menu-row__chevron">›</span>
+          </button>
+        </div>
+      `;
+      bodyEl.querySelectorAll('[data-scope]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          closeSheet();
+          onPick(btn.dataset.scope);
+        });
+      });
+    },
+  });
+}
+
+// Rapor para/özet odaklı; tam liste Kayıtlar sekmesinin işi.
+const PREVIEW_COUNT = 3;
+function previewEntries(entries) {
+  return [...entries].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, PREVIEW_COUNT);
 }
 
 function renderBar(monthData, ySummary) {

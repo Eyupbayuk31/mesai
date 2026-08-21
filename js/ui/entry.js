@@ -22,10 +22,11 @@ function scheduleDefaultsForDate(dateISO, settings) {
   return { shiftStart: '10:00', shiftEnd: '14:00' };
 }
 
-export function openEntrySheet(store, existingEntry) {
+// options.date: yeni kayıt için ön-seçili tarih (takvimde bir güne dokununca).
+export function openEntrySheet(store, existingEntry, options = {}) {
   const settings = store.getState().settings;
   const isEdit = !!existingEntry;
-  const initialDate = existingEntry?.date || todayISO();
+  const initialDate = existingEntry?.date || options.date || todayISO();
   const scheduleDefaults = scheduleDefaultsForDate(initialDate, settings);
 
   const formState = {

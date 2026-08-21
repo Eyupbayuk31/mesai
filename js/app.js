@@ -1,8 +1,10 @@
 import { Store } from './store.js';
 import { currentPeriodKey } from './period.js';
+import { Router } from './router.js';
 import { renderHome } from './ui/home.js';
+import { renderEntries } from './ui/entries.js';
 import { renderReport } from './ui/report.js';
-import { renderSettings } from './ui/settings.js';
+import { renderSettingsRoute, settingsPageTitle } from './ui/settings/index.js';
 import { getActiveProfile } from './profile.js';
 
 const appEl = document.getElementById('app');
@@ -17,21 +19,38 @@ if (!activeProfile) {
 
 function boot(profileId) {
   const store = new Store(profileId);
+  const router = new Router();
 
   const screenEl = document.getElementById('screen');
   const topbarTitle = document.getElementById('topbarTitle');
+  const topbarBack = document.getElementById('topbarBack');
   const topbarAction = document.getElementById('topbarAction');
   const tabbar = document.getElementById('tabbar');
   const fab = document.getElementById('fab');
 
-  const TAB_TITLES = { home: 'Özet', report: 'Rapor', settings: 'Ayarlar' };
+  const TAB_TITLES = { home: 'Özet', entries: 'Kayıtlar', report: 'Rapor', settings: 'Ayarlar' };
+  // FAB yalnızca mesai eklemenin anlamlı olduğu sekme köklerinde görünür.
+  const FAB_TABS = new Set(['home', 'entries', 'report']);
 
   const ctx = {
     store,
     profileId,
     reportPeriodKey: currentPeriodKey(),
+    // Kayıtlar sekmesinin görünüm/filtre/sayfa durumu sekmeler arası korunur.
+    entriesView: { mode: 'list', periodKey: currentPeriodKey(), allTime: false, type: 'all', page: 1 },
     setReportPeriod(key) { ctx.reportPeriodKey = key; render(); },
-    setTab(tab) { setTab(tab); },
+    setEntriesView(partial) {
+      Object.assign(ctx.entriesView, partial);
+      render();
+    },
+    setTab(tab) { router.navigate({ tab, page: null }); },
+    navigate(route) { router.navigate(route); },
+    back() { router.back(); },
+    rerender() { render(); },
+    openEntryForDate: async (dateISO, entry) => {
+      const { openEntrySheet } = await import('./ui/entry.js');
+      openEntrySheet(store, entry || null, { date: dateISO });
+    },
     setTopbarAction(label, onClick) {
       if (!label) { topbarAction.hidden = true; topbarAction.onclick = null; return; }
       topbarAction.hidden = false;
@@ -54,43 +73,49 @@ function boot(profileId) {
     },
   };
 
-  let currentTab = 'home';
-
   function applyTheme() {
     const theme = store.getState().settings.theme;
     document.documentElement.dataset.theme = theme === 'auto' ? '' : theme;
   }
 
-  function setTab(tab) {
-    currentTab = tab;
+  function render() {
+    applyTheme();
+    const { tab, page } = router.getRoute();
+    const state = store.getState();
+
     for (const item of tabbar.querySelectorAll('.tabbar__item')) {
       item.classList.toggle('is-active', item.dataset.tab === tab);
     }
-    render();
-    screenEl.scrollTo(0, 0);
-  }
 
-  function render() {
-    applyTheme();
-    topbarTitle.textContent = TAB_TITLES[currentTab];
+    // Alt sayfada geri butonu ve alt sayfanın kendi başlığı gösterilir.
+    topbarBack.hidden = !page;
+    topbarTitle.textContent = page ? (settingsPageTitle(page) || TAB_TITLES[tab]) : TAB_TITLES[tab];
+    fab.hidden = !!page || !FAB_TABS.has(tab);
     ctx.setTopbarAction(null);
-    const state = store.getState();
-    if (currentTab === 'home') renderHome(screenEl, state, ctx);
-    else if (currentTab === 'report') renderReport(screenEl, state, ctx);
-    else if (currentTab === 'settings') renderSettings(screenEl, state, ctx);
+
+    if (tab === 'home') renderHome(screenEl, state, ctx);
+    else if (tab === 'entries') renderEntries(screenEl, state, ctx);
+    else if (tab === 'report') renderReport(screenEl, state, ctx);
+    else if (tab === 'settings') renderSettingsRoute(screenEl, state, ctx, page);
   }
 
   tabbar.addEventListener('click', (e) => {
     const btn = e.target.closest('.tabbar__item');
     if (!btn) return;
-    setTab(btn.dataset.tab);
+    router.navigate({ tab: btn.dataset.tab, page: null });
   });
+
+  topbarBack.addEventListener('click', () => router.back());
 
   fab.addEventListener('click', async () => {
     const { openEntrySheet } = await import('./ui/entry.js');
     openEntrySheet(store, null);
   });
 
+  router.subscribe(() => {
+    render();
+    screenEl.scrollTo(0, 0);
+  });
   store.subscribe(() => render());
 
   // Sistem tema tercihi değişirse (theme=auto iken) yeniden çiz
@@ -112,7 +137,7 @@ function boot(profileId) {
     document.body.appendChild(banner);
   }
 
-  setTab('home');
+  render();
 
   // Service worker kaydı
   if ('serviceWorker' in navigator) {

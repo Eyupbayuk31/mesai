@@ -195,6 +195,11 @@ export class Store {
     return JSON.stringify(this.state, null, 2);
   }
 
+  // Yedek alındığını damgalar — Ayarlar menüsünde "Son yedek" özeti için.
+  markBackedUp() {
+    this.update((s) => ({ ...s, lastBackupAt: new Date().toISOString() }));
+  }
+
   validateImport(raw) {
     if (!raw || typeof raw !== 'object') return { valid: false, error: 'Geçersiz dosya formatı' };
     if (!Array.isArray(raw.entries)) return { valid: false, error: 'Kayıt listesi bulunamadı' };

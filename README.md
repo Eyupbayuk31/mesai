@@ -6,16 +6,27 @@ sunucuya veri gönderilmez.
 
 ## Ne işe yarar
 
-- Mesai kaydını **saat sayısı** (`3,5 saat`) veya **başlangıç–bitiş saati**
-  (`18:00–21:30`) girerek ekle
-- Mesai türünü (normal ×1,5, hafta tatili ×2, resmi tatil ×2) tarihe göre
-  otomatik öner, istersen elle değiştir
+**Mesai girişi**
+- **Giriş-Çıkış**: o gün kaçta girip kaçta çıktığını gir, haftalık çalışma
+  programına göre fazla mesai otomatik hesaplansın (+15dk/+30dk/+1sa çipleriyle
+  tek dokunuş)
+- **Saat** (`3,5 saat`) veya **Aralık** (`18:00–21:30`) modunda da girilebilir
+- Mesai molası (varsayılan 18:30–19:00) mesai süresinden otomatik düşülür
+- Mesai türü (normal ×1,5, hafta tatili ×2, resmi tatil ×2) tarihe göre önerilir
+
+**Görüntüleme**
+- **Özet**: bu dönem kaç saat/ne kadar, geçen aya kıyas, bu hafta, son mesailer
+- **Kayıtlar**: sayfalanmış liste (tür ve dönem filtreli) veya **ay takvimi** —
+  takvimde bir güne dokunup mesai ekleyebilir/düzenleyebilirsin
+- **Rapor**: dönem özeti, avans/kesinti kalemleri, yıllık grafik
+- **HTML rapor** indir: dönem veya tüm yıl için, yazdırılabilir tek dosya
+  (CSV ve JSON dışa aktarma da var)
+
+**Diğer**
 - Saat ücretin **aylık maaşından otomatik** hesaplanır (varsayılan: maaş ÷ 225)
 - Dönem = takvim ayı; **ödeme günü ve gecikmesi** ayarlanabilir (örn. Ağustos
   dönemi → 10 Eylül'de öder)
-- Özet ekranında bu dönem kaç saat mesai yaptığını ve ne kadar alacağını gör
-- Rapor ekranında geçmiş dönemlere gez, prim/avans/kesinti ekle, yıllık grafiği
-  incele, CSV/JSON olarak dışa aktar
+- **Çoklu profil**: Eyüp ve Fuat'ın kayıtları/ayarları tamamen ayrı tutulur
 - Tamamen **offline çalışır**, internet olmadan da açılır
 
 ## Telefona kurulum (Android)
