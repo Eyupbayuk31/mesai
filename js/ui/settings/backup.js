@@ -5,7 +5,7 @@ import { entryAmount } from '../../payroll.js';
 import { profileName } from '../../profile.js';
 import {
   getSyncConfig, setSyncConfig, clearSyncConfig,
-  verifyToken, pushBackup, pullBackup, backupFileName, SyncError,
+  verifyToken, gistScopeProblem, sanitizeToken, pushBackup, pullBackup, backupFileName, SyncError,
 } from '../../githubSync.js';
 import { todayStamp } from './shared.js';
 
@@ -152,12 +152,13 @@ function wireCloudSync(container, state, ctx) {
   // Hata mesajlarını tek yerden geçir: SyncError'lar kullanıcıya gösterilebilir,
   // beklenmedik hatalar genel mesaja düşer.
   const reportError = (err) => {
-    showToast(err instanceof SyncError ? err.message : 'Beklenmedik bir hata oldu');
+    if (err instanceof SyncError) showLongMessage('Bağlantı hatası', err.message);
+    else showToast('Beklenmedik bir hata oldu');
   };
 
   container.querySelector('#cloudConnectBtn')?.addEventListener('click', async () => {
     const input = container.querySelector('#syncToken');
-    const token = input.value.trim();
+    const { token, removed } = sanitizeToken(input.value);
     if (!token) {
       showToast('Token girmelisin');
       input.focus();
@@ -165,12 +166,25 @@ function wireCloudSync(container, state, ctx) {
     }
     const done = setBusy(container.querySelector('#cloudConnectBtn'), 'Bağlanıyor…');
     try {
-      const login = await verifyToken(token);
+      const { login, scopes } = await verifyToken(token);
+      // Token geçerli olsa bile "gist" izni yoksa Kaydet ilerde patlar;
+      // sorunu burada, net biçimde söyleyip bağlanmayı reddediyoruz.
+      const problem = gistScopeProblem(scopes);
+      if (problem) {
+        showLongMessage('Token yetersiz', `${login} olarak doğrulandı, ancak ${problem}`);
+        done();
+        return;
+      }
       setSyncConfig({ token });
       showToast(`${login} olarak bağlanıldı`);
       ctx.rerender();
     } catch (err) {
-      reportError(err);
+      // Token'ın kendisini asla gösterme; teşhis için uzunluk ve temizlenen
+      // karakter sayısı yeterli (telefonda görünmez karakter yakalamak için).
+      const diag = `\n\nTeşhis: girilen token ${token.length} karakter`
+        + (removed > 0 ? `, yapıştırmadan ${removed} geçersiz karakter temizlendi` : '')
+        + '. Classic token normalde 40 karakterdir.';
+      reportError(err instanceof SyncError ? new SyncError(err.message + diag) : err);
       done();
     }
   });
@@ -238,6 +252,24 @@ function wireCloudSync(container, state, ctx) {
       },
     });
   });
+}
+
+// Uzun teşhis metinleri toast'ta kesilir; okunabilir bir sayfada gösterilir.
+function showLongMessage(title, message) {
+  openSheet({
+    title,
+    footerHTML: `<button class="btn btn--secondary" id="closeMsgBtn" type="button">Tamam</button>`,
+    build(bodyEl, footerEl) {
+      bodyEl.innerHTML = `<p style="font-size:14.5px; color:var(--text-secondary); line-height:1.6;">${escapeHTML(message)}</p>`;
+      footerEl.querySelector('#closeMsgBtn').addEventListener('click', () => closeSheet());
+    },
+  });
+}
+
+function escapeHTML(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
 }
 
 function confirmCloudRestore(ctx, parsed, check, updatedAt) {

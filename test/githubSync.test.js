@@ -14,7 +14,7 @@ globalThis.localStorage = makeMemoryLocalStorage();
 
 const {
   backupFileName, getSyncConfig, setSyncConfig, clearSyncConfig,
-  pushBackup, pullBackup, verifyToken, SyncError,
+  pushBackup, pullBackup, verifyToken, gistScopeProblem, sanitizeToken, SyncError,
 } = await import('../js/githubSync.js');
 
 // Çağrıları kaydeden sahte fetch.
@@ -27,16 +27,47 @@ function mockFetch(handler) {
   return calls;
 }
 
-const jsonResponse = (status, data) => ({
+const jsonResponse = (status, data, scopesHeader = 'gist') => ({
   ok: status >= 200 && status < 300,
   status,
   json: async () => data,
   text: async () => JSON.stringify(data),
+  headers: { get: (name) => (name.toLowerCase() === 'x-oauth-scopes' ? scopesHeader : null) },
 });
 
 test('backupFileName - profil başına ayrı dosya', () => {
   assert.equal(backupFileName('eyup'), 'mesai-eyup.json');
   assert.equal(backupFileName('fuat'), 'mesai-fuat.json');
+});
+
+test('sanitizeToken - temiz token olduğu gibi kalır', () => {
+  const raw = 'ghp_' + 'a1B2c3D4'.repeat(4) + 'ZZZZ';
+  const res = sanitizeToken(raw);
+  assert.equal(res.token, raw);
+  assert.equal(res.removed, 0);
+});
+
+test('sanitizeToken - görünmez karakterleri temizler (telefon klavyesi)', () => {
+  // U+200B zero-width space: trim() bunu silmez, GitHub token'ı reddeder.
+  const res = sanitizeToken('\u200bghp_abc123\u200b');
+  assert.equal(res.token, 'ghp_abc123');
+  assert.equal(res.removed, 2);
+});
+
+test('sanitizeToken - boşluk, satır sonu ve yön işaretlerini atar', () => {
+  const res = sanitizeToken('  ghp_abc\n123 \u202a\u00a0');
+  assert.equal(res.token, 'ghp_abc123');
+  assert.equal(res.removed, 6);
+});
+
+test('sanitizeToken - alt çizgi korunur, tırnak/nokta atılır', () => {
+  assert.equal(sanitizeToken('"github_pat_11ABC."').token, 'github_pat_11ABC');
+});
+
+test('sanitizeToken - boş/undefined girdi çökmez', () => {
+  assert.deepEqual(sanitizeToken(''), { token: '', removed: 0 });
+  assert.deepEqual(sanitizeToken(undefined), { token: '', removed: 0 });
+  assert.deepEqual(sanitizeToken(null), { token: '', removed: 0 });
 });
 
 test('config - kaydet/oku/temizle', () => {
@@ -48,9 +79,44 @@ test('config - kaydet/oku/temizle', () => {
   assert.deepEqual(getSyncConfig(), { token: '', gistId: '' });
 });
 
-test('verifyToken - kullanıcı adını döner', async () => {
-  mockFetch(() => jsonResponse(200, { login: 'Eyupbayuk31' }));
-  assert.equal(await verifyToken('ghp_x'), 'Eyupbayuk31');
+test('verifyToken - kullanıcı adını ve izinleri döner', async () => {
+  mockFetch(() => jsonResponse(200, { login: 'Eyupbayuk31' }, 'gist, repo'));
+  const res = await verifyToken('ghp_x');
+  assert.equal(res.login, 'Eyupbayuk31');
+  assert.deepEqual(res.scopes, ['gist', 'repo']);
+});
+
+test('verifyToken - izin başlığı yoksa scopes null (fine-grained token)', async () => {
+  mockFetch(() => jsonResponse(200, { login: 'x' }, null));
+  const res = await verifyToken('github_pat_x');
+  assert.equal(res.scopes, null);
+});
+
+test('gistScopeProblem - gist izni varsa sorun yok', () => {
+  assert.equal(gistScopeProblem(['gist']), null);
+  assert.equal(gistScopeProblem(['repo', 'gist', 'user']), null);
+});
+
+test('gistScopeProblem - gist izni yoksa mevcut izinleri söyler', () => {
+  const msg = gistScopeProblem(['repo', 'user']);
+  assert.match(msg, /"gist" izni yok/);
+  assert.match(msg, /repo, user/);
+});
+
+test('gistScopeProblem - izin listesi boşsa "hiçbiri" der', () => {
+  assert.match(gistScopeProblem([]), /hiçbiri/);
+});
+
+test('gistScopeProblem - scopes null ise fine-grained uyarısı verir', () => {
+  assert.match(gistScopeProblem(null), /fine-grained/);
+});
+
+test('hata mesajı GitHubun kendi açıklamasını da içerir', async () => {
+  mockFetch(() => jsonResponse(401, { message: 'Bad credentials' }));
+  await assert.rejects(
+    () => verifyToken('t'),
+    (err) => err instanceof SyncError && err.message.includes('Bad credentials') && err.message.includes('401'),
+  );
 });
 
 test('pushBackup - gistId yokken GİZLİ gist oluşturur', async () => {
@@ -119,9 +185,9 @@ test('pullBackup - kısaltılmış dosyada ham içerik çekilir', async () => {
 
 test('hata durumları anlaşılır Türkçe mesaja çevrilir', async () => {
   const cases = [
-    [401, /Token geçersiz/],
+    [401, /kabul edilmedi \(401\)/],
     [403, /gist.*izni/i],
-    [404, /bulunamadı/],
+    [404, /Bulunamadı \(404\)/],
     [500, /yanıt vermiyor/],
   ];
   for (const [status, pattern] of cases) {

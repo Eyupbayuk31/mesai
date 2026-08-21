@@ -15,6 +15,16 @@ const GIST_DESCRIPTION = 'Mesai Takip yedeği (gizli)';
 
 export class SyncError extends Error {}
 
+// Telefonda yapıştırırken klavye/pano görünmez karakter (zero-width space,
+// yön işaretleri) veya satır sonu ekleyebiliyor; trim() bunların hepsini
+// temizlemiyor ve GitHub token'ı tanımıyor. GitHub token'ları yalnızca
+// [A-Za-z0-9_] içerir, gerisini atarız.
+export function sanitizeToken(raw) {
+  const input = String(raw ?? '');
+  const token = input.replace(/[^A-Za-z0-9_]/g, '');
+  return { token, removed: input.length - token.length };
+}
+
 export function backupFileName(profileId) {
   return `mesai-${profileId}.json`;
 }
@@ -47,16 +57,20 @@ export function clearSyncConfig() {
   setSyncConfig({ token: '', gistId: '' });
 }
 
-function messageForStatus(status) {
-  if (status === 401) return 'Token geçersiz veya süresi dolmuş. Ayarlardan yeni token gir.';
-  if (status === 403) return 'Yetki reddedildi. Token\'da "gist" izni işaretli mi?';
-  if (status === 404) return 'Yedek bulunamadı — gist silinmiş olabilir. Bağlantıyı kesip yeniden kaydet.';
-  if (status === 422) return 'GitHub isteği reddetti (geçersiz içerik).';
-  if (status >= 500) return 'GitHub şu an yanıt vermiyor, biraz sonra dene.';
-  return `GitHub hatası (${status}).`;
+// Kendi tahminimiz yerine GitHub'ın söylediğini de gösteririz; yanlış teşhis
+// (ör. geçerli bir token'a "süresi dolmuş" demek) böylece ayıklanabilir.
+function messageForStatus(status, githubMessage) {
+  const detail = githubMessage ? ` GitHub: "${githubMessage}"` : '';
+  if (status === 401) return `Token kabul edilmedi (401). Kopyalarken eksik/fazla karakter kalmış olabilir.${detail}`;
+  if (status === 403) return `Yetki reddedildi (403). Token'da "gist" izni işaretli mi?${detail}`;
+  if (status === 404) return `Bulunamadı (404). Token'da "gist" izni yoksa GitHub gist'leri de 404 döndürür.${detail}`;
+  if (status === 422) return `GitHub isteği reddetti (422).${detail}`;
+  if (status >= 500) return `GitHub şu an yanıt vermiyor (${status}), biraz sonra dene.`;
+  return `GitHub hatası (${status}).${detail}`;
 }
 
-async function gh(path, { token, method = 'GET', body } = {}) {
+// Yanıt gövdesi + işe yarayan başlıklar birlikte döner.
+async function ghRaw(path, { token, method = 'GET', body } = {}) {
   let res;
   try {
     res = await fetch(`${API}${path}`, {
@@ -72,14 +86,43 @@ async function gh(path, { token, method = 'GET', body } = {}) {
   } catch {
     throw new SyncError('İnternet bağlantısı yok gibi görünüyor.');
   }
-  if (!res.ok) throw new SyncError(messageForStatus(res.status));
-  return res.json();
+
+  let data = null;
+  try { data = await res.json(); } catch {}
+
+  if (!res.ok) throw new SyncError(messageForStatus(res.status, data?.message));
+
+  // GitHub bu başlığı CORS'ta açığa çıkarır; classic token'ın izinlerini verir.
+  // Fine-grained token'larda başlık hiç gelmez (gist API'sini desteklemezler).
+  const rawScopes = res.headers.get('x-oauth-scopes');
+  const scopes = rawScopes === null ? null : rawScopes.split(',').map((x) => x.trim()).filter(Boolean);
+  return { data, scopes };
 }
 
-// Token'ı doğrular ve hesabın kullanıcı adını döner.
+async function gh(path, opts) {
+  const { data } = await ghRaw(path, opts);
+  return data;
+}
+
+// Token'ı doğrular; kullanıcı adını ve izin listesini döner.
+// scopes: dizi (classic token) veya null (başlık yok — muhtemelen fine-grained).
 export async function verifyToken(token) {
-  const me = await gh('/user', { token });
-  return me.login;
+  const { data, scopes } = await ghRaw('/user', { token });
+  return { login: data.login, scopes };
+}
+
+// Token gist yedeklemesi için yeterli mi? Değilse nedenini açıklayan metin döner.
+export function gistScopeProblem(scopes) {
+  if (scopes === null) {
+    return 'Bu token gist API\'sini desteklemiyor (büyük ihtimalle "fine-grained" token). '
+      + 'Tokens (classic) altından yeni bir token oluşturup "gist" iznini işaretle.';
+  }
+  if (!scopes.includes('gist')) {
+    const list = scopes.length ? scopes.join(', ') : 'hiçbiri';
+    return `Token geçerli ama "gist" izni yok (mevcut izinler: ${list}). `
+      + 'Yeni bir classic token oluştururken "gist" kutusunu işaretlemelisin.';
+  }
+  return null;
 }
 
 // Yedeği yükler. gistId yoksa gizli bir gist oluşturur ve id'sini döner.
