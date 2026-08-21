@@ -1282,6 +1282,12 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
 .cta-note { font-size: 13px; color: var(--text-secondary); text-align: center; margin-top: 10px; line-height: 1.5; }
 .entry-row--expense .entry-row__amount--expense { color: var(--text); }
 
+/* ===== Bütçe: öneri kartı ===== */
+.tips-card { padding: 6px 16px; }
+.tip-row { display: flex; align-items: flex-start; gap: 11px; padding: 11px 0; font-size: 13px; line-height: 1.55; color: var(--text-secondary); }
+.tip-row + .tip-row { border-top: 1px dashed var(--divider); }
+.tip-row__icon { color: var(--accent-strong); flex-shrink: 0; margin-top: 3px; }
+
 /* Skip-link visually hidden helper */
 .sr-only {
   position: absolute;

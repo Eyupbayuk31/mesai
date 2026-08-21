@@ -1,7 +1,7 @@
 // Bütçe sekmesi: dönem harcamaları, kategori dökümü ve tahmini ödemeden kalan.
 
 import { currentPeriodKey, periodLabel, shiftPeriod } from '../period.js';
-import { budgetSummary, CATEGORIES } from '../budget.js';
+import { budgetSummary, budgetTips, CATEGORIES } from '../budget.js';
 import { formatMoney, formatDayMonthShort, formatWeekdayShort, todayISO } from '../format.js';
 import { enableSwipeToDelete } from './swipe.js';
 import { showToast } from './toast.js';
@@ -33,26 +33,19 @@ export function renderBudget(container, state, ctx) {
       <div class="hero">
         <div class="hero__label">Kalan bütçe</div>
         <div class="hero__value ${summary.remaining < 0 ? 'is-negative' : ''}">${formatMoney(summary.remaining, { decimals: false })}</div>
-        <div class="hero__sub">tahmini ${formatMoney(summary.expectedTotal, { decimals: false })} − harcama ${formatMoney(summary.spent, { decimals: false })}</div>
+        <div class="hero__sub">toplam bütçe ${formatMoney(summary.expectedTotal, { decimals: false })} − harcama ${formatMoney(summary.spent, { decimals: false })}</div>
         ${summary.dailyAllowance !== null ? `
         <div class="hero__compare ${summary.remaining < 0 ? 'is-down' : 'is-up'}">
           ${summary.remaining < 0 ? 'bütçe aşıldı' : `günde ${formatMoney(summary.dailyAllowance, { decimals: false })} harcayabilirsin`} · ${summary.daysLeft} gün kaldı
         </div>` : ''}
       </div>
-      ${summary.byCategory.length > 0 ? `
       <div class="rows rows--receipt">
-        ${summary.byCategory.map((c) => `
-        <div class="row">
-          <span class="row__label"><span class="dot" style="background:${c.color};"></span>${c.label}</span>
-          <span class="row__leader"></span>
-          <span class="row__value">${formatMoney(c.amount, { decimals: false })}</span>
-        </div>`).join('')}
-        <div class="row row--total">
-          <span class="row__label">Toplam harcama</span>
-          <span class="row__leader"></span>
-          <span class="row__value">${formatMoney(summary.spent, { decimals: false })}</span>
-        </div>
-      </div>` : ''}
+        ${receiptRow('Toplam bütçe', formatMoney(summary.expectedTotal, { decimals: false }))}
+        ${summary.advances > 0 ? receiptRow('Avans geri eklendi', `+ ${formatMoney(summary.advances, { decimals: false })}`, { valueCls: 'is-positive' }) : ''}
+        ${receiptRow('Harcama', `− ${formatMoney(summary.spent, { decimals: false })}`, { valueCls: 'is-negative' })}
+        ${summary.byCategory.map((c) => receiptRow(`<span style="color:var(--text-tertiary);"><span class="dot" style="background:${c.color};"></span>${c.label}</span>`, formatMoney(c.amount, { decimals: false }))).join('')}
+        ${receiptRow('Kalan', formatMoney(summary.remaining, { decimals: false }), { rowCls: 'row--total' })}
+      </div>
     </div>` : `
     <div class="card card--bordro">
       <div class="hero">
@@ -63,6 +56,15 @@ export function renderBudget(container, state, ctx) {
       <div class="cta-note">Tahmini ödemenden düşerek kalan bütçeyi görmek için Ayarlar → Maaş ve ücret'ten maaşını gir.</div>
       <button class="btn btn--ghost" id="goSalary" type="button" style="margin-top:8px;">Maaşımı gir</button>
     </div>`}
+
+    <div class="section-title">Öneriler</div>
+    <div class="card tips-card">
+      ${budgetTips(summary).map((t) => `
+      <div class="tip-row">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="tip-row__icon"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-4 10.5c.7.6 1 1.5 1 2.5h6c0-1 .3-1.9 1-2.5A6 6 0 0 0 12 3z"/></svg>
+        <span>${t}</span>
+      </div>`).join('')}
+    </div>
 
     <div class="section-header">
       <span class="section-title" style="margin:0;">Harcamalar</span>
@@ -119,6 +121,11 @@ function expenseRowHTML(e) {
 
 function categoryLabel(key) {
   return CATEGORIES.find((c) => c.key === key) || CATEGORIES[CATEGORIES.length - 1];
+}
+
+// Fiş (receipt) satırı: etiket ······ değer. Özet kartındakiyle aynı desen.
+function receiptRow(label, value, { rowCls = '', valueCls = '' } = {}) {
+  return `<div class="row ${rowCls}"><span class="row__label">${label}</span><span class="row__leader"></span><span class="row__value ${valueCls}">${value}</span></div>`;
 }
 
 function emptyStateHTML(isCurrent) {

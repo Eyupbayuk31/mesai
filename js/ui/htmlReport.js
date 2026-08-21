@@ -6,7 +6,7 @@ import { periodLabel, payDateForPeriod } from '../period.js';
 
 const TYPE_LABEL = { normal: 'Normal', weekend: 'Hafta tatili', holiday: 'Resmi tatil' };
 const TYPE_COLOR = { normal: '#3b6fe0', weekend: '#a24fd6', holiday: '#e2483d' };
-const ADJ_LABEL = { advance: 'Avans', deduction: 'Kesinti', bonus: 'Prim' };
+const ADJ_LABEL = { advance: 'Avans', deduction: 'Kesinti', bonus: 'Prim', income: 'Para girişi' };
 
 function escapeHTML(str) {
   return String(str ?? '')
@@ -76,11 +76,12 @@ function adjustmentRows(summary) {
     `);
   }
   for (const a of summary.adjustments) {
+    const isGain = a.kind === 'bonus' || a.kind === 'income';
     rows.push(`
       <tr>
         <td>${escapeHTML(a.label || ADJ_LABEL[a.kind] || a.kind)}</td>
-        <td class="num" style="color:${a.kind === 'bonus' ? '#12946b' : '#e2483d'};">
-          ${a.kind === 'bonus' ? '+' : '−'} ${formatMoney(a.amount)}
+        <td class="num" style="color:${isGain ? '#12946b' : '#e2483d'};">
+          ${isGain ? '+' : '−'} ${formatMoney(a.amount)}
         </td>
       </tr>
     `);

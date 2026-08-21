@@ -147,11 +147,13 @@ export function periodSummary(state, periodKey) {
   }
 
   let bonuses = 0;
+  let extraIncome = 0;
   let advances = 0;
   let deductions = 0;
   for (const adj of adjustments) {
     const amount = Number(adj.amount) || 0;
     if (adj.kind === 'bonus') bonuses += amount;
+    else if (adj.kind === 'income') extraIncome += amount;
     else if (adj.kind === 'advance') advances += amount;
     else if (adj.kind === 'deduction') deductions += amount;
   }
@@ -164,7 +166,7 @@ export function periodSummary(state, periodKey) {
     : 0;
   const mealPay = allowanceDays * mealAllowance;
   const transportPay = allowanceDays * transportAllowance;
-  const totalIncome = baseSalary + overtimePay + mealPay + transportPay + bonuses;
+  const totalIncome = baseSalary + overtimePay + mealPay + transportPay + bonuses + extraIncome;
   const netTotal = totalIncome - advances - deductions;
 
   return {
@@ -181,6 +183,7 @@ export function periodSummary(state, periodKey) {
     transportPay,
     totalIncome,
     bonuses,
+    extraIncome,
     advances,
     deductions,
     netTotal,

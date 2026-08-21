@@ -68,6 +68,21 @@ test('periodSummary - kullanıcı senaryosu: maaş 30000, 2 kayıt', () => {
   assert.equal(Math.round(summary.netTotal * 100) / 100, 31766.67);
 });
 
+test('periodSummary - para girişi (beklenmedik gelir) toplam gelir ve nete eklenir', () => {
+  const state = {
+    settings: baseSettings,
+    entries: [],
+    adjustments: [
+      { id: 'i1', periodKey: '2026-08', kind: 'income', amount: 800, label: 'Eski borç geri ödemesi' },
+      { id: 'a1', periodKey: '2026-08', kind: 'advance', amount: 1000 },
+    ],
+  };
+  const summary = periodSummary(state, '2026-08');
+  assert.equal(summary.extraIncome, 800);
+  assert.equal(summary.totalIncome, 30800); // maaş + para girişi
+  assert.equal(summary.netTotal, 29800);    // ... - avans
+});
+
 test('periodSummary - avans/prim/kesinti netTotal\'a yansır', () => {
   const state = {
     settings: baseSettings,

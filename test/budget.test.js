@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { budgetSummary, categoryOf, CATEGORIES } from '../js/budget.js';
+import { budgetSummary, budgetTips, categoryOf, CATEGORIES } from '../js/budget.js';
 
 function makeMemoryLocalStorage() {
   const map = new Map();
@@ -107,6 +107,74 @@ test('budgetSummary - mesai ve yan ödemeler tahmini ödemeye dahil (bağlantı)
   // Ağustos 2026 Pzt-Cum: 21 iş günü x 250 = 5250 yemek; mesai 2 x 133.33 x 1.5 = 400
   assert.equal(Math.round(s.expectedTotal), Math.round(30000 + 400 + 5250));
   assert.equal(Math.round(s.remaining), Math.round(30000 + 400 + 5250 - 1000));
+});
+
+test('budgetSummary - avans bütçeye geri eklenir (harcamada zaten görünür)', () => {
+  const state = {
+    settings: baseSettings,
+    entries: [],
+    expenses: [{ id: 'x1', date: '2026-08-05', amount: 1000, category: 'fatura' }], // avansla ödenen fatura
+    adjustments: [{ id: 'a1', periodKey: '2026-08', kind: 'advance', amount: 1000 }],
+  };
+  const s = budgetSummary(state, '2026-08', '2026-08-21');
+  // netTotal = 30000 - 1000 = 29000; bütçe avansı geri ekler → 30000
+  assert.equal(s.expectedTotal, 30000);
+  assert.equal(s.advances, 1000);
+  assert.equal(s.remaining, 29000); // 30000 - 1000 harcama (fatura bir kez sayılır)
+});
+
+test('budgetSummary - kesinti geri eklenmez (hiç gelmeyen para)', () => {
+  const state = {
+    settings: baseSettings,
+    entries: [],
+    expenses: [],
+    adjustments: [{ id: 'd1', periodKey: '2026-08', kind: 'deduction', amount: 500 }],
+  };
+  const s = budgetSummary(state, '2026-08', '2026-08-21');
+  assert.equal(s.expectedTotal, 29500); // 30000 - 500
+});
+
+test('budgetSummary - para girişi tahmini bütçeye dahil olur', () => {
+  const state = {
+    settings: baseSettings,
+    entries: [],
+    expenses: [],
+    adjustments: [{ id: 'i1', periodKey: '2026-08', kind: 'income', amount: 2000 }],
+  };
+  const s = budgetSummary(state, '2026-08', '2026-08-21');
+  assert.equal(s.expectedTotal, 32000);
+});
+
+test('budgetTips - harcama yokken yönlendirme + genel tavsiye döner', () => {
+  const state = { settings: baseSettings, entries: [], expenses: [], adjustments: [] };
+  const s = budgetSummary(state, '2026-08', '2026-08-21');
+  const tips = budgetTips(s, '2026-08-21');
+  assert.equal(tips.length, 2);
+  assert.ok(tips[0].includes('öneriler sana özelleşir'));
+});
+
+test('budgetTips - hız bütçeyi aşınca uyarı ve günlük limit verir', () => {
+  const state = {
+    settings: baseSettings,
+    entries: [],
+    expenses: [{ id: 'x1', date: '2026-08-01', amount: 25000, category: 'market' }],
+    adjustments: [],
+  };
+  const s = budgetSummary(state, '2026-08', '2026-08-21');
+  const tips = budgetTips(s, '2026-08-21');
+  assert.ok(tips[0].includes('aşarsın') || tips[0].includes('aşıldı'));
+});
+
+test('budgetTips - sakin hızda birikim önerisi verir', () => {
+  const state = {
+    settings: baseSettings,
+    entries: [],
+    expenses: [{ id: 'x1', date: '2026-08-01', amount: 5000, category: 'market' }],
+    adjustments: [],
+  };
+  const s = budgetSummary(state, '2026-08', '2026-08-21');
+  const tips = budgetTips(s, '2026-08-21');
+  assert.ok(tips.some((t) => t.includes('elinde kalır')));
 });
 
 test('categoryOf - bilinmeyen anahtar Diğer kategorisine düşer', () => {

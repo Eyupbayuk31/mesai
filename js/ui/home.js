@@ -61,6 +61,7 @@ export function renderHome(container, state, ctx) {
           ${summary.mealPay > 0 ? receiptRow(`Yemek parası <span style="color:var(--text-tertiary);">(${summary.allowanceDays} gün)</span>`, `+ ${formatMoney(summary.mealPay, { decimals: false })}`, { valueCls: 'is-positive' }) : ''}
           ${summary.transportPay > 0 ? receiptRow(`Yol parası <span style="color:var(--text-tertiary);">(${summary.allowanceDays} gün)</span>`, `+ ${formatMoney(summary.transportPay, { decimals: false })}`, { valueCls: 'is-positive' }) : ''}
           ${summary.bonuses > 0 ? receiptRow('Prim', `+ ${formatMoney(summary.bonuses, { decimals: false })}`, { valueCls: 'is-positive' }) : ''}
+          ${summary.extraIncome > 0 ? receiptRow('Para girişi', `+ ${formatMoney(summary.extraIncome, { decimals: false })}`, { valueCls: 'is-positive' }) : ''}
           ${(summary.advances > 0 || summary.deductions > 0) ? receiptRow('Toplam gelir', formatMoney(summary.totalIncome, { decimals: false }), { rowCls: 'row--subtotal' }) : ''}
           ${summary.advances > 0 ? receiptRow('Avans', `− ${formatMoney(summary.advances, { decimals: false })}`, { valueCls: 'is-negative' }) : ''}
           ${summary.deductions > 0 ? receiptRow('Kesinti', `− ${formatMoney(summary.deductions, { decimals: false })}`, { valueCls: 'is-negative' }) : ''}

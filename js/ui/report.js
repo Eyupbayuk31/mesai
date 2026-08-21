@@ -60,6 +60,7 @@ export function renderReport(container, state, ctx) {
     <div class="section-title">Ek kalemler</div>
     <div class="card">
       <div class="chips" style="margin-bottom:${summary.adjustments.length ? '14px' : '0'};">
+        <button class="quick-chip" id="addIncome" type="button">+ Para girişi</button>
         <button class="quick-chip" id="addAdvance" type="button">− Avans</button>
         <button class="quick-chip" id="addDeduction" type="button">− Kesinti</button>
       </div>
@@ -68,8 +69,8 @@ export function renderReport(container, state, ctx) {
           ${summary.adjustments.map((a) => `
             <div class="row" data-adj-id="${a.id}">
               <span class="row__label">${escapeHTML(a.label || adjustmentLabel(a.kind))}</span>
-              <span class="row__value ${a.kind === 'bonus' ? 'is-positive' : 'is-negative'}" style="display:flex; align-items:center; gap:10px;">
-                ${a.kind === 'bonus' ? '+' : '−'} ${formatMoney(a.amount, { decimals: false })}
+              <span class="row__value ${a.kind === 'bonus' || a.kind === 'income' ? 'is-positive' : 'is-negative'}" style="display:flex; align-items:center; gap:10px;">
+                ${a.kind === 'bonus' || a.kind === 'income' ? '+' : '−'} ${formatMoney(a.amount, { decimals: false })}
                 <button class="link-row__chevron" data-remove-adj="${a.id}" type="button" aria-label="Sil" style="line-height:0;">
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
                 </button>
@@ -117,6 +118,7 @@ export function renderReport(container, state, ctx) {
     ctx.setTab('entries');
   });
 
+  container.querySelector('#addIncome').addEventListener('click', () => openAdjustmentSheet(ctx.store, periodKey, 'income'));
   container.querySelector('#addAdvance').addEventListener('click', () => openAdjustmentSheet(ctx.store, periodKey, 'advance'));
   container.querySelector('#addDeduction').addEventListener('click', () => openAdjustmentSheet(ctx.store, periodKey, 'deduction'));
 
@@ -219,12 +221,12 @@ function renderBar(monthData, ySummary) {
 }
 
 function adjustmentLabel(kind) {
-  return kind === 'bonus' ? 'Prim' : kind === 'advance' ? 'Avans' : 'Kesinti';
+  return kind === 'bonus' ? 'Prim' : kind === 'income' ? 'Para girişi' : kind === 'advance' ? 'Avans' : 'Kesinti';
 }
 
 function openAdjustmentSheet(store, periodKey, kind) {
   openSheet({
-    title: kind === 'bonus' ? 'Prim ekle' : kind === 'advance' ? 'Avans ekle' : 'Kesinti ekle',
+    title: kind === 'bonus' ? 'Prim ekle' : kind === 'income' ? 'Para girişi ekle' : kind === 'advance' ? 'Avans ekle' : 'Kesinti ekle',
     footerHTML: `<button class="btn btn--primary" id="saveAdjBtn" type="button">Ekle</button>`,
     build(bodyEl, footerEl) {
       bodyEl.innerHTML = `
