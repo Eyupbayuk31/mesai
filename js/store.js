@@ -23,6 +23,8 @@ const DEFAULT_SETTINGS = {
   // Günlük yan ödemeler (yemek kartı / ulaşım) — 0 = kapalı.
   mealAllowance: 0,
   transportAllowance: 0,
+  // Aylık mesai hedefi (saat) — bordro kartında ilerleme çubuğu. 0 = kapalı.
+  monthlyGoalHours: 0,
   payDay: 10,
   payMonthOffset: 1,
   multipliers: { normal: 1.5, weekend: 2, holiday: 2 },

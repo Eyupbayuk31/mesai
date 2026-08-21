@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { hourlyRate, entryAmount, hoursBetween, crossesMidnight, periodSummary, yearSummary, shiftOvertime, addMinutesToTime, workdaysForPeriod } from '../js/payroll.js';
+import { hourlyRate, entryAmount, hoursBetween, crossesMidnight, periodSummary, yearSummary, shiftOvertime, addMinutesToTime, workdaysForPeriod, scheduledWeeklyHours } from '../js/payroll.js';
 
 const baseSettings = {
   monthlySalary: 30000,
@@ -141,6 +141,14 @@ test('workdaysForPeriod - resmi tatil iş gününden düşülür', () => {
 
 test('workdaysForPeriod - program tanımsızsa 0 döner', () => {
   assert.equal(workdaysForPeriod('2026-07', {}), 0);
+});
+
+test('scheduledWeeklyHours - hafta içi 9,5 sa x5 + cmt 4,25 sa = 51,75', () => {
+  assert.equal(scheduledWeeklyHours(weeklySettings), 51.75);
+});
+
+test('scheduledWeeklyHours - program tanımsızsa 0 döner', () => {
+  assert.equal(scheduledWeeklyHours({}), 0);
 });
 
 test('periodSummary - yemek ve yol parası gün x bedel olarak netTotal\'a eklenir', () => {

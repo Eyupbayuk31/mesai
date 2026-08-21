@@ -37,6 +37,7 @@ export function renderReport(container, state, ctx) {
       <button class="period-card__nav" id="nextPeriod" type="button" aria-label="Sonraki dönem">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
       </button>
+      ${periodKey < currentPeriodKey() ? '<div class="stamp" aria-hidden="true">Tamamlandı</div>' : ''}
     </div>
 
     <div class="section-title">Dönem özeti</div>

@@ -1,9 +1,11 @@
 import { currentPeriodKey, periodLabel, payDateForPeriod, daysUntilPay, shiftPeriod } from '../period.js';
-import { periodSummary } from '../payroll.js';
-import { formatMoney, formatHours, formatFullDate, toISODate, todayISO } from '../format.js';
+import { periodSummary, scheduledWeeklyHours } from '../payroll.js';
+import { holidayListForYear, nextHoliday } from '../holidays.js';
+import { formatMoney, formatHours, formatFullDate, formatDayMonthShort, formatWeekdayShort, toISODate, todayISO } from '../format.js';
 import { entryRowHTML } from './entryRow.js';
 import { enableSwipeToDelete } from './swipe.js';
 import { showToast } from './toast.js';
+import { openSheet } from './sheet.js';
 
 const RECENT_COUNT = 5;
 
@@ -50,6 +52,7 @@ export function renderHome(container, state, ctx) {
           <div class="hero__value">${formatHours(summary.totalHours)}</div>
           <div class="hero__sub">${formatMoney(summary.overtimePay)}</div>
           ${comparisonHTML(summary, prevSummary, periodKey)}
+          ${goalBarHTML(summary, settings.monthlyGoalHours)}
         </div>
         ${typeChipsHTML(summary)}
         <div class="rows rows--receipt">
@@ -82,6 +85,8 @@ export function renderHome(container, state, ctx) {
         </div>
       </div>
 
+      ${statusCardHTML(state)}
+
       <button class="btn btn--primary" id="quickAdd" type="button" style="margin-top:14px;">
         <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
         Bugün mesai ekle
@@ -104,6 +109,8 @@ export function renderHome(container, state, ctx) {
   container.querySelector('#quickAdd')?.addEventListener('click', () => {
     ctx.openEntryForDate(todayISO());
   });
+
+  container.querySelector('#holidayRow')?.addEventListener('click', openHolidaySheet);
 
   container.querySelector('#seeAll')?.addEventListener('click', () => {
     ctx.setEntriesView({ periodKey, allTime: false, type: 'all', page: 1, mode: 'list' });
@@ -144,6 +151,78 @@ function comparisonHTML(summary, prevSummary, periodKey) {
 // Fiş (receipt) satırı: etiket ······ değer. Kılavuz çizgisi CSS'te.
 function receiptRow(label, value, { rowCls = '', valueCls = '' } = {}) {
   return `<div class="row ${rowCls}"><span class="row__label">${label}</span><span class="row__leader"></span><span class="row__value ${valueCls}">${value}</span></div>`;
+}
+
+// Aylık mesai hedefi ilerlemesi — hedef girilmemişse hiç görünmez.
+function goalBarHTML(summary, goal) {
+  const goalHours = Number(goal) || 0;
+  if (goalHours <= 0) return '';
+  const pct = Math.min(100, Math.round((summary.totalHours / goalHours) * 100));
+  const reached = summary.totalHours >= goalHours;
+  return `
+    <div class="goal">
+      <div class="goal__meta">
+        <span>Hedef ${reached ? 'aşıldı' : ''}</span>
+        <span>${formatHours(summary.totalHours)} / ${formatHours(goalHours)} · %${pct}</span>
+      </div>
+      <div class="goal__track"><div class="goal__fill ${reached ? 'is-done' : ''}" style="width:${pct}%"></div></div>
+    </div>
+  `;
+}
+
+// Durum kartı: sıradaki resmi tatil + haftalık puantaj (program + mesai, 45 sa sınırı)
+function statusCardHTML(state) {
+  const holiday = nextHoliday(todayISO());
+  const planned = scheduledWeeklyHours(state.settings);
+  const overtime = thisWeekHours(state.entries);
+  const total = Math.round((planned + overtime) * 4) / 4;
+  const scale = Math.max(total, 45);
+  const plannedPct = Math.min(100, (planned / scale) * 100);
+  const overtimePct = Math.min(100 - plannedPct, (overtime / scale) * 100);
+  const limitPct = Math.min(100, (45 / scale) * 100);
+  return `
+    <div class="card status-card">
+      ${holiday ? `
+      <button class="status-row" id="holidayRow" type="button">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="status-row__icon"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3.5v3M16 3.5v3"/></svg>
+        <span class="status-row__label">Sıradaki tatil</span>
+        <span class="status-row__value">${holiday.name} · ${formatDayMonthShort(holiday.date)}</span>
+        <span class="status-row__chip">${holiday.daysLeft} gün</span>
+      </button>` : ''}
+      <div class="status-row status-row--meter">
+        <span class="status-row__label">Bu hafta puantaj</span>
+        <span class="status-row__value">${formatHours(total)} <span class="status-row__sub">program ${formatHours(planned)} + mesai ${formatHours(overtime)}</span></span>
+      </div>
+      <div class="meter" role="img" aria-label="Bu hafta toplam ${formatHours(total)}, kanuni sınır 45 saat">
+        <div class="meter__fill meter__fill--planned" style="width:${plannedPct.toFixed(1)}%"></div>
+        <div class="meter__fill meter__fill--overtime" style="left:${plannedPct.toFixed(1)}%; width:${overtimePct.toFixed(1)}%"></div>
+        ${total > 45 ? `<div class="meter__limit" style="left:${limitPct.toFixed(1)}%" title="Kanuni sınır 45 sa"></div>` : ''}
+      </div>
+      <div class="status-card__foot">Kanuni haftalık çalışma sınırı 45 saat</div>
+    </div>
+  `;
+}
+
+function openHolidaySheet() {
+  const year = new Date().getFullYear();
+  const list = holidayListForYear(year);
+  const today = todayISO();
+  openSheet({
+    title: `${year} resmi tatiller`,
+    build(bodyEl) {
+      bodyEl.innerHTML = `
+        <ul class="holiday-list">
+          ${list.map((h) => `
+            <li class="holiday-list__item ${h.date < today ? 'is-past' : ''} ${h.date === today ? 'is-today' : ''}">
+              <span class="holiday-list__date">${formatDayMonthShort(h.date)}<small>${formatWeekdayShort(h.date)}</small></span>
+              <span class="holiday-list__name">${h.name}</span>
+            </li>
+          `).join('')}
+        </ul>
+        <p class="field__hint" style="margin-top:12px;">Dini bayramlar Diyanet takvimine göredir; 2030'a kadar listelenir. Bugünkü tarih kalın gösterilir, geçmiş tatiller soluk.</p>
+      `;
+    },
+  });
 }
 
 function typeChipsHTML(summary) {

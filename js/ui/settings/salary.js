@@ -19,6 +19,11 @@ export function render(container, state, ctx) {
         <input class="input" type="text" inputmode="decimal" id="divisorInput" value="${settings.hoursDivisor}" />
         <div class="field__hint">30 gün × günlük 7,5 saat = 225 (varsayılan)</div>
       </div>
+      <div class="field" style="margin-bottom:6px;">
+        <label class="field__label">Aylık mesai hedefi (sa) <span style="font-weight:500;color:var(--text-tertiary);">(opsiyonel)</span></label>
+        <input class="input" type="text" inputmode="decimal" id="goalInput" value="${settings.monthlyGoalHours || ''}" placeholder="ör. 40" />
+        <div class="field__hint">Özet'teki bordro kartında ilerleme çubuğu gösterilir. Boş bırak = kapalı.</div>
+      </div>
       <div class="preview-strip" style="margin-top:14px; margin-bottom:0;">
         <span class="preview-strip__label">Saat ücretin</span>
         <span class="preview-strip__value" id="rateDisplay">${formatMoney(hourlyRate(settings))}</span>
@@ -88,6 +93,14 @@ export function render(container, state, ctx) {
 
   commitNumberOnChange(salaryInput, (v) => ctx.store.updateSettings({ monthlySalary: v }));
   commitNumberOnChange(divisorInput, (v) => ctx.store.updateSettings({ hoursDivisor: v || 225 }));
+
+  // Hedef boş bırakılırsa kapatılabilir olmalı (commitNumberOnChange NaN'ı atlar)
+  const goalInput = container.querySelector('#goalInput');
+  goalInput.addEventListener('change', () => {
+    const raw = goalInput.value.trim();
+    const value = raw === '' ? 0 : (parseLocaleNumber(raw) || 0);
+    ctx.store.updateSettings({ monthlyGoalHours: value });
+  });
 
   const mealInput = container.querySelector('#mealInput');
   const transportInput = container.querySelector('#transportInput');

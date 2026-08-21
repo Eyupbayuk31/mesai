@@ -98,6 +98,15 @@ export function shiftOvertime(date, shiftStart, shiftEnd, settings) {
   };
 }
 
+// Haftalık programda planlanan toplam çalışma saati (puantaj göstergesi için).
+export function scheduledWeeklyHours(settings) {
+  let total = 0;
+  for (const day of Object.values(settings.weeklySchedule || {})) {
+    if (day?.works) total += hoursBetween(day.start, day.end);
+  }
+  return Math.round(total * 4) / 4;
+}
+
 const EMPTY_TYPE_TOTALS = () => ({
   normal: { hours: 0, amount: 0 },
   weekend: { hours: 0, amount: 0 },

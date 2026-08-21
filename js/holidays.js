@@ -2,6 +2,8 @@
 // (Ramazan/Kurban) hicri takvime bağlı olduğundan yıl yıl elle listelenir.
 // Tablo dışındaki yıllarda dini bayram günleri döndürülmez (uydurma yok).
 
+import { parseISODate } from './format.js';
+
 function fixedHolidaysForYear(year) {
   return [
     { date: `${year}-01-01`, name: 'Yılbaşı' },
@@ -89,6 +91,24 @@ function holidaysForYear(year) {
 export function holidayName(isoDateStr) {
   const year = Number(isoDateStr.slice(0, 4));
   return holidaysForYear(year).get(isoDateStr) || null;
+}
+
+// Yılın tüm resmi tatilleri, tarihe göre sıralı: [{date, name}, ...]
+export function holidayListForYear(year) {
+  return [...holidaysForYear(year).entries()]
+    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+    .map(([date, name]) => ({ date, name }));
+}
+
+// Bugünden sonraki ilk resmi tatil. Yıl tükendiyse gelecek yılın ilki.
+export function nextHoliday(todayISOStr) {
+  const year = Number(todayISOStr.slice(0, 4));
+  const upcoming =
+    holidayListForYear(year).find((h) => h.date > todayISOStr) ||
+    holidayListForYear(year + 1)[0];
+  if (!upcoming) return null;
+  const daysLeft = Math.round((parseISODate(upcoming.date) - parseISODate(todayISOStr)) / 86400000);
+  return { ...upcoming, daysLeft };
 }
 
 export function isHoliday(isoDateStr) {

@@ -921,6 +921,104 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
 }
 .stat-strip__divider { width: 1px; background: var(--divider); flex-shrink: 0; }
 
+/* ===== Aylık hedef çubuğu (bordro kartı içinde) ===== */
+.goal { margin-top: 14px; text-align: left; }
+.goal__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-bottom: 5px;
+}
+.goal__track { height: 6px; border-radius: 3px; background: var(--divider); overflow: hidden; }
+.goal__fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--accent), var(--accent-strong)); }
+.goal__fill.is-done { background: linear-gradient(90deg, var(--positive), color-mix(in srgb, var(--positive) 70%, #000)); }
+
+/* ===== Durum kartı: sıradaki tatil + haftalık puantaj ===== */
+.status-card { margin-top: 12px; padding: 4px 16px 12px; }
+.status-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 0; text-align: left; }
+.status-row--meter { justify-content: space-between; align-items: baseline; padding-bottom: 8px; }
+.status-row + .status-row { border-top: 1px dashed var(--divider); }
+.status-row__icon { color: var(--accent-strong); flex-shrink: 0; }
+.status-row__label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+.status-row__value { flex: 1; min-width: 0; font-size: 13px; font-weight: 650; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status-row__value .status-row__sub { font-size: 11px; font-weight: 550; color: var(--text-tertiary); }
+.status-row__chip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  flex-shrink: 0;
+}
+.meter { position: relative; height: 8px; border-radius: 4px; background: var(--divider); }
+.meter__fill { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
+.meter__fill--planned { left: 0; background: color-mix(in srgb, var(--accent) 34%, var(--divider)); }
+.meter__fill--overtime { background: linear-gradient(90deg, var(--accent), var(--accent-strong)); }
+.meter__limit { position: absolute; top: -3px; bottom: -3px; width: 2px; border-radius: 1px; background: var(--negative); }
+.status-card__foot { font-size: 10.5px; color: var(--text-tertiary); margin-top: 8px; text-align: right; }
+
+/* ===== Tatil listesi (sheet) ===== */
+.holiday-list { display: flex; flex-direction: column; }
+.holiday-list__item { display: flex; align-items: center; gap: 14px; padding: 10px 0; }
+.holiday-list__item + .holiday-list__item { border-top: 1px solid var(--divider); }
+.holiday-list__item.is-past { opacity: 0.42; }
+.holiday-list__item.is-today .holiday-list__name { color: var(--accent-strong); }
+.holiday-list__date {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  color: var(--text);
+}
+.holiday-list__date small { font-size: 9.5px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.05em; }
+.holiday-list__name { font-size: 14px; font-weight: 600; }
+.holiday-list__item.is-today .holiday-list__name { font-weight: 750; }
+
+/* ===== Dönem damgası (Rapor, kapanmış dönemler) ===== */
+.period-card { position: relative; }
+.stamp {
+  position: absolute;
+  right: 14px;
+  top: 10px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  border: 2px solid currentColor;
+  border-radius: 6px;
+  padding: 3px 8px;
+  transform: rotate(-8deg);
+  opacity: 0.75;
+  pointer-events: none;
+  animation: stamp-in 0.5s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+@keyframes stamp-in {
+  0% { transform: rotate(-8deg) scale(2.1); opacity: 0; }
+  60% { transform: rotate(-8deg) scale(0.92); opacity: 0.85; }
+  100% { transform: rotate(-8deg) scale(1); opacity: 0.75; }
+}
+
 .section-header {
   display: flex;
   align-items: center;
