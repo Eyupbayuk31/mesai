@@ -6,6 +6,7 @@ import { renderEntries } from './ui/entries.js';
 import { renderReport } from './ui/report.js';
 import { renderSettingsRoute, settingsPageTitle } from './ui/settings/index.js';
 import { getActiveProfile } from './profile.js';
+import { showToast } from './ui/toast.js';
 
 const appEl = document.getElementById('app');
 const activeProfile = getActiveProfile();
@@ -70,6 +71,39 @@ function boot(profileId) {
       deferredInstallPrompt = null;
       hideInstallBanner();
       return choice;
+    },
+    // Elle güncelleme kontrolü (Ayarlar -> Uygulama hakkında). Yeni sürüm
+    // kurulursa mevcut banner akışı devreye girer.
+    async checkForUpdate() {
+      if (!('serviceWorker' in navigator)) return;
+      try {
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (!reg) {
+          showToast('Güncelleme kaydı bulunamadı');
+          return;
+        }
+        await reg.update();
+        showToast(reg.waiting ? 'Yeni sürüm hazır' : 'Güncellemeler kontrol edildi');
+        if (reg.waiting) showUpdateBanner(reg);
+      } catch {
+        showToast('Güncelleme kontrolü başarısız');
+      }
+    },
+    // Takılı kalan servis çalışanını ve önbelleği sıfırlar; sayfa ağdan taze
+    // yüklenir. Veriler localStorage'da olduğu için korunur.
+    async repairCache() {
+      showToast('Önbellek onarılıyor…');
+      try {
+        if ('serviceWorker' in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map((r) => r.unregister()));
+        }
+        if ('caches' in window) {
+          const keys = await caches.keys();
+          await Promise.all(keys.filter((k) => k.startsWith('mesai-')).map((k) => caches.delete(k)));
+        }
+      } catch {}
+      window.location.reload();
     },
   };
 
@@ -139,20 +173,32 @@ function boot(profileId) {
 
   render();
 
-  // Service worker kaydı
+  // Service worker kaydı. updateViaCache:none -> sw.js her açılışta HTTP
+  // önbelleğini atlayıp ağdan kontrol edilir; PWA arka planda beklerken
+  // yayımlanan sürümler ön plana ilk dönüşte yakalanır.
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js').then((reg) => {
-        reg.addEventListener('updatefound', () => {
-          const newWorker = reg.installing;
-          if (!newWorker) return;
-          newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              showUpdateBanner(reg);
-            }
+      navigator.serviceWorker
+        .register('sw.js', { updateViaCache: 'none' })
+        .then((reg) => {
+          watchRegistration(reg);
+          document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') reg.update().catch(() => {});
           });
-        });
-      }).catch(() => {});
+        })
+        .catch(() => {});
+    });
+  }
+
+  function watchRegistration(reg) {
+    reg.addEventListener('updatefound', () => {
+      const newWorker = reg.installing;
+      if (!newWorker) return;
+      newWorker.addEventListener('statechange', () => {
+        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+          showUpdateBanner(reg);
+        }
+      });
     });
   }
 

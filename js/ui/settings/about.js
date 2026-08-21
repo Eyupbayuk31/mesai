@@ -3,7 +3,7 @@ import { profileName } from '../../profile.js';
 
 // Uygulama sürümü — her yayınla burası ve sw.js CACHE_VERSION birlikte artar.
 // Ayarlar → Uygulama hakkında'da görünür; güncelleme gelmiş mi buradan anlaşılır.
-export const APP_VERSION = '1.3.0';
+export const APP_VERSION = '1.3.1';
 
 export const title = 'Uygulama hakkında';
 
@@ -24,9 +24,15 @@ export function render(container, state, ctx) {
     </div>
 
     <div class="card">
+      <div class="link-row" id="checkUpdateRow"><span>Güncellemeleri kontrol et</span><span class="link-row__chevron">›</span></div>
+      <div class="link-row" id="repairCacheRow"><span>Uygulama önbelleğini onar</span><span class="link-row__chevron">›</span></div>
+    </div>
+
+    <div class="card">
       <p class="field__hint" style="margin:0; line-height:1.6;">
-        Mesai kayıtların ve ayarların yalnızca bu cihazda, bu tarayıcıda saklanır.
-        Hiçbir veri sunucuya gönderilmez. Uygulama internetsiz de çalışır.
+        Önbellek onarımı uygulamayı ağdan yeniden yükler; kayıtların ve
+        ayarların cihazında saklandığı için korunur. Güncelleme gelmediğinde
+        veya uygulama eski sürümde takıldığında kullan.
       </p>
     </div>
   `;
@@ -41,4 +47,7 @@ export function render(container, state, ctx) {
       ? 'Uygulama zaten ana ekranına eklenmiş'
       : 'Tarayıcı menüsünden "Ana ekrana ekle" seçeneğini kullan');
   });
+
+  container.querySelector('#checkUpdateRow').addEventListener('click', () => ctx.checkForUpdate());
+  container.querySelector('#repairCacheRow').addEventListener('click', () => ctx.repairCache());
 }
