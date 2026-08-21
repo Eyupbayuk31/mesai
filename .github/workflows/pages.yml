@@ -10,8 +10,11 @@ permissions:
   pages: write
   id-token: write
 
+# Gruba dal adı dahil: iki dala arka arkaya push edilince, atlanacak olan
+# çalışma varsayılan dalın gerçek deploy'unu iptal etmesin. Gerçek yayın
+# yalnızca varsayılan daldan yapıldığı için yarış oluşmaz.
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
