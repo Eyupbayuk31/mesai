@@ -39,6 +39,14 @@ function timeToMinutes(time) {
   return h * 60 + m;
 }
 
+// "18:00" + 45 dakika -> "18:45". Gün sınırını aşarsa 24 saat içinde sarar.
+export function addMinutesToTime(time, minutes) {
+  const total = ((timeToMinutes(time) + minutes) % (24 * 60) + 24 * 60) % (24 * 60);
+  const h = String(Math.floor(total / 60)).padStart(2, '0');
+  const m = String(total % 60).padStart(2, '0');
+  return `${h}:${m}`;
+}
+
 // [aStart,aEnd) ile [bStart,bEnd) aralıklarının kesişim süresi (saat).
 function overlapHours(aStart, aEnd, bStart, bEnd) {
   const start = Math.max(timeToMinutes(aStart), timeToMinutes(bStart));

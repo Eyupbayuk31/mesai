@@ -6,6 +6,8 @@ import { enableSwipeToDelete } from './swipe.js';
 import { showToast } from './toast.js';
 import { openSheet, closeSheet } from './sheet.js';
 import { downloadFile, csvForEntries } from './exportUtils.js';
+import { buildHtmlReport } from './htmlReport.js';
+import { profileName } from '../profile.js';
 
 const TYPE_ROWS = [
   { key: 'normal', label: 'Normal' },
@@ -88,9 +90,12 @@ export function renderReport(container, state, ctx) {
     </div>
 
     <div class="section-title">Dışa aktar</div>
-    <div class="card" style="display:flex; gap:10px;">
-      <button class="btn btn--secondary btn--sm" id="exportCsv" type="button">CSV indir</button>
-      <button class="btn btn--secondary btn--sm" id="exportJson" type="button">JSON indir</button>
+    <div class="card">
+      <button class="btn btn--primary btn--sm" id="exportHtml" type="button" style="margin-bottom:10px;">HTML rapor indir</button>
+      <div style="display:flex; gap:10px;">
+        <button class="btn btn--secondary btn--sm" id="exportCsv" type="button">CSV indir</button>
+        <button class="btn btn--secondary btn--sm" id="exportJson" type="button">JSON indir</button>
+      </div>
     </div>
   `;
 
@@ -124,6 +129,11 @@ export function renderReport(container, state, ctx) {
     });
   }
 
+  container.querySelector('#exportHtml').addEventListener('click', () => {
+    const html = buildHtmlReport({ profileName: profileName(ctx.profileId), periodKey, summary, settings });
+    downloadFile(`mesai-raporu-${periodKey}.html`, html, 'text/html;charset=utf-8');
+    showToast('HTML rapor indirildi');
+  });
   container.querySelector('#exportCsv').addEventListener('click', () => {
     const csv = csvForEntries(summary.entries, settings, entryAmount);
     downloadFile(`mesai-${periodKey}.csv`, '﻿' + csv, 'text/csv;charset=utf-8');

@@ -11,6 +11,21 @@ const WEEKDAY_LABELS_FULL = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'C
 // JS getDay(): 0=Pazar..6=Cmt. Ekranda Pazartesi'den başlatmak için eşleme.
 const WEEKDAY_JS_VALUES = [1, 2, 3, 4, 5, 6, 0];
 
+// Nadiren dokunulan bölümler ekranı sadeleştirmek için varsayılan kapalı
+// gelir. Sayfa içinde modül kapsamında tutulur, sekmeler arası geçişte
+// sıfırlanır ama Ayarlar açık kaldığı sürece hatırlanır.
+const collapsedSections = { weekly: true, breakWindow: true, period: true };
+
+function sectionTitleHTML(key, label) {
+  const collapsed = collapsedSections[key];
+  return `
+    <button class="section-title section-title--toggle" data-toggle="${key}" type="button" aria-expanded="${!collapsed}">
+      <span>${label}</span>
+      <svg class="section-title__chevron ${collapsed ? '' : 'is-open'}" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+    </button>
+  `;
+}
+
 export function renderSettings(container, state, ctx) {
   const settings = state.settings;
   const rate = hourlyRate(settings);
@@ -58,14 +73,14 @@ export function renderSettings(container, state, ctx) {
       </div>
     </div>
 
-    <div class="section-title">Haftalık çalışma programı</div>
-    <div class="card" id="weeklyScheduleCard">
+    ${sectionTitleHTML('weekly', 'Haftalık çalışma programı')}
+    <div class="card" id="weeklyScheduleCard" style="${collapsedSections.weekly ? 'display:none;' : ''}">
       <p class="field__hint" style="margin-top:-4px; margin-bottom:14px;">"Giriş-Çıkış" ile mesai girerken, buradaki normal saatlerin üstündeki kısım otomatik mesai sayılır.</p>
       ${WEEKDAY_JS_VALUES.map((dayNum, i) => dayScheduleRowHTML(dayNum, WEEKDAY_LABELS_FULL[i], settings.weeklySchedule[dayNum])).join('')}
     </div>
 
-    <div class="section-title">Mesai molası</div>
-    <div class="card" id="breakWindowCard">
+    ${sectionTitleHTML('breakWindow', 'Mesai molası')}
+    <div class="card" id="breakWindowCard" style="${collapsedSections.breakWindow ? 'display:none;' : ''}">
       <div class="switch-row" style="padding-top:0;">
         <div>
           <div class="switch-row__label">Mola süresini düş</div>
@@ -92,8 +107,8 @@ export function renderSettings(container, state, ctx) {
       <div class="link-row" id="switchProfileRow"><span>Şu an: <b>${profileName(ctx.profileId)}</b></span><span class="link-row__chevron">Değiştir ›</span></div>
     </div>
 
-    <div class="section-title">Dönem ve ödeme</div>
-    <div class="card">
+    ${sectionTitleHTML('period', 'Dönem ve ödeme')}
+    <div class="card" id="periodSettingsCard" style="${collapsedSections.period ? 'display:none;' : ''}">
       <div class="input-row">
         <div class="field">
           <label class="field__label">Ödeme günü</label>
@@ -153,6 +168,7 @@ export function renderSettings(container, state, ctx) {
     </div>
   `;
 
+  wireCollapsibles(container, state, ctx);
   wireSalary(container, ctx, settings);
   wireMultipliers(container, ctx, settings);
   wireWeeklySchedule(container, ctx, settings);
@@ -163,6 +179,16 @@ export function renderSettings(container, state, ctx) {
   wireInstall(container, ctx);
   wireBackup(container, ctx, state);
   wireDangerZone(container, ctx);
+}
+
+function wireCollapsibles(container, state, ctx) {
+  container.querySelectorAll('[data-toggle]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.toggle;
+      collapsedSections[key] = !collapsedSections[key];
+      renderSettings(container, state, ctx);
+    });
+  });
 }
 
 function wireBreakWindow(container, ctx, settings) {

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mesai-v3';
+const CACHE_NAME = 'mesai-v4';
 const APP_SHELL = [
   './',
   './index.html',
@@ -20,6 +20,7 @@ const APP_SHELL = [
   './js/ui/swipe.js',
   './js/ui/entryRow.js',
   './js/ui/exportUtils.js',
+  './js/ui/htmlReport.js',
   './js/ui/timeSelect.js',
   './js/ui/profilePicker.js',
   './icons/icon-192.png',

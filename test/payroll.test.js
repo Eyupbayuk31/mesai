@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { hourlyRate, entryAmount, hoursBetween, crossesMidnight, periodSummary, yearSummary, shiftOvertime } from '../js/payroll.js';
+import { hourlyRate, entryAmount, hoursBetween, crossesMidnight, periodSummary, yearSummary, shiftOvertime, addMinutesToTime } from '../js/payroll.js';
 
 const baseSettings = {
   monthlySalary: 30000,
@@ -199,4 +199,13 @@ test('shiftOvertime - pazar (gün kapalı) senaryosunda da mola düşülür', ()
   assert.equal(result.totalHours, 3);
   assert.equal(result.breakHours, 0.5);
   assert.equal(result.overtimeHours, 2.5);
+});
+
+test('addMinutesToTime - normal ekleme', () => {
+  assert.equal(addMinutesToTime('18:00', 45), '18:45');
+  assert.equal(addMinutesToTime('18:30', 90), '20:00');
+});
+
+test('addMinutesToTime - gün sınırını aşarsa sarar', () => {
+  assert.equal(addMinutesToTime('23:30', 45), '00:15');
 });

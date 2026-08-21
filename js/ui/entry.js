@@ -1,7 +1,7 @@
 import { openSheet, closeSheet } from './sheet.js';
 import { showToast } from './toast.js';
 import { todayISO, toISODate, parseLocaleNumber, formatMoney, formatHours, parseISODate } from '../format.js';
-import { hoursBetween, crossesMidnight, entryAmount, shiftOvertime } from '../payroll.js';
+import { hoursBetween, crossesMidnight, entryAmount, shiftOvertime, addMinutesToTime } from '../payroll.js';
 import { suggestType } from '../holidays.js';
 import { timeSelectHTML } from './timeSelect.js';
 
@@ -146,6 +146,7 @@ function renderModeBody(formState, settings) {
           ${timeSelectHTML('shiftEnd', formState.shiftEnd)}
         </div>
       </div>
+      <div class="quick-chips" id="shiftQuickChips" style="margin-top:-8px;">${shiftQuickChipsHTML(formState, settings)}</div>
       <div id="shiftBreakdown">${shiftBreakdownHTML(formState, settings)}</div>
     `;
   }
@@ -163,6 +164,24 @@ function renderModeBody(formState, settings) {
     </div>
     <div class="field__hint" id="rangeComputed" style="margin-top:-8px;margin-bottom:16px;">= ${formatHours(hoursBetween(formState.start, formState.end))}</div>
   `;
+}
+
+const QUICK_OFFSETS = [
+  { minutes: 15, label: '+15dk' },
+  { minutes: 30, label: '+30dk' },
+  { minutes: 45, label: '+45dk' },
+  { minutes: 60, label: '+1sa' },
+  { minutes: 90, label: '+1,5sa' },
+  { minutes: 120, label: '+2sa' },
+];
+
+// Çıkış saatini tek dokunuşla girmek için: normal mesai bitişinden (veya
+// çalışma günü değilse giriş saatinden) itibaren +15dk/+30dk/... çipleri.
+function shiftQuickChipsHTML(formState, settings) {
+  const date = parseISODate(formState.date);
+  const daySchedule = settings.weeklySchedule?.[date.getDay()];
+  const base = daySchedule && daySchedule.works ? daySchedule.end : formState.shiftStart;
+  return QUICK_OFFSETS.map((o) => `<button class="quick-chip" type="button" data-quick-offset="${o.minutes}" data-quick-base="${base}">${o.label}</button>`).join('');
 }
 
 function shiftBreakdownHTML(formState, settings) {
@@ -261,20 +280,30 @@ function wireEvents(bodyEl, footerEl, formState, settings, store, existingEntry)
         });
       });
     } else if (formState.mode === 'shift') {
-      const shiftStartHour = bodyEl.querySelector('#shiftStartHour');
-      const shiftStartMinute = bodyEl.querySelector('#shiftStartMinute');
-      const shiftEndHour = bodyEl.querySelector('#shiftEndHour');
-      const shiftEndMinute = bodyEl.querySelector('#shiftEndMinute');
-      function updateShift() {
+      function updateShift({ refreshChips } = {}) {
+        const shiftStartHour = bodyEl.querySelector('#shiftStartHour');
+        const shiftStartMinute = bodyEl.querySelector('#shiftStartMinute');
+        const shiftEndHour = bodyEl.querySelector('#shiftEndHour');
+        const shiftEndMinute = bodyEl.querySelector('#shiftEndMinute');
         formState.shiftStart = `${shiftStartHour.value}:${shiftStartMinute.value}`;
         formState.shiftEnd = `${shiftEndHour.value}:${shiftEndMinute.value}`;
+        if (refreshChips) bodyEl.querySelector('#shiftQuickChips').innerHTML = shiftQuickChipsHTML(formState, settings);
         bodyEl.querySelector('#shiftBreakdown').innerHTML = shiftBreakdownHTML(formState, settings);
         updatePreview();
       }
-      shiftStartHour.addEventListener('change', updateShift);
-      shiftStartMinute.addEventListener('change', updateShift);
-      shiftEndHour.addEventListener('change', updateShift);
-      shiftEndMinute.addEventListener('change', updateShift);
+      bodyEl.querySelector('#shiftStartHour').addEventListener('change', () => updateShift({ refreshChips: true }));
+      bodyEl.querySelector('#shiftStartMinute').addEventListener('change', () => updateShift({ refreshChips: true }));
+      bodyEl.querySelector('#shiftEndHour').addEventListener('change', () => updateShift());
+      bodyEl.querySelector('#shiftEndMinute').addEventListener('change', () => updateShift());
+      bodyEl.querySelector('#shiftQuickChips').addEventListener('click', (e) => {
+        const chip = e.target.closest('[data-quick-offset]');
+        if (!chip) return;
+        const newEnd = addMinutesToTime(chip.dataset.quickBase, Number(chip.dataset.quickOffset));
+        const [h, m] = newEnd.split(':');
+        bodyEl.querySelector('#shiftEndHour').value = h;
+        bodyEl.querySelector('#shiftEndMinute').value = m;
+        updateShift();
+      });
     } else {
       const startHour = bodyEl.querySelector('#startHour');
       const startMinute = bodyEl.querySelector('#startMinute');
