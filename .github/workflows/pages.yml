@@ -17,6 +17,10 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Pages ortamı yalnızca varsayılan daldan yayına izin veriyor; diğer daldan
+    # gelen push'u kırmızı hataya düşürmek yerine sessizce atlıyoruz. Böylece
+    # varsayılan dal ileride değişse de workflow kendini düzeltir.
+    if: github.ref_name == github.event.repository.default_branch
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
