@@ -155,3 +155,48 @@ test('shiftOvertime - pazar (çalışma günü değil) tüm süre mesai sayılı
   assert.equal(result.windowStart, '10:00');
   assert.equal(result.windowEnd, '14:00');
 });
+
+const weeklySettingsWithBreak = {
+  ...weeklySettings,
+  breakWindow: { enabled: true, start: '18:30', end: '19:00' },
+};
+
+test('shiftOvertime - mola penceresiyle tam kesişen mesai düşülür', () => {
+  // Cuma 18:00-19:00 arası (1 saat mesai penceresi), mola 18:30-19:00 (30dk) tamamen içinde
+  const date = new Date(2026, 7, 21); // Cuma
+  const result = shiftOvertime(date, '08:30', '19:00', weeklySettingsWithBreak);
+  assert.equal(result.overtimeHours, 0.5); // 1 saat - 0.5 saat mola
+  assert.equal(result.breakHours, 0.5);
+});
+
+test('shiftOvertime - mola penceresi kısmen kesişiyorsa sadece kesişen kısım düşülür', () => {
+  // Cuma 18:00-18:45 arası mesai (0.75 sa), mola 18:30-19:00 ile 15 dk kesişiyor
+  const date = new Date(2026, 7, 21);
+  const result = shiftOvertime(date, '08:30', '18:45', weeklySettingsWithBreak);
+  assert.equal(result.overtimeHours, 0.5); // 0.75 - 0.25
+  assert.equal(result.breakHours, 0.25);
+});
+
+test('shiftOvertime - mesai molayı hiç kapsamıyorsa düşülmez', () => {
+  // Cuma 18:00-18:20 arası mesai (20 dk), mola 18:30'da başlıyor, kesişme yok
+  const date = new Date(2026, 7, 21);
+  const result = shiftOvertime(date, '08:30', '18:20', weeklySettingsWithBreak);
+  assert.equal(result.overtimeHours, 0.25); // 20 dk, 15 dk hassasiyete yuvarlanır
+  assert.equal(result.breakHours, 0);
+});
+
+test('shiftOvertime - mola kapalıyken hiç düşülmez', () => {
+  const date = new Date(2026, 7, 21);
+  const disabled = { ...weeklySettingsWithBreak, breakWindow: { enabled: false, start: '18:30', end: '19:00' } };
+  const result = shiftOvertime(date, '08:30', '19:00', disabled);
+  assert.equal(result.overtimeHours, 1);
+  assert.equal(result.breakHours, 0);
+});
+
+test('shiftOvertime - pazar (gün kapalı) senaryosunda da mola düşülür', () => {
+  const date = new Date(2026, 7, 23); // Pazar
+  const result = shiftOvertime(date, '17:00', '20:00', weeklySettingsWithBreak);
+  assert.equal(result.totalHours, 3);
+  assert.equal(result.breakHours, 0.5);
+  assert.equal(result.overtimeHours, 2.5);
+});

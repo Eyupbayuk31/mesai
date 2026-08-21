@@ -1,6 +1,7 @@
 // localStorage kalıcılık katmanı: şema sürümü, migration, güvenli fallback.
+// Her kullanıcı profili kendi anahtarında saklanır (mesai.state.<profil>).
 
-const STORAGE_KEY = 'mesai.state';
+const LEGACY_STORAGE_KEY = 'mesai.state'; // profil sistemi öncesi tek kullanıcılı sürüm
 const SCHEMA_VERSION = 1;
 
 // Haftalık çalışma programı: JS Date.getDay() sırasına göre (0=Pazar..6=Cumartesi).
@@ -27,6 +28,8 @@ const DEFAULT_SETTINGS = {
   defaultEntryMode: 'shift',
   theme: 'auto',
   weeklySchedule: DEFAULT_WEEKLY_SCHEDULE,
+  // Mesai sırasındaki yemek molası — bu pencereyle kesişen süre mesaiden düşülür.
+  breakWindow: { enabled: true, start: '18:30', end: '19:00' },
 };
 
 function defaultState() {
@@ -57,6 +60,7 @@ function mergeSettings(settings) {
     multipliers: { ...DEFAULT_SETTINGS.multipliers, ...(settings?.multipliers || {}) },
     weekendDays: Array.isArray(settings?.weekendDays) ? settings.weekendDays : DEFAULT_SETTINGS.weekendDays,
     weeklySchedule: mergeWeeklySchedule(settings?.weeklySchedule),
+    breakWindow: { ...DEFAULT_SETTINGS.breakWindow, ...(settings?.breakWindow || {}) },
   };
 }
 
@@ -82,7 +86,8 @@ function isStorageAvailable() {
 }
 
 export class Store {
-  constructor() {
+  constructor(profileId) {
+    this.storageKey = profileId ? `mesai.state.${profileId}` : LEGACY_STORAGE_KEY;
     this.available = isStorageAvailable();
     this.memoryState = null;
     this.listeners = new Set();
@@ -92,9 +97,20 @@ export class Store {
   _load() {
     if (!this.available) return defaultState();
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (!raw) return defaultState();
-      return migrate(JSON.parse(raw));
+      const raw = window.localStorage.getItem(this.storageKey);
+      if (raw) return migrate(JSON.parse(raw));
+
+      // Profil sistemi öncesinden kalma tek kullanıcılı veri varsa, ilk açılan
+      // profile bir kerelik taşınır (eski anahtar da korunur, silinmez).
+      if (this.storageKey !== LEGACY_STORAGE_KEY) {
+        const legacyRaw = window.localStorage.getItem(LEGACY_STORAGE_KEY);
+        if (legacyRaw) {
+          const migrated = migrate(JSON.parse(legacyRaw));
+          window.localStorage.setItem(this.storageKey, JSON.stringify(migrated));
+          return migrated;
+        }
+      }
+      return defaultState();
     } catch {
       return defaultState();
     }
@@ -106,7 +122,7 @@ export class Store {
       return;
     }
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state));
+      window.localStorage.setItem(this.storageKey, JSON.stringify(this.state));
     } catch {
       this.available = false;
       this.memoryState = this.state;
@@ -191,4 +207,4 @@ export class Store {
   }
 }
 
-export { STORAGE_KEY, SCHEMA_VERSION, DEFAULT_SETTINGS };
+export { LEGACY_STORAGE_KEY, SCHEMA_VERSION, DEFAULT_SETTINGS };

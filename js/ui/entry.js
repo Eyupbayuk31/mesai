@@ -169,11 +169,14 @@ function shiftBreakdownHTML(formState, settings) {
   const date = parseISODate(formState.date);
   const result = shiftOvertime(date, formState.shiftStart, formState.shiftEnd, settings);
   const dayName = DAY_NAMES[date.getDay()];
+  const breakNote = result.breakHours > 0
+    ? ` (${formatHours(result.breakHours)} mola düşüldü)`
+    : '';
 
   if (!result.scheduled) {
     return `
       <div class="field__hint" style="margin-bottom:14px;">
-        ${dayName} çalışma günün değil — girdiğin ${formatHours(result.overtimeHours)} tamamen mesai sayılır.
+        ${dayName} çalışma günün değil — girdiğin süreden <b style="color:var(--accent);">${formatHours(result.overtimeHours)}</b> mesai sayılır${breakNote}.
       </div>
     `;
   }
@@ -184,7 +187,7 @@ function shiftBreakdownHTML(formState, settings) {
   }
   return `
     <div class="field__hint" style="margin-bottom:14px;">
-      ${scheduleLabel}. ${result.scheduled.end}–${formState.shiftEnd} arası <b style="color:var(--accent);">${formatHours(result.overtimeHours)}</b> mesai sayılır.
+      ${scheduleLabel}. ${result.scheduled.end}–${formState.shiftEnd} arası <b style="color:var(--accent);">${formatHours(result.overtimeHours)}</b> mesai sayılır${breakNote}.
     </div>
   `;
 }

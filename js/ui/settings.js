@@ -4,6 +4,7 @@ import { parseLocaleNumber, formatMoney } from '../format.js';
 import { hourlyRate, entryAmount } from '../payroll.js';
 import { openSheet, closeSheet } from './sheet.js';
 import { timeSelectHTML } from './timeSelect.js';
+import { profileName } from '../profile.js';
 
 const WEEKDAY_LABELS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
 const WEEKDAY_LABELS_FULL = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'];
@@ -61,6 +62,34 @@ export function renderSettings(container, state, ctx) {
     <div class="card" id="weeklyScheduleCard">
       <p class="field__hint" style="margin-top:-4px; margin-bottom:14px;">"Giriş-Çıkış" ile mesai girerken, buradaki normal saatlerin üstündeki kısım otomatik mesai sayılır.</p>
       ${WEEKDAY_JS_VALUES.map((dayNum, i) => dayScheduleRowHTML(dayNum, WEEKDAY_LABELS_FULL[i], settings.weeklySchedule[dayNum])).join('')}
+    </div>
+
+    <div class="section-title">Mesai molası</div>
+    <div class="card" id="breakWindowCard">
+      <div class="switch-row" style="padding-top:0;">
+        <div>
+          <div class="switch-row__label">Mola süresini düş</div>
+          <div class="switch-row__hint">Bu aralıkla kesişen mesai süresi otomatik düşülür</div>
+        </div>
+        <button class="switch ${settings.breakWindow.enabled ? 'is-on' : ''}" id="breakEnabledSwitch" type="button" aria-label="Mola süresini düş"></button>
+      </div>
+      ${settings.breakWindow.enabled ? `
+        <div class="input-row" style="margin-top:10px;">
+          <div class="field">
+            <label class="field__label" style="font-size:12px;">Başlangıç</label>
+            ${timeSelectHTML('breakStart', settings.breakWindow.start)}
+          </div>
+          <div class="field">
+            <label class="field__label" style="font-size:12px;">Bitiş</label>
+            ${timeSelectHTML('breakEnd', settings.breakWindow.end)}
+          </div>
+        </div>
+      ` : ''}
+    </div>
+
+    <div class="section-title">Profil</div>
+    <div class="card">
+      <div class="link-row" id="switchProfileRow"><span>Şu an: <b>${profileName(ctx.profileId)}</b></span><span class="link-row__chevron">Değiştir ›</span></div>
     </div>
 
     <div class="section-title">Dönem ve ödeme</div>
@@ -127,11 +156,40 @@ export function renderSettings(container, state, ctx) {
   wireSalary(container, ctx, settings);
   wireMultipliers(container, ctx, settings);
   wireWeeklySchedule(container, ctx, settings);
+  wireBreakWindow(container, ctx, settings);
+  wireProfileSwitch(container, ctx);
   wirePeriodSettings(container, ctx, settings);
   wireAppearance(container, ctx, settings);
   wireInstall(container, ctx);
   wireBackup(container, ctx, state);
   wireDangerZone(container, ctx);
+}
+
+function wireBreakWindow(container, ctx, settings) {
+  const card = container.querySelector('#breakWindowCard');
+
+  card.querySelector('#breakEnabledSwitch').addEventListener('click', () => {
+    ctx.store.updateSettings({ breakWindow: { ...settings.breakWindow, enabled: !settings.breakWindow.enabled } });
+  });
+
+  card.addEventListener('change', (e) => {
+    const select = e.target.closest('select[id^="break"]');
+    if (!select) return;
+    const match = select.id.match(/^break(Start|End)(Hour|Minute)$/);
+    if (!match) return;
+    const [, part] = match;
+    const hourSel = card.querySelector(`#break${part}Hour`);
+    const minuteSel = card.querySelector(`#break${part}Minute`);
+    const timeValue = `${hourSel.value}:${minuteSel.value}`;
+    const key = part === 'Start' ? 'start' : 'end';
+    ctx.store.updateSettings({ breakWindow: { ...settings.breakWindow, [key]: timeValue } });
+  });
+}
+
+function wireProfileSwitch(container, ctx) {
+  container.querySelector('#switchProfileRow').addEventListener('click', () => {
+    ctx.switchProfile();
+  });
 }
 
 function wireInstall(container, ctx) {

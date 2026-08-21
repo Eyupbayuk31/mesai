@@ -53,7 +53,6 @@ export function renderReport(container, state, ctx) {
     <div class="section-title">Ek kalemler</div>
     <div class="card">
       <div class="chips" style="margin-bottom:${summary.adjustments.length ? '14px' : '0'};">
-        <button class="quick-chip" id="addBonus" type="button">+ Prim</button>
         <button class="quick-chip" id="addAdvance" type="button">− Avans</button>
         <button class="quick-chip" id="addDeduction" type="button">− Kesinti</button>
       </div>
@@ -98,7 +97,6 @@ export function renderReport(container, state, ctx) {
   container.querySelector('#prevPeriod').addEventListener('click', () => ctx.setReportPeriod(shiftPeriod(periodKey, -1)));
   container.querySelector('#nextPeriod').addEventListener('click', () => ctx.setReportPeriod(shiftPeriod(periodKey, 1)));
 
-  container.querySelector('#addBonus').addEventListener('click', () => openAdjustmentSheet(ctx.store, periodKey, 'bonus'));
   container.querySelector('#addAdvance').addEventListener('click', () => openAdjustmentSheet(ctx.store, periodKey, 'advance'));
   container.querySelector('#addDeduction').addEventListener('click', () => openAdjustmentSheet(ctx.store, periodKey, 'deduction'));
 

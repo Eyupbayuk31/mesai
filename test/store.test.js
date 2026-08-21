@@ -108,3 +108,41 @@ test('Store - localStorage yazılamazsa bellek fallback ile çalışmaya devam e
   // Testin geri kalanını bozmamak için gerçek mock'a geri dön
   globalThis.window = { localStorage: makeMemoryLocalStorage() };
 });
+
+test('Store - profiller birbirinden izole, aynı anahtar altında karışmaz', () => {
+  const sharedLS = makeMemoryLocalStorage();
+  globalThis.window = { localStorage: sharedLS };
+  const eyupStore = new Store('eyup');
+  eyupStore.addEntry({ date: '2026-08-14', hours: 3, type: 'normal' });
+
+  const fuatStore = new Store('fuat');
+  fuatStore.addEntry({ date: '2026-08-15', hours: 5, type: 'normal' });
+
+  assert.equal(eyupStore.getState().entries.length, 1);
+  assert.equal(fuatStore.getState().entries.length, 1);
+  assert.equal(eyupStore.getState().entries[0].hours, 3);
+  assert.equal(fuatStore.getState().entries[0].hours, 5);
+
+  // Aynı profille açılan yeni bir Store örneği kendi verisini görmeli
+  const eyupStoreAgain = new Store('eyup');
+  assert.equal(eyupStoreAgain.getState().entries.length, 1);
+  assert.equal(eyupStoreAgain.getState().entries[0].hours, 3);
+});
+
+test('Store - profil sistemi öncesi eski (tek kullanıcılı) veri ilk profile bir kerelik taşınır', () => {
+  const sharedLS = makeMemoryLocalStorage();
+  globalThis.window = { localStorage: sharedLS };
+
+  // Eski sürümde profilsiz kaydedilmiş veri
+  const legacyStore = new Store();
+  legacyStore.addEntry({ date: '2026-08-01', hours: 2, type: 'normal' });
+  legacyStore.updateSettings({ monthlySalary: 40000 });
+
+  // Profil sistemine geçince ilk açılan profil bu veriyi devralır
+  const eyupStore = new Store('eyup');
+  assert.equal(eyupStore.getState().entries.length, 1);
+  assert.equal(eyupStore.getState().settings.monthlySalary, 40000);
+
+  // Eski anahtar da bozulmadan durur
+  assert.ok(sharedLS.getItem('mesai.state'));
+});

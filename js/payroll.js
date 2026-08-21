@@ -39,26 +39,51 @@ function timeToMinutes(time) {
   return h * 60 + m;
 }
 
+// [aStart,aEnd) ile [bStart,bEnd) aralıklarının kesişim süresi (saat).
+function overlapHours(aStart, aEnd, bStart, bEnd) {
+  const start = Math.max(timeToMinutes(aStart), timeToMinutes(bStart));
+  const end = Math.min(timeToMinutes(aEnd), timeToMinutes(bEnd));
+  return Math.max(0, end - start) / 60;
+}
+
+// Bir zaman aralığından, ayarlarda tanımlı mola penceresiyle kesişen kısmı
+// düşer (örn. mesai 18:00-21:00 sürerken 18:30-19:00 arası yemek molasıysa
+// gerçek mesai 2,5 saat sayılır, 3 saat değil).
+function subtractBreak(windowStart, windowEnd, rawHours, settings) {
+  const bw = settings.breakWindow;
+  if (!bw || !bw.enabled) return { hours: rawHours, breakHours: 0 };
+  const overlap = overlapHours(windowStart, windowEnd, bw.start, bw.end);
+  const breakHours = Math.min(overlap, rawHours);
+  const hours = Math.max(0, Math.round((rawHours - breakHours) * 4) / 4);
+  return { hours, breakHours };
+}
+
 // Girilen "bugün kaçta girdim / kaçta çıktım" saatlerinden, haftalık çalışma
 // programına göre mesai (fazla mesai) süresini çıkarır. Programda o gün
 // kapalıysa (örn. Pazar) girişten çıkışa kadarki her şey mesai sayılır;
-// açıksa yalnızca planlanan bitiş saatinden sonrası mesai sayılır.
+// açıksa yalnızca planlanan bitiş saatinden sonrası mesai sayılır. Ayarlarda
+// tanımlı mola penceresiyle kesişen süre her iki durumda da düşülür.
 export function shiftOvertime(date, shiftStart, shiftEnd, settings) {
   const daySchedule = settings.weeklySchedule?.[date.getDay()];
   const totalHours = hoursBetween(shiftStart, shiftEnd);
 
   if (!daySchedule || !daySchedule.works) {
-    return { scheduled: null, totalHours, overtimeHours: totalHours, windowStart: shiftStart, windowEnd: shiftEnd };
+    const { hours, breakHours } = subtractBreak(shiftStart, shiftEnd, totalHours, settings);
+    return { scheduled: null, totalHours, overtimeHours: hours, breakHours, windowStart: shiftStart, windowEnd: shiftEnd };
   }
 
-  const overtimeHours = timeToMinutes(shiftEnd) > timeToMinutes(daySchedule.end)
+  const rawOvertimeHours = timeToMinutes(shiftEnd) > timeToMinutes(daySchedule.end)
     ? hoursBetween(daySchedule.end, shiftEnd)
     : 0;
+  const { hours, breakHours } = rawOvertimeHours > 0
+    ? subtractBreak(daySchedule.end, shiftEnd, rawOvertimeHours, settings)
+    : { hours: 0, breakHours: 0 };
 
   return {
     scheduled: daySchedule,
     totalHours,
-    overtimeHours,
+    overtimeHours: hours,
+    breakHours,
     windowStart: daySchedule.end,
     windowEnd: shiftEnd,
   };
