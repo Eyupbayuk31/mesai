@@ -1,0 +1,167 @@
+// localStorage kalıcılık katmanı: şema sürümü, migration, güvenli fallback.
+
+const STORAGE_KEY = 'mesai.state';
+const SCHEMA_VERSION = 1;
+
+const DEFAULT_SETTINGS = {
+  monthlySalary: 0,
+  hoursDivisor: 225,
+  payDay: 10,
+  payMonthOffset: 1,
+  multipliers: { normal: 1.5, weekend: 2, holiday: 2 },
+  weekendDays: [0],
+  autoDetectType: true,
+  defaultEntryMode: 'hours',
+  theme: 'auto',
+};
+
+function defaultState() {
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    settings: { ...DEFAULT_SETTINGS, multipliers: { ...DEFAULT_SETTINGS.multipliers } },
+    entries: [],
+    adjustments: [],
+  };
+}
+
+function mergeSettings(settings) {
+  return {
+    ...DEFAULT_SETTINGS,
+    ...(settings || {}),
+    multipliers: { ...DEFAULT_SETTINGS.multipliers, ...(settings?.multipliers || {}) },
+    weekendDays: Array.isArray(settings?.weekendDays) ? settings.weekendDays : DEFAULT_SETTINGS.weekendDays,
+  };
+}
+
+// İleride şema değişirse buraya sürüm-sürüm migration adımları eklenir.
+function migrate(raw) {
+  const state = { ...defaultState(), ...raw };
+  state.settings = mergeSettings(raw?.settings);
+  state.entries = Array.isArray(raw?.entries) ? raw.entries : [];
+  state.adjustments = Array.isArray(raw?.adjustments) ? raw.adjustments : [];
+  state.schemaVersion = SCHEMA_VERSION;
+  return state;
+}
+
+function isStorageAvailable() {
+  try {
+    const testKey = '__mesai_test__';
+    window.localStorage.setItem(testKey, '1');
+    window.localStorage.removeItem(testKey);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export class Store {
+  constructor() {
+    this.available = isStorageAvailable();
+    this.memoryState = null;
+    this.listeners = new Set();
+    this.state = this._load();
+  }
+
+  _load() {
+    if (!this.available) return defaultState();
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      if (!raw) return defaultState();
+      return migrate(JSON.parse(raw));
+    } catch {
+      return defaultState();
+    }
+  }
+
+  _persist() {
+    if (!this.available) {
+      this.memoryState = this.state;
+      return;
+    }
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state));
+    } catch {
+      this.available = false;
+      this.memoryState = this.state;
+    }
+  }
+
+  getState() {
+    return this.state;
+  }
+
+  subscribe(fn) {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
+
+  _notify() {
+    for (const fn of this.listeners) fn(this.state);
+  }
+
+  update(mutator) {
+    const next = mutator(this.state);
+    this.state = next || this.state;
+    this._persist();
+    this._notify();
+  }
+
+  updateSettings(partial) {
+    this.update((s) => ({ ...s, settings: mergeSettings({ ...s.settings, ...partial }) }));
+  }
+
+  addEntry(entry) {
+    const id = entry.id || `e_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const now = new Date().toISOString();
+    const record = { ...entry, id, createdAt: entry.createdAt || now, updatedAt: now };
+    this.update((s) => ({ ...s, entries: [...s.entries, record] }));
+    return record;
+  }
+
+  updateEntry(id, partial) {
+    this.update((s) => ({
+      ...s,
+      entries: s.entries.map((e) => (e.id === id ? { ...e, ...partial, updatedAt: new Date().toISOString() } : e)),
+    }));
+  }
+
+  removeEntry(id) {
+    this.update((s) => ({ ...s, entries: s.entries.filter((e) => e.id !== id) }));
+  }
+
+  addAdjustment(adj) {
+    const id = adj.id || `a_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const record = { ...adj, id, createdAt: adj.createdAt || new Date().toISOString() };
+    this.update((s) => ({ ...s, adjustments: [...s.adjustments, record] }));
+    return record;
+  }
+
+  removeAdjustment(id) {
+    this.update((s) => ({ ...s, adjustments: s.adjustments.filter((a) => a.id !== id) }));
+  }
+
+  replaceAll(newState) {
+    this.update(() => migrate(newState));
+  }
+
+  reset() {
+    this.update(() => defaultState());
+  }
+
+  exportJSON() {
+    return JSON.stringify(this.state, null, 2);
+  }
+
+  validateImport(raw) {
+    if (!raw || typeof raw !== 'object') return { valid: false, error: 'Geçersiz dosya formatı' };
+    if (!Array.isArray(raw.entries)) return { valid: false, error: 'Kayıt listesi bulunamadı' };
+    return {
+      valid: true,
+      entryCount: raw.entries.length,
+      adjustmentCount: Array.isArray(raw.adjustments) ? raw.adjustments.length : 0,
+      hasSettings: !!raw.settings,
+    };
+  }
+}
+
+export { STORAGE_KEY, SCHEMA_VERSION, DEFAULT_SETTINGS };
