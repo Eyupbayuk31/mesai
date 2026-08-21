@@ -1,6 +1,10 @@
 import { showToast } from '../toast.js';
 import { profileName } from '../../profile.js';
 
+// Uygulama sürümü — her yayınla burası ve sw.js CACHE_VERSION birlikte artar.
+// Ayarlar → Uygulama hakkında'da görünür; güncelleme gelmiş mi buradan anlaşılır.
+export const APP_VERSION = '1.2.0';
+
 export const title = 'Uygulama hakkında';
 
 export function render(container, state, ctx) {
@@ -9,6 +13,7 @@ export function render(container, state, ctx) {
   container.innerHTML = `
     <div class="card">
       <div class="rows">
+        <div class="row"><span class="row__label">Sürüm</span><span class="row__value">v${APP_VERSION}</span></div>
         <div class="row"><span class="row__label">Aktif profil</span><span class="row__value">${profileName(ctx.profileId)}</span></div>
         <div class="row"><span class="row__label">Toplam kayıt</span><span class="row__value">${entryCount}</span></div>
       </div>
