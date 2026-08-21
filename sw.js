@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mesai-v13';
+const CACHE_NAME = 'mesai-v14';
 const APP_SHELL = [
   './',
   './index.html',
@@ -33,6 +33,7 @@ const APP_SHELL = [
   './js/ui/settings/salary.js',
   './js/ui/settings/schedule.js',
   './js/ui/settings/period.js',
+  './js/ui/settings/budget.js',
   './js/ui/settings/appearance.js',
   './js/ui/settings/backup.js',
   './js/ui/settings/about.js',

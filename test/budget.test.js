@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { budgetSummary, budgetTips, categoryOf, CATEGORIES } from '../js/budget.js';
+import { budgetSummary, budgetTips, categoryOf, allCategories, CATEGORIES } from '../js/budget.js';
 
 function makeMemoryLocalStorage() {
   const map = new Map();
@@ -180,7 +180,47 @@ test('budgetTips - sakin hızda birikim önerisi verir', () => {
 test('categoryOf - bilinmeyen anahtar Diğer kategorisine düşer', () => {
   assert.equal(categoryOf('bilinmeyen').key, 'diger');
   assert.equal(categoryOf('market').label, 'Market');
-  assert.equal(CATEGORIES.length, 8);
+  assert.ok(CATEGORIES.some((c) => c.key === 'kredi' && c.label === 'Kredi'));
+});
+
+test('allCategories - hazır Kredi kategorisi listede, özel kategoriler Diğer öncesinde birleşir', () => {
+  const settings = {
+    customCategories: [
+      { key: 'c_araba', label: 'Araba', color: '#3d7bd9' },
+      { key: 'c_cocuk', label: 'Çocuk', color: '#c94f4f' },
+    ],
+  };
+  const all = allCategories(settings);
+  assert.equal(all.length, CATEGORIES.length + 2); // 9 hazır + 2 özel
+  assert.equal(all[all.length - 1].key, 'diger'); // Diğer her zaman sonda
+  assert.ok(all.some((c) => c.key === 'c_araba' && c.label === 'Araba'));
+  assert.ok(all.some((c) => c.key === 'kredi'));
+  // ayarlar boşsa/eksikse sadece hazır liste döner
+  assert.equal(allCategories({}).length, CATEGORIES.length);
+  assert.equal(allCategories(undefined).length, CATEGORIES.length);
+});
+
+test('budgetSummary - özel kategori harcaması kırımda kendi adıyla görünür', () => {
+  const state = {
+    settings: {
+      ...baseSettings,
+      customCategories: [{ key: 'c_araba', label: 'Araba', color: '#3d7bd9' }],
+    },
+    entries: [],
+    expenses: [
+      { id: 'x1', date: '2026-08-05', amount: 700, category: 'c_araba' },
+      { id: 'x2', date: '2026-08-10', amount: 300, category: 'market' },
+      { id: 'x3', date: '2026-08-15', amount: 100, category: 'silinmis_kategori' }, // yok → Diğer
+    ],
+    adjustments: [],
+  };
+  const s = budgetSummary(state, '2026-08', '2026-08-21');
+  assert.equal(s.spent, 1100);
+  const araba = s.byCategory.find((c) => c.key === 'c_araba');
+  assert.equal(araba.label, 'Araba');
+  assert.equal(araba.amount, 700);
+  const diger = s.byCategory.find((c) => c.key === 'diger');
+  assert.equal(diger.amount, 100);
 });
 
 test('Store - harcama ekle/güncelle/sil + varsayılan durum boş', async () => {

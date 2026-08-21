@@ -25,6 +25,8 @@ const DEFAULT_SETTINGS = {
   transportAllowance: 0,
   // Aylık mesai hedefi (saat) — bordro kartında ilerleme çubuğu. 0 = kapalı.
   monthlyGoalHours: 0,
+  // Bütçede kullanıcının kendi eklediği kategoriler: [{key, label, color}]
+  customCategories: [],
   payDay: 10,
   payMonthOffset: 1,
   multipliers: { normal: 1.5, weekend: 2, holiday: 2 },
@@ -65,6 +67,7 @@ function mergeSettings(settings) {
     ...(settings || {}),
     multipliers: { ...DEFAULT_SETTINGS.multipliers, ...(settings?.multipliers || {}) },
     weekendDays: Array.isArray(settings?.weekendDays) ? settings.weekendDays : DEFAULT_SETTINGS.weekendDays,
+    customCategories: Array.isArray(settings?.customCategories) ? settings.customCategories : [],
     weeklySchedule: mergeWeeklySchedule(settings?.weeklySchedule),
     breakWindow: { ...DEFAULT_SETTINGS.breakWindow, ...(settings?.breakWindow || {}) },
   };

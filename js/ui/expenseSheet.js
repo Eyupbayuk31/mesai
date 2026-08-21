@@ -1,6 +1,6 @@
 // Harcama ekle/düzenle alt sayfası (bottom sheet).
 
-import { CATEGORIES } from '../budget.js';
+import { allCategories } from '../budget.js';
 import { parseLocaleNumber, todayISO } from '../format.js';
 import { openSheet, closeSheet } from './sheet.js';
 import { showToast } from './toast.js';
@@ -14,6 +14,7 @@ export function openExpenseSheet(store, expense = null, { date } = {}) {
       ${isEdit ? '<button class="btn btn--danger btn--sm" id="deleteExpenseBtn" type="button" style="margin-top:8px;">Sil</button>' : ''}
     `,
     build(bodyEl, footerEl) {
+      const cats = allCategories(store.getState().settings);
       bodyEl.innerHTML = `
         <div class="field">
           <label class="field__label">Tutar (₺)</label>
@@ -22,7 +23,7 @@ export function openExpenseSheet(store, expense = null, { date } = {}) {
         <div class="field">
           <label class="field__label">Kategori</label>
           <div class="cat-chips" id="catChips">
-            ${CATEGORIES.map((c) => `
+            ${cats.map((c) => `
               <button class="cat-chip ${(!isEdit && c.key === 'market') || (isEdit && expense.category === c.key) ? 'is-active' : ''}" data-cat="${c.key}" type="button" style="--cat-color:${c.color};">
                 <span class="cat-chip__dot"></span>${c.label}
               </button>

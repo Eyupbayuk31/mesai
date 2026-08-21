@@ -6,20 +6,29 @@ import { periodRange } from './period.js';
 import { parseISODate, formatMoney, todayISO } from './format.js';
 
 // Harcama kategorileri — renkler CSS değişkenlerinden bağımsız sabit hex,
-// HTML raporunda da aynı palet kullanılır.
+// HTML raporunda da aynı palet kullanılır. Ayarlardan özel kategori eklenebilir;
+// özel olanlar ayarlarda (customCategories) tutulur ve buradaki listeye birleşir.
 export const CATEGORIES = [
   { key: 'market', label: 'Market', color: '#2f8a5c' },
   { key: 'yemek', label: 'Yemek', color: '#d97d0d' },
   { key: 'ulasim', label: 'Ulaşım', color: '#2f63c4' },
   { key: 'fatura', label: 'Fatura', color: '#0e8a8a' },
   { key: 'kira', label: 'Kira', color: '#8447b5' },
+  { key: 'kredi', label: 'Kredi', color: '#8a5a2b' },
   { key: 'giyim', label: 'Giyim', color: '#c2568e' },
   { key: 'eglence', label: 'Eğlence', color: '#b0431f' },
   { key: 'diger', label: 'Diğer', color: '#7d7666' },
 ];
 
-export function categoryOf(key) {
-  return CATEGORIES.find((c) => c.key === key) || CATEGORIES[CATEGORIES.length - 1];
+// Hazır + özel kategoriler (sıralı; "Diğer" her zaman sondadır).
+export function allCategories(settings) {
+  const custom = Array.isArray(settings?.customCategories) ? settings.customCategories : [];
+  return [...CATEGORIES.slice(0, -1), ...custom, CATEGORIES[CATEGORIES.length - 1]];
+}
+
+export function categoryOf(key, settings) {
+  const all = allCategories(settings);
+  return all.find((c) => c.key === key) || all[all.length - 1];
 }
 
 // Dönemin bütçe özeti: harcamalar, kategori kırılımı, tahmini ödemeden kalan
@@ -59,7 +68,7 @@ export function budgetSummary(state, periodKey, todayStr = todayISO()) {
     expenses,
     spent,
     byCategory: [...byCategory.entries()]
-      .map(([key, amount]) => ({ ...categoryOf(key), amount }))
+      .map(([key, amount]) => ({ ...categoryOf(key, state.settings), amount }))
       .sort((a, b) => b.amount - a.amount),
     expectedTotal,
     advances: pay.advances,

@@ -1,7 +1,7 @@
 // Bütçe sekmesi: dönem harcamaları, kategori dökümü ve tahmini ödemeden kalan.
 
 import { currentPeriodKey, periodLabel, shiftPeriod } from '../period.js';
-import { budgetSummary, budgetTips, CATEGORIES } from '../budget.js';
+import { budgetSummary, budgetTips, allCategories } from '../budget.js';
 import { formatMoney, formatDayMonthShort, formatWeekdayShort, todayISO } from '../format.js';
 import { enableSwipeToDelete } from './swipe.js';
 import { showToast } from './toast.js';
@@ -70,7 +70,7 @@ export function renderBudget(container, state, ctx) {
       <span class="section-title" style="margin:0;">Harcamalar</span>
       <button class="section-header__link" id="addExpense" type="button">Harcama ekle ›</button>
     </div>
-    ${recentExpenses.length === 0 ? emptyStateHTML(isCurrent) : `<ul class="list" id="expenseList">${recentExpenses.map(expenseRowHTML).join('')}</ul>`}
+    ${recentExpenses.length === 0 ? emptyStateHTML(isCurrent) : `<ul class="list" id="expenseList">${recentExpenses.map((e) => expenseRowHTML(e, state.settings)).join('')}</ul>`}
   `;
 
   container.querySelector('#prevPeriod').addEventListener('click', () => ctx.setBudgetPeriod(shiftPeriod(periodKey, -1)));
@@ -96,9 +96,9 @@ export function renderBudget(container, state, ctx) {
   }
 }
 
-function expenseRowHTML(e) {
+function expenseRowHTML(e, settings) {
   const [, , day] = e.date.split('-');
-  const category = categoryLabel(e.category);
+  const category = categoryLabel(e.category, settings);
   return `
     <li class="entry-row entry-row--expense" data-id="${e.id}">
       <div class="entry-row__content">
@@ -119,8 +119,9 @@ function expenseRowHTML(e) {
   `;
 }
 
-function categoryLabel(key) {
-  return CATEGORIES.find((c) => c.key === key) || CATEGORIES[CATEGORIES.length - 1];
+function categoryLabel(key, settings) {
+  const all = allCategories(settings);
+  return all.find((c) => c.key === key) || all[all.length - 1];
 }
 
 // Fiş (receipt) satırı: etiket ······ değer. Özet kartındakiyle aynı desen.
