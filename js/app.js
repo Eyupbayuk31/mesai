@@ -133,6 +133,10 @@ function boot(profileId) {
     topbarBack.hidden = !page;
     topbarTitle.textContent = page ? (settingsPageTitle(page) || TAB_TITLES[tab]) : TAB_TITLES[tab];
     fab.hidden = !!page || !FAB_TABS.has(tab);
+    // Bütçe sekmesinde aynı düğme harcama ekler; etiketi buna göre değişir.
+    const fabAction = tab === 'budget' ? 'Harcama ekle' : 'Mesai ekle';
+    fab.querySelector('.fab__label').textContent = fabAction;
+    fab.setAttribute('aria-label', fabAction);
     ctx.setTopbarAction(null);
 
     if (tab === 'home') renderHome(screenEl, state, ctx);

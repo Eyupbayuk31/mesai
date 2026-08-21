@@ -35,12 +35,22 @@ sunucuya veri gönderilmez.
 - **Çoklu profil**: Eyüp ve Fuat'ın kayıtları/ayarları tamamen ayrı tutulur
 - Tamamen **offline çalışır**, internet olmadan da açılır
 
-## Telefona kurulum (Android)
+## Kurulum
 
-1. Bu adresi Chrome'da aç: **https://eyupbayuk31.github.io/mesai/**
-2. Sağ üstteki üç nokta menüsüne dokun → **"Ana ekrana ekle"**
-3. Artık normal bir uygulama gibi ikonuna dokunarak açabilirsin, internetsiz de
-   çalışır
+### Telefon (Android / iOS)
+
+1. Bu adresi tarayıcıda aç: **https://eyupbayuk31.github.io/mesai/**
+2. Menüden **"Ana ekrana ekle"** de
+3. Artık normal bir uygulama gibi açılır, internetsiz de çalışır
+
+### Masaüstü (Chrome / Edge)
+
+Aynı adresi aç; adres çubuğundaki **yükleme simgesine** tıkla (veya menü →
+"Mesai Takip'i yükle"). Kendi penceresinde açılır.
+
+Masaüstünde arayüz otomatik olarak genişler: alt sekme çubuğu sol kenar
+çubuğuna dönüşür, Özet/Rapor/Bütçe iki sütunlu görünür ve formlar alttan
+açılan sayfa yerine ortalanmış pencere olarak gelir.
 
 ## Geliştirme
 

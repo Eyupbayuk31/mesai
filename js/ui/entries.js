@@ -104,7 +104,7 @@ function emptyStateHTML(filterActive) {
         <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
       </div>
       <div class="empty__title">${filterActive ? 'Bu filtreye uyan kayıt yok' : 'Bu dönemde kayıt yok'}</div>
-      <div class="empty__sub">${filterActive ? 'Filtreyi değiştirip tekrar dene' : 'Sağ alttaki + ile mesai ekleyebilirsin'}</div>
+      <div class="empty__sub">${filterActive ? 'Filtreyi değiştirip tekrar dene' : '&quot;Mesai ekle&quot; ile kayıt ekleyebilirsin'}</div>
       ${filterActive ? `<button class="btn btn--ghost" id="clearFilter" type="button" style="margin-top:12px;">Filtreyi temizle</button>` : ''}
     </div>
   `;

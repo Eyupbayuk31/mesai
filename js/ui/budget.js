@@ -29,6 +29,8 @@ export function renderBudget(container, state, ctx) {
       </button>
     </div>
 
+    <div class="panes">
+    <div class="pane">
     ${summary.hasSalary ? `
     <div class="card card--bordro">
       <div class="hero">
@@ -72,11 +74,16 @@ export function renderBudget(container, state, ctx) {
       </div>`).join('')}
     </div>
 
+    </div>
+
+    <div class="pane">
     <div class="section-header">
       <span class="section-title" style="margin:0;">Harcamalar</span>
       <button class="section-header__link" id="addExpense" type="button">Harcama ekle ›</button>
     </div>
     ${recentExpenses.length === 0 ? emptyStateHTML(isCurrent) : `<ul class="list" id="expenseList">${recentExpenses.map((e) => expenseRowHTML(e, state.settings)).join('')}</ul>`}
+    </div>
+    </div>
   `;
 
   container.querySelector('#prevPeriod').addEventListener('click', () => ctx.setBudgetPeriod(shiftPeriod(periodKey, -1)));
@@ -149,7 +156,7 @@ function emptyStateHTML(isCurrent) {
         <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10h18M16 15h2"/></svg>
       </div>
       <div class="empty__title">Bu dönemde harcama yok</div>
-      <div class="empty__sub">${isCurrent ? "Sağ alttaki + butonuyla harcamanı ekle" : 'Bu döneme harcama girilmemiş'}</div>
+      <div class="empty__sub">${isCurrent ? '&quot;Harcama ekle&quot; ile ilk harcamanı gir' : 'Bu döneme harcama girilmemiş'}</div>
     </div>
   `;
 }

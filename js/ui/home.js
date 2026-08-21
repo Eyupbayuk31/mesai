@@ -45,6 +45,8 @@ export function renderHome(container, state, ctx) {
       <div style="width:34px;"></div>
     </div>
 
+    <div class="panes">
+    <div class="pane">
     ${!hasSalary ? salaryCtaHTML() : `
       <div class="card card--bordro">
         <div class="hero">
@@ -93,7 +95,9 @@ export function renderHome(container, state, ctx) {
         Bugün mesai ekle
       </button>
     `}
+    </div>
 
+    <div class="pane">
     <div class="section-header">
       <span class="section-title" style="margin:0;">Son mesailer</span>
       ${summary.entryCount > 0
@@ -101,6 +105,8 @@ export function renderHome(container, state, ctx) {
         : ''}
     </div>
     ${recentEntries.length === 0 ? emptyStateHTML() : `<ul class="list" id="recentList">${recentEntries.map((e) => entryRowHTML(e, settings)).join('')}</ul>`}
+    </div>
+    </div>
   `;
 
   container.querySelector('#goSettings')?.addEventListener('click', () => {
@@ -256,7 +262,7 @@ function emptyStateHTML() {
         <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
       </div>
       <div class="empty__title">Henüz mesai kaydı yok</div>
-      <div class="empty__sub">Sağ alttaki + butonuyla ilk mesaini ekle</div>
+      <div class="empty__sub">&quot;Mesai ekle&quot; ile ilk kaydını gir</div>
     </div>
   `;
 }

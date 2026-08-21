@@ -1,18 +1,56 @@
 {
   "name": "Mesai Takip",
   "short_name": "Mesai",
-  "description": "Mesai saatlerini ve maaş dönemini takip et",
+  "description": "Mesai saatlerini, maaş dönemini ve bütçeni takip et",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "orientation": "portrait",
   "background_color": "#141109",
   "theme_color": "#141109",
   "lang": "tr",
   "dir": "ltr",
+  "categories": ["productivity", "finance", "utilities"],
   "icons": [
     { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
     { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "screenshots": [
+    {
+      "src": "screenshots/wide-home.png",
+      "sizes": "1280x800",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Dönem özeti ve bordro kartı"
+    },
+    {
+      "src": "screenshots/wide-report.png",
+      "sizes": "1280x800",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Dönem raporu ve yıllık grafik"
+    },
+    {
+      "src": "screenshots/narrow-home.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Telefonda dönem özeti"
+    },
+    {
+      "src": "screenshots/narrow-budget.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Bütçe ve harcama takibi"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Mesai ekle",
+      "short_name": "Mesai ekle",
+      "url": "./index.html",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    }
   ]
 }

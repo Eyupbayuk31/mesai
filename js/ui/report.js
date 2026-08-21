@@ -40,6 +40,8 @@ export function renderReport(container, state, ctx) {
       ${periodKey < currentPeriodKey() ? '<div class="stamp" aria-hidden="true">Tamamlandı</div>' : ''}
     </div>
 
+    <div class="panes">
+    <div class="pane">
     <div class="section-title">Dönem özeti</div>
     <div class="card">
       <div class="rows">
@@ -89,6 +91,9 @@ export function renderReport(container, state, ctx) {
     </div>
     ${summary.entries.length === 0 ? emptyState(isFuture) : `<ul class="list" id="entryList">${previewEntries(summary.entries).map((e) => entryRowHTML(e, settings)).join('')}</ul>`}
 
+    </div>
+
+    <div class="pane">
     <div class="section-title">${year} yılı</div>
     <div class="card">
       <div class="bar-chart">
@@ -107,6 +112,8 @@ export function renderReport(container, state, ctx) {
         <button class="btn btn--secondary btn--sm" id="exportCsv" type="button">CSV indir</button>
         <button class="btn btn--secondary btn--sm" id="exportJson" type="button">JSON indir</button>
       </div>
+    </div>
+    </div>
     </div>
   `;
 
@@ -214,7 +221,9 @@ function renderBar(monthData, ySummary) {
   const isCurrent = monthData.periodKey === currentPeriodKey();
   return `
     <div class="bar-chart__col">
-      <div class="bar-chart__bar ${monthData.hours > 0 ? 'has-value' : ''}" style="height:${heightPct}%; ${isCurrent ? 'outline:2px solid var(--accent); outline-offset:2px;' : ''}" title="${formatHours(monthData.hours)}"></div>
+      <div class="bar-chart__track">
+        <div class="bar-chart__bar ${monthData.hours > 0 ? 'has-value' : ''}" style="height:${heightPct}%; ${isCurrent ? 'outline:2px solid var(--accent); outline-offset:2px;' : ''}" title="${formatHours(monthData.hours)}"></div>
+      </div>
       <div class="bar-chart__label">${MONTH_SHORT[monthData.month - 1]}</div>
     </div>
   `;
