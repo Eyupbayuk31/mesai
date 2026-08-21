@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mesai-v17';
+const CACHE_NAME = 'mesai-v18';
 const APP_SHELL = [
   './',
   './index.html',
@@ -12,6 +12,7 @@ const APP_SHELL = [
   './fonts/plex-mono-latin-ext-700.woff2',
   './js/app.js',
   './js/store.js',
+  './js/githubSync.js',
   './js/profile.js',
   './js/router.js',
   './js/period.js',

@@ -251,6 +251,12 @@ export class Store {
     this.update((s) => ({ ...s, lastBackupAt: new Date().toISOString() }));
   }
 
+  // Buluta (gizli gist) yedeklendiğini damgalar — Yedekleme sayfasında gösterilir.
+  markCloudBackedUp() {
+    const now = new Date().toISOString();
+    this.update((s) => ({ ...s, lastBackupAt: now, lastCloudBackupAt: now }));
+  }
+
   validateImport(raw) {
     if (!raw || typeof raw !== 'object') return { valid: false, error: 'Geçersiz dosya formatı' };
     if (!Array.isArray(raw.entries)) return { valid: false, error: 'Kayıt listesi bulunamadı' };

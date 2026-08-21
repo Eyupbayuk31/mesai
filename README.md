@@ -65,7 +65,25 @@ otomatik olarak siteyi yayınlar.
 
 ## Veri ve yedekleme
 
-Tüm veriler tarayıcının `localStorage`'ında tutulur. Ayarlar sekmesinden
-istediğin zaman JSON olarak yedek indirebilir veya geri yükleyebilirsin.
-Tarayıcı verisini temizlersen veya telefon değiştirirsen, önce yedek almadıysan
-veriler kaybolur.
+Tüm veriler tarayıcının `localStorage`'ında, cihazda tutulur. Ayarlar →
+Yedekleme'den üç yol var:
+
+- **JSON indir / geri yükle** — dosya olarak elle yedek
+- **CSV indir** — kayıtları tabloya aktarmak için
+- **GitHub yedeği (gizli gist)** — "Kaydet" ile buluta yazar, "Getir" ile geri
+  yükler. Her profil gist içinde kendi dosyasında tutulur (`mesai-eyup.json`);
+  her kayıt aynı dosyanın üstüne yazar, eski yedekler birikmez.
+
+### GitHub yedeği için token
+
+Token **koda gömülü değildir** — uygulama içinde sen girersin ve yalnızca
+kendi cihazında saklanır, repoya asla yazılmaz.
+
+1. github.com → Settings → Developer settings → Personal access tokens →
+   **Tokens (classic)** → Generate new token
+2. Yetkilerden **yalnızca `gist`** kutusunu işaretle — bu izin repolarına
+   erişemez, sadece gist okur/yazar
+3. Token'ı Ayarlar → Yedekleme → GitHub token alanına yapıştırıp **Bağlan**
+
+Yedek gizli (secret) gist'e yazılır: listelenmez, ama linkini bilen okuyabilir.
+

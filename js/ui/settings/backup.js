@@ -2,14 +2,70 @@ import { showToast } from '../toast.js';
 import { openSheet, closeSheet } from '../sheet.js';
 import { downloadFile, csvForEntries } from '../exportUtils.js';
 import { entryAmount } from '../../payroll.js';
+import { profileName } from '../../profile.js';
+import {
+  getSyncConfig, setSyncConfig, clearSyncConfig,
+  verifyToken, pushBackup, pullBackup, backupFileName, SyncError,
+} from '../../githubSync.js';
 import { todayStamp } from './shared.js';
 
 export const title = 'Yedekleme';
 
+function formatWhen(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleString('tr-TR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+}
+
 export function render(container, state, ctx) {
+  const sync = getSyncConfig();
+  const connected = !!sync.token;
+
   container.innerHTML = `
     <div class="card">
       <p class="field__hint" style="margin-top:-4px; margin-bottom:6px;">Veriler yalnızca bu cihazda saklanır. Telefon değişikliğine veya tarayıcı temizliğine karşı arada bir yedek al.</p>
+    </div>
+
+    <div class="section-title">GitHub yedeği (gizli gist)</div>
+    <div class="card" id="syncCard">
+      ${connected ? `
+        <div class="rows" style="margin-bottom:14px;">
+          <div class="row">
+            <span class="row__label">Durum</span>
+            <span class="row__value is-positive">Bağlı</span>
+          </div>
+          <div class="row">
+            <span class="row__label">Yedek dosyası</span>
+            <span class="row__value">${backupFileName(ctx.profileId)}</span>
+          </div>
+          <div class="row">
+            <span class="row__label">Son bulut yedeği</span>
+            <span class="row__value">${formatWhen(state.lastCloudBackupAt) || 'Henüz yok'}</span>
+          </div>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <button class="btn btn--primary btn--sm" id="cloudSaveBtn" type="button">Kaydet</button>
+          <button class="btn btn--secondary btn--sm" id="cloudLoadBtn" type="button">Getir</button>
+        </div>
+        <button class="btn btn--ghost btn--sm" id="cloudDisconnectBtn" type="button" style="margin-top:8px;">Bağlantıyı kes</button>
+      ` : `
+        <p class="field__hint" style="margin:-4px 0 14px;">
+          Yedeğin gizli bir GitHub gist'ine yazılır; ${profileName(ctx.profileId)} profili
+          <b>${backupFileName(ctx.profileId)}</b> dosyasında tutulur. Her "Kaydet" aynı dosyanın
+          üstüne yazar, eski yedek birikmez.
+        </p>
+        <div class="field">
+          <label class="field__label">GitHub token</label>
+          <input class="input" type="password" id="syncToken" placeholder="ghp_..." autocomplete="off" spellcheck="false" />
+          <div class="field__hint">
+            github.com → Settings → Developer settings → Personal access tokens →
+            <b>Tokens (classic)</b> → Generate new token. Yetkilerden <b>yalnızca “gist”</b>
+            kutusunu işaretle. Bu izin repolarına erişemez.
+          </div>
+        </div>
+        <button class="btn btn--primary btn--sm" id="cloudConnectBtn" type="button">Bağlan</button>
+      `}
     </div>
 
     <div class="card">
@@ -24,6 +80,8 @@ export function render(container, state, ctx) {
       <div class="link-row link-row--danger" id="resetAllRow"><span>Tüm veriyi sil</span><span class="link-row__chevron">›</span></div>
     </div>
   `;
+
+  wireCloudSync(container, state, ctx);
 
   container.querySelector('#exportJsonRow').addEventListener('click', () => {
     downloadFile(`mesai-yedek-${todayStamp()}.json`, ctx.store.exportJSON(), 'application/json');
@@ -77,6 +135,132 @@ export function render(container, state, ctx) {
         });
       },
     });
+  });
+}
+
+// --- GitHub (gizli gist) yedeği ---
+
+function wireCloudSync(container, state, ctx) {
+  const setBusy = (btn, label) => {
+    if (!btn) return () => {};
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = label;
+    return () => { btn.disabled = false; btn.textContent = original; };
+  };
+
+  // Hata mesajlarını tek yerden geçir: SyncError'lar kullanıcıya gösterilebilir,
+  // beklenmedik hatalar genel mesaja düşer.
+  const reportError = (err) => {
+    showToast(err instanceof SyncError ? err.message : 'Beklenmedik bir hata oldu');
+  };
+
+  container.querySelector('#cloudConnectBtn')?.addEventListener('click', async () => {
+    const input = container.querySelector('#syncToken');
+    const token = input.value.trim();
+    if (!token) {
+      showToast('Token girmelisin');
+      input.focus();
+      return;
+    }
+    const done = setBusy(container.querySelector('#cloudConnectBtn'), 'Bağlanıyor…');
+    try {
+      const login = await verifyToken(token);
+      setSyncConfig({ token });
+      showToast(`${login} olarak bağlanıldı`);
+      ctx.rerender();
+    } catch (err) {
+      reportError(err);
+      done();
+    }
+  });
+
+  container.querySelector('#cloudSaveBtn')?.addEventListener('click', async () => {
+    const { token, gistId } = getSyncConfig();
+    const done = setBusy(container.querySelector('#cloudSaveBtn'), 'Kaydediliyor…');
+    try {
+      const result = await pushBackup({
+        token,
+        gistId,
+        profileId: ctx.profileId,
+        json: ctx.store.exportJSON(),
+      });
+      setSyncConfig({ gistId: result.gistId });
+      ctx.store.markCloudBackedUp();
+      showToast('Buluta kaydedildi');
+      ctx.rerender();
+    } catch (err) {
+      reportError(err);
+      done();
+    }
+  });
+
+  container.querySelector('#cloudLoadBtn')?.addEventListener('click', async () => {
+    const { token, gistId } = getSyncConfig();
+    if (!gistId) {
+      showToast('Önce bir kez "Kaydet" ile yedek oluştur');
+      return;
+    }
+    const done = setBusy(container.querySelector('#cloudLoadBtn'), 'Getiriliyor…');
+    try {
+      const { json, updatedAt } = await pullBackup({ token, gistId, profileId: ctx.profileId });
+      let parsed;
+      try {
+        parsed = JSON.parse(json);
+      } catch {
+        throw new SyncError('Yedek dosyası bozuk (geçersiz JSON)');
+      }
+      const check = ctx.store.validateImport(parsed);
+      if (!check.valid) throw new SyncError(check.error || 'Yedek dosyası geçersiz');
+      done();
+      confirmCloudRestore(ctx, parsed, check, updatedAt);
+    } catch (err) {
+      reportError(err);
+      done();
+    }
+  });
+
+  container.querySelector('#cloudDisconnectBtn')?.addEventListener('click', () => {
+    openSheet({
+      title: 'Bağlantıyı kes',
+      footerHTML: `<button class="btn btn--danger" id="confirmDisconnectBtn" type="button">Bağlantıyı kes</button>`,
+      build(bodyEl, footerEl) {
+        bodyEl.innerHTML = `<p style="font-size:14.5px; color:var(--text-secondary); line-height:1.5;">
+          Token bu cihazdan silinecek. Buluttaki yedek <b style="color:var(--text);">silinmez</b>;
+          aynı token'la tekrar bağlanıp "Getir" diyebilirsin.
+        </p>`;
+        footerEl.querySelector('#confirmDisconnectBtn').addEventListener('click', () => {
+          clearSyncConfig();
+          showToast('Bağlantı kesildi');
+          closeSheet();
+          ctx.rerender();
+        });
+      },
+    });
+  });
+}
+
+function confirmCloudRestore(ctx, parsed, check, updatedAt) {
+  const when = formatWhen(updatedAt);
+  openSheet({
+    title: 'Yedeği getir',
+    footerHTML: `<button class="btn btn--primary" id="confirmCloudBtn" type="button">Getir ve değiştir</button>`,
+    build(bodyEl, footerEl) {
+      bodyEl.innerHTML = `
+        <p style="font-size:14.5px; color:var(--text-secondary); line-height:1.5;">
+          ${when ? `<b style="color:var(--text);">${when}</b> tarihli yedekte ` : 'Yedekte '}
+          <b style="color:var(--text);">${check.entryCount} mesai kaydı</b>,
+          <b style="color:var(--text);">${check.expenseCount} harcama</b> ve
+          <b style="color:var(--text);">${check.adjustmentCount} ek kalem</b> var.
+          Getirirsen bu cihazdaki mevcut verinin yerini alacak.
+        </p>
+      `;
+      footerEl.querySelector('#confirmCloudBtn').addEventListener('click', () => {
+        ctx.store.replaceAll(parsed);
+        showToast('Yedek geri yüklendi');
+        closeSheet();
+      });
+    },
   });
 }
 
