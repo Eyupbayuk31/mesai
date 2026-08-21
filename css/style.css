@@ -1319,6 +1319,18 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
 }
 .entry-row--recurring .entry-row__weekday { color: var(--accent-strong); font-weight: 700; }
 
+.recurring-note {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.recurring-note b { font-family: var(--font-mono); font-weight: 700; }
+
 /* Skip-link visually hidden helper */
 .sr-only {
   position: absolute;

@@ -47,6 +47,11 @@ export function renderBudget(container, state, ctx) {
         ${summary.byCategory.map((c) => receiptRow(`<span style="color:var(--text-tertiary);"><span class="dot" style="background:${c.color};"></span>${c.label}</span>`, formatMoney(c.amount, { decimals: false }))).join('')}
         ${receiptRow('Kalan', formatMoney(summary.remaining, { decimals: false }), { rowCls: 'row--total' })}
       </div>
+      ${summary.upcomingTotal > 0 ? `
+      <div class="recurring-note">
+        ↻ Sonraki aylarda otomatik gelecek: <b>${formatMoney(summary.upcomingTotal, { decimals: false })}</b>
+        <span style="color:var(--text-tertiary);">(${summary.upcomingRecurring.map((r) => escapeHTML(r.label || 'gider')).join(', ')})</span>
+      </div>` : ''}
     </div>` : `
     <div class="card card--bordro">
       <div class="hero">
@@ -106,16 +111,17 @@ export function renderBudget(container, state, ctx) {
 function expenseRowHTML(e, settings) {
   const [, , day] = e.date.split('-');
   const category = categoryLabel(e.category, settings);
+  const isMonthly = e.virtual || e.recurringId; // sanal satır ya da tanıma bağlı gerçek harcama
   return `
-    <li class="entry-row entry-row--expense ${e.virtual ? 'entry-row--recurring' : ''}" data-id="${e.id}">
+    <li class="entry-row entry-row--expense ${isMonthly ? 'entry-row--recurring' : ''}" data-id="${e.id}">
       <div class="entry-row__content">
         <div class="entry-row__date">
           <div class="entry-row__day">${Number(day)}</div>
-          <div class="entry-row__weekday">${e.virtual ? 'sürekli' : formatWeekdayShort(e.date).replace('.', '')}</div>
+          <div class="entry-row__weekday">${isMonthly ? 'her ay' : formatWeekdayShort(e.date).replace('.', '')}</div>
         </div>
         <div class="entry-row__mid">
           <div class="entry-row__hours"><span class="dot" style="background:${category.color}; display:inline-block;"></span>&nbsp;${category.label}</div>
-          <div class="entry-row__meta">${formatDayMonthShort(e.date)}${e.note ? ' · ' + escapeHTML(e.note) : ''}${e.virtual ? ' · <span class="recurring-tag">otomatik</span>' : ''}</div>
+          <div class="entry-row__meta">${formatDayMonthShort(e.date)}${e.note ? ' · ' + escapeHTML(e.note) : ''}${isMonthly ? ` · <span class="recurring-tag">${e.virtual ? 'otomatik' : 'işaretli'}</span>` : ''}</div>
         </div>
         <div class="entry-row__amount entry-row__amount--expense">− ${formatMoney(Number(e.amount) || 0, { decimals: false })}</div>
       </div>

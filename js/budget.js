@@ -94,6 +94,11 @@ export function budgetSummary(state, periodKey, todayStr = todayISO()) {
       .map(([key, amount]) => ({ ...categoryOf(key, state.settings), amount }))
       .sort((a, b) => b.amount - a.amount),
     recurring: (state.recurring || []).filter((r) => r.active !== false && periodKey > (r.since || '0000-00')),
+    // Bu ay işaretlenmiş, sanal üretmeye bu dönemden sonra başlayacak tanımlar
+    upcomingRecurring: (state.recurring || []).filter((r) => r.active !== false && (r.since || '') === periodKey),
+    upcomingTotal: (state.recurring || [])
+      .filter((r) => r.active !== false && (r.since || '') === periodKey)
+      .reduce((sum, r) => sum + (Number(r.amount) || 0), 0),
     expectedTotal,
     advances: pay.advances,
     hasSalary,

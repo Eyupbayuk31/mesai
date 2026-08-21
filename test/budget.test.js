@@ -296,6 +296,22 @@ test('budgetSummary - pasif tanım sanal üretmez, kategori kırılımına girer
   assert.equal(sep.byCategory.find((c) => c.key === 'kredi')?.amount, 3000);
 });
 
+test('budgetSummary - bu ay işaretlenen gider "sonraki aylara otomatik" özetinde görünür', () => {
+  const state = {
+    settings: baseSettings,
+    entries: [],
+    expenses: [{ id: 'x1', date: '2026-08-05', amount: 5000, category: 'kira', recurringId: 'r1' }],
+    recurring: [{ id: 'r1', label: 'Kira', amount: 5000, category: 'kira', day: 5, since: '2026-08' }],
+    adjustments: [],
+  };
+  const aug = budgetSummary(state, '2026-08', '2026-08-21');
+  assert.equal(aug.upcomingRecurring.length, 1);
+  assert.equal(aug.upcomingTotal, 5000);
+  const sep = budgetSummary(state, '2026-09', '2026-09-10');
+  assert.equal(sep.upcomingTotal, 0); // eylülde artık "yeni işaretlenen" yok
+  assert.equal(sep.virtualCount, 1);  // ama sanal geliyor
+});
+
 test('Store - sürekli gider ekle/güncelle/kaldır', async () => {
   globalThis.window = { localStorage: makeMemoryLocalStorage() };
   const { Store } = await import('../js/store.js');

@@ -38,11 +38,18 @@ export function openExpenseSheet(store, expense = null, { date } = {}) {
           <label class="field__label">Not <span style="font-weight:500;color:var(--text-tertiary);">(opsiyonel)</span></label>
           <input class="input" type="text" id="expenseNote" placeholder="ör. pazar alışverişi" value="${isEdit ? escapeAttr(expense.note || '') : ''}" />
         </div>
-        ${!isEdit || !expense.recurringId ? `
+        ${isEdit && expense.recurringId ? `
+        <div class="switch-row" style="border-top:1px solid var(--divider);">
+          <div>
+            <div class="switch-row__label">↻ Her ay tekrarlanıyor</div>
+            <div class="switch-row__hint">Bu gider sonraki aylarda otomatik girer</div>
+          </div>
+          <button class="btn btn--danger btn--sm" id="stopRecurringBtn" type="button">Kaldır</button>
+        </div>` : !isEdit || !expense.recurringId ? `
         <div class="switch-row" style="border-top:1px solid var(--divider);">
           <div>
             <div class="switch-row__label">Her ay tekrarla</div>
-            <div class="switch-row__hint">Kira, kredi, internet gibi sabit giderler sonraki aylarda otomatik gelsin</div>
+            <div class="switch-row__hint">Kira, kredi, internet gibi sabit giderler — bu ay girilen gerçek harcamadan sonra her ay otomatik gelir</div>
           </div>
           <button class="switch" id="makeRecurring" type="button" aria-label="Her ay tekrarla"></button>
         </div>` : ''}
@@ -56,6 +63,13 @@ export function openExpenseSheet(store, expense = null, { date } = {}) {
       recurringSwitch?.addEventListener('click', () => {
         recurringOn = !recurringOn;
         recurringSwitch.classList.toggle('is-on', recurringOn);
+      });
+
+      footerEl.querySelector('#stopRecurringBtn')?.addEventListener('click', () => {
+        store.removeRecurring(expense.recurringId);
+        store.updateExpense(expense.id, { recurringId: null });
+        showToast('Artık her ay gelmeyecek');
+        closeSheet();
       });
 
       bodyEl.querySelectorAll('[data-cat]').forEach((chip) => {
@@ -81,13 +95,16 @@ export function openExpenseSheet(store, expense = null, { date } = {}) {
         } else {
           const record = store.addExpense({ amount, category, date: dateValue, note });
           if (recurringOn) {
-            store.addRecurring({
+            const def = store.addRecurring({
               label: note || (allCategories(store.getState().settings).find((c) => c.key === category)?.label || ''),
               amount,
               category,
               day: Number(dateValue.slice(8, 10)),
               since: dateValue.slice(0, 7),
             });
+            // Kaydı tanımına bağla: listede "her ay" etiketi görünsün, düzenlerken
+            // tekrar anahtarı değil "tekrarlanıyor" durumu görünsün.
+            store.updateExpense(record.id, { recurringId: def.id });
             showToast('Harcama eklendi — sonraki aylarda otomatik gelecek');
           } else {
             showToast('Harcama eklendi');
