@@ -1249,6 +1249,39 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
 }
 .profile-card__name { font-size: 15px; font-weight: 700; }
 
+/* ===== Bütçe: kategori çipleri + harcama satırı ===== */
+.cat-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.cat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 14px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--card-border);
+  background: var(--bg-elevated);
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text-secondary);
+  transition: border-color 0.14s ease, background 0.14s ease, color 0.14s ease, transform 0.12s ease;
+}
+.cat-chip__dot {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: var(--cat-color, var(--text-tertiary));
+  flex-shrink: 0;
+}
+.cat-chip.is-active {
+  border-color: var(--cat-color, var(--accent));
+  color: var(--text);
+  background: color-mix(in srgb, var(--cat-color, var(--accent)) 13%, var(--bg-elevated));
+}
+.cat-chip:active { transform: scale(0.96); }
+
+.input--amount { font-family: var(--font-mono); font-size: 20px; font-weight: 600; }
+.hero__value.is-negative { color: var(--negative); }
+.cta-note { font-size: 13px; color: var(--text-secondary); text-align: center; margin-top: 10px; line-height: 1.5; }
+.entry-row--expense .entry-row__amount--expense { color: var(--text); }
+
 /* Skip-link visually hidden helper */
 .sr-only {
   position: absolute;

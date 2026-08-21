@@ -4,6 +4,7 @@ import { Router } from './router.js';
 import { renderHome } from './ui/home.js';
 import { renderEntries } from './ui/entries.js';
 import { renderReport } from './ui/report.js';
+import { renderBudget } from './ui/budget.js';
 import { renderSettingsRoute, settingsPageTitle } from './ui/settings/index.js';
 import { getActiveProfile } from './profile.js';
 import { showToast } from './ui/toast.js';
@@ -29,17 +30,24 @@ function boot(profileId) {
   const tabbar = document.getElementById('tabbar');
   const fab = document.getElementById('fab');
 
-  const TAB_TITLES = { home: 'Özet', entries: 'Kayıtlar', report: 'Rapor', settings: 'Ayarlar' };
-  // FAB yalnızca mesai eklemenin anlamlı olduğu sekme köklerinde görünür.
-  const FAB_TABS = new Set(['home', 'entries', 'report']);
+  const TAB_TITLES = { home: 'Özet', entries: 'Kayıtlar', report: 'Rapor', budget: 'Bütçe', settings: 'Ayarlar' };
+  // FAB yalnızca hızlı ekleme anlamı olan sekme köklerinde görünür.
+  const FAB_TABS = new Set(['home', 'entries', 'report', 'budget']);
 
   const ctx = {
     store,
     profileId,
     reportPeriodKey: currentPeriodKey(),
+    // Bütçe sekmesinin görüntülediği dönem sekmeler arası korunur.
+    budgetPeriodKey: currentPeriodKey(),
     // Kayıtlar sekmesinin görünüm/filtre/sayfa durumu sekmeler arası korunur.
     entriesView: { mode: 'list', periodKey: currentPeriodKey(), allTime: false, type: 'all', page: 1 },
     setReportPeriod(key) { ctx.reportPeriodKey = key; render(); },
+    setBudgetPeriod(key) { ctx.budgetPeriodKey = key; render(); },
+    openExpense: async (expense = null, opts = {}) => {
+      const { openExpenseSheet } = await import('./ui/expenseSheet.js');
+      openExpenseSheet(store, expense, opts);
+    },
     setEntriesView(partial) {
       Object.assign(ctx.entriesView, partial);
       render();
@@ -130,6 +138,7 @@ function boot(profileId) {
     if (tab === 'home') renderHome(screenEl, state, ctx);
     else if (tab === 'entries') renderEntries(screenEl, state, ctx);
     else if (tab === 'report') renderReport(screenEl, state, ctx);
+    else if (tab === 'budget') renderBudget(screenEl, state, ctx);
     else if (tab === 'settings') renderSettingsRoute(screenEl, state, ctx, page);
   }
 
@@ -142,6 +151,11 @@ function boot(profileId) {
   topbarBack.addEventListener('click', () => router.back());
 
   fab.addEventListener('click', async () => {
+    // Bütçe sekmesinde + düğmesi harcama ekler, diğerlerinde mesai.
+    if (router.getRoute().tab === 'budget') {
+      ctx.openExpense();
+      return;
+    }
     const { openEntrySheet } = await import('./ui/entry.js');
     openEntrySheet(store, null);
   });

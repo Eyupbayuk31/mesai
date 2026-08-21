@@ -19,6 +19,9 @@ sunucuya veri gönderilmez.
 - **Kayıtlar**: sayfalanmış liste (tür ve dönem filtreli) veya **ay takvimi** —
   takvimde bir güne dokunup mesai ekleyebilir/düzenleyebilirsin
 - **Rapor**: dönem özeti, avans/kesinti kalemleri, yıllık grafik
+- **Bütçe**: günlük harcamalarını kategorilere gir; **tahmini eline geçecekten
+  düşülerek kalan bütçe** ve ay sonuna kadar günde ne kadar harcayabileceğin
+  gösterilir
 - **HTML rapor** indir: dönem veya tüm yıl için, yazdırılabilir tek dosya
   (CSV ve JSON dışa aktarma da var)
 

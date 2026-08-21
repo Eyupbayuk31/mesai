@@ -46,6 +46,7 @@ function defaultState() {
       weeklySchedule: mergeWeeklySchedule(null),
     },
     entries: [],
+    expenses: [],
     adjustments: [],
   };
 }
@@ -74,6 +75,7 @@ function migrate(raw) {
   const state = { ...defaultState(), ...raw };
   state.settings = mergeSettings(raw?.settings);
   state.entries = Array.isArray(raw?.entries) ? raw.entries : [];
+  state.expenses = Array.isArray(raw?.expenses) ? raw.expenses : [];
   state.adjustments = Array.isArray(raw?.adjustments) ? raw.adjustments : [];
   state.schemaVersion = SCHEMA_VERSION;
   return state;
@@ -177,6 +179,25 @@ export class Store {
     this.update((s) => ({ ...s, entries: s.entries.filter((e) => e.id !== id) }));
   }
 
+  addExpense(expense) {
+    const id = expense.id || `x_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const now = new Date().toISOString();
+    const record = { ...expense, id, createdAt: expense.createdAt || now, updatedAt: now };
+    this.update((s) => ({ ...s, expenses: [...s.expenses, record] }));
+    return record;
+  }
+
+  updateExpense(id, partial) {
+    this.update((s) => ({
+      ...s,
+      expenses: s.expenses.map((e) => (e.id === id ? { ...e, ...partial, updatedAt: new Date().toISOString() } : e)),
+    }));
+  }
+
+  removeExpense(id) {
+    this.update((s) => ({ ...s, expenses: s.expenses.filter((e) => e.id !== id) }));
+  }
+
   addAdjustment(adj) {
     const id = adj.id || `a_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const record = { ...adj, id, createdAt: adj.createdAt || new Date().toISOString() };
@@ -212,6 +233,7 @@ export class Store {
       valid: true,
       entryCount: raw.entries.length,
       adjustmentCount: Array.isArray(raw.adjustments) ? raw.adjustments.length : 0,
+      expenseCount: Array.isArray(raw.expenses) ? raw.expenses.length : 0,
       hasSettings: !!raw.settings,
     };
   }
