@@ -89,26 +89,27 @@ export function openExpenseSheet(store, expense = null, { date } = {}) {
         const category = bodyEl.querySelector('.cat-chip.is-active')?.dataset.cat || 'diger';
         const dateValue = bodyEl.querySelector('#expenseDate').value || todayISO();
         const note = bodyEl.querySelector('#expenseNote').value.trim();
-        if (isEdit) {
+        if (recurringOn && !(isEdit && expense.recurringId)) {
+          const def = store.addRecurring({
+            label: note || (allCategories(store.getState().settings).find((c) => c.key === category)?.label || ''),
+            amount,
+            category,
+            day: Number(dateValue.slice(8, 10)),
+            since: dateValue.slice(0, 7),
+          });
+          if (isEdit) {
+            store.updateExpense(expense.id, { amount, category, date: dateValue, note, recurringId: def.id });
+            showToast('Harcama güncellendi — sonraki aylarda otomatik gelecek');
+          } else {
+            store.addExpense({ amount, category, date: dateValue, note, recurringId: def.id });
+            showToast('Harcama eklendi — sonraki aylarda otomatik gelecek');
+          }
+        } else if (isEdit) {
           store.updateExpense(expense.id, { amount, category, date: dateValue, note });
           showToast('Harcama güncellendi');
         } else {
-          const record = store.addExpense({ amount, category, date: dateValue, note });
-          if (recurringOn) {
-            const def = store.addRecurring({
-              label: note || (allCategories(store.getState().settings).find((c) => c.key === category)?.label || ''),
-              amount,
-              category,
-              day: Number(dateValue.slice(8, 10)),
-              since: dateValue.slice(0, 7),
-            });
-            // Kaydı tanımına bağla: listede "her ay" etiketi görünsün, düzenlerken
-            // tekrar anahtarı değil "tekrarlanıyor" durumu görünsün.
-            store.updateExpense(record.id, { recurringId: def.id });
-            showToast('Harcama eklendi — sonraki aylarda otomatik gelecek');
-          } else {
-            showToast('Harcama eklendi');
-          }
+          store.addExpense({ amount, category, date: dateValue, note });
+          showToast('Harcama eklendi');
         }
         closeSheet();
       }
