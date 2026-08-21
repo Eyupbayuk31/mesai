@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { hourlyRate, entryAmount, hoursBetween, crossesMidnight, periodSummary, yearSummary } from '../js/payroll.js';
+import { hourlyRate, entryAmount, hoursBetween, crossesMidnight, periodSummary, yearSummary, shiftOvertime } from '../js/payroll.js';
 
 const baseSettings = {
   monthlySalary: 30000,
@@ -105,4 +105,53 @@ test('yearSummary - 12 ay toplanır', () => {
   const ys = yearSummary(state, 2026);
   assert.equal(ys.months.length, 12);
   assert.equal(ys.totalHours, 5);
+});
+
+const weeklySettings = {
+  weeklySchedule: {
+    0: { works: false, start: '08:30', end: '18:00' },
+    1: { works: true, start: '08:30', end: '18:00' },
+    2: { works: true, start: '08:30', end: '18:00' },
+    3: { works: true, start: '08:30', end: '18:00' },
+    4: { works: true, start: '08:30', end: '18:00' },
+    5: { works: true, start: '08:30', end: '18:00' },
+    6: { works: true, start: '08:30', end: '12:45' },
+  },
+};
+
+test('shiftOvertime - hafta içi normal çıkışta mesai yok', () => {
+  const date = new Date(2026, 7, 21); // Cuma
+  const result = shiftOvertime(date, '08:30', '18:00', weeklySettings);
+  assert.equal(result.overtimeHours, 0);
+  assert.equal(result.scheduled.end, '18:00');
+});
+
+test('shiftOvertime - hafta içi geç çıkışta fark mesai sayılır', () => {
+  const date = new Date(2026, 7, 21); // Cuma
+  const result = shiftOvertime(date, '08:30', '19:15', weeklySettings);
+  assert.equal(result.overtimeHours, 1.25);
+  assert.equal(result.windowStart, '18:00');
+  assert.equal(result.windowEnd, '19:15');
+});
+
+test('shiftOvertime - erken çıkışta negatif mesai olmaz, 0 döner', () => {
+  const date = new Date(2026, 7, 21); // Cuma
+  const result = shiftOvertime(date, '08:30', '17:00', weeklySettings);
+  assert.equal(result.overtimeHours, 0);
+});
+
+test('shiftOvertime - cumartesi kısa gün, 12:45 sonrası mesai', () => {
+  const date = new Date(2026, 7, 22); // Cumartesi
+  const result = shiftOvertime(date, '08:30', '14:00', weeklySettings);
+  assert.equal(result.overtimeHours, 1.25);
+  assert.equal(result.windowStart, '12:45');
+});
+
+test('shiftOvertime - pazar (çalışma günü değil) tüm süre mesai sayılır', () => {
+  const date = new Date(2026, 7, 23); // Pazar
+  const result = shiftOvertime(date, '10:00', '14:00', weeklySettings);
+  assert.equal(result.scheduled, null);
+  assert.equal(result.overtimeHours, 4);
+  assert.equal(result.windowStart, '10:00');
+  assert.equal(result.windowEnd, '14:00');
 });

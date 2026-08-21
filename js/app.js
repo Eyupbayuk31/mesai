@@ -25,6 +25,15 @@ const ctx = {
     topbarAction.textContent = label;
     topbarAction.onclick = onClick;
   },
+  canInstall() { return !!deferredInstallPrompt; },
+  async promptInstall() {
+    if (!deferredInstallPrompt) return null;
+    deferredInstallPrompt.prompt();
+    const choice = await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    hideInstallBanner();
+    return choice;
+  },
 };
 
 let currentTab = 'home';
@@ -116,4 +125,51 @@ function showUpdateBanner(reg) {
     window.location.reload();
   });
   document.body.appendChild(el);
+}
+
+// PWA yükleme (Ana ekrana ekle) — tarayıcı kendi banner'ını her zaman
+// göstermeyebiliyor, bu yüzden olayı yakalayıp kendi CTA'mızı sunuyoruz.
+const INSTALL_DISMISS_KEY = 'mesai.installBannerDismissed';
+let deferredInstallPrompt = null;
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  if (!isStandalone && !sessionDismissed()) showInstallBanner();
+});
+
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  hideInstallBanner();
+});
+
+function sessionDismissed() {
+  try { return window.localStorage.getItem(INSTALL_DISMISS_KEY) === '1'; } catch { return false; }
+}
+
+function showInstallBanner() {
+  if (document.getElementById('installBanner')) return;
+  const el = document.createElement('div');
+  el.id = 'installBanner';
+  el.className = 'update-banner';
+  el.innerHTML = `
+    <span>Mesai'yi ana ekranına ekle</span>
+    <span style="display:flex; gap:14px; align-items:center;">
+      <button type="button" id="installBannerAdd" style="font-weight:800;">Ekle</button>
+      <button type="button" id="installBannerClose" aria-label="Kapat" style="line-height:0;">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </span>
+  `;
+  el.querySelector('#installBannerAdd').addEventListener('click', () => ctx.promptInstall());
+  el.querySelector('#installBannerClose').addEventListener('click', () => {
+    try { window.localStorage.setItem(INSTALL_DISMISS_KEY, '1'); } catch {}
+    hideInstallBanner();
+  });
+  document.body.appendChild(el);
+}
+
+function hideInstallBanner() {
+  document.getElementById('installBanner')?.remove();
 }

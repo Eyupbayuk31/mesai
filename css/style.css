@@ -447,6 +447,20 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
   flex-shrink: 0;
 }
 
+/* Haftalık çalışma programı satırları (Ayarlar) */
+.day-schedule-row { padding: 13px 0; }
+.day-schedule-row + .day-schedule-row { border-top: 1px solid var(--divider); }
+.day-schedule-row__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.day-schedule-row__label { font-size: 14.5px; font-weight: 650; }
+.day-schedule-row__times { display: flex; align-items: center; gap: 8px; }
+.day-schedule-row__times .time-select { flex: 1; }
+.day-schedule-row__dash { color: var(--text-tertiary); font-weight: 700; flex-shrink: 0; }
+
 /* Segmented control */
 .segmented {
   display: flex;

@@ -34,6 +34,36 @@ export function crossesMidnight(start, end) {
   return eh * 60 + em <= sh * 60 + sm;
 }
 
+function timeToMinutes(time) {
+  const [h, m] = time.split(':').map(Number);
+  return h * 60 + m;
+}
+
+// Girilen "bugün kaçta girdim / kaçta çıktım" saatlerinden, haftalık çalışma
+// programına göre mesai (fazla mesai) süresini çıkarır. Programda o gün
+// kapalıysa (örn. Pazar) girişten çıkışa kadarki her şey mesai sayılır;
+// açıksa yalnızca planlanan bitiş saatinden sonrası mesai sayılır.
+export function shiftOvertime(date, shiftStart, shiftEnd, settings) {
+  const daySchedule = settings.weeklySchedule?.[date.getDay()];
+  const totalHours = hoursBetween(shiftStart, shiftEnd);
+
+  if (!daySchedule || !daySchedule.works) {
+    return { scheduled: null, totalHours, overtimeHours: totalHours, windowStart: shiftStart, windowEnd: shiftEnd };
+  }
+
+  const overtimeHours = timeToMinutes(shiftEnd) > timeToMinutes(daySchedule.end)
+    ? hoursBetween(daySchedule.end, shiftEnd)
+    : 0;
+
+  return {
+    scheduled: daySchedule,
+    totalHours,
+    overtimeHours,
+    windowStart: daySchedule.end,
+    windowEnd: shiftEnd,
+  };
+}
+
 const EMPTY_TYPE_TOTALS = () => ({
   normal: { hours: 0, amount: 0 },
   weekend: { hours: 0, amount: 0 },

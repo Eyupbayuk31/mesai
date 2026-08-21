@@ -1,8 +1,9 @@
 import { openSheet, closeSheet } from './sheet.js';
 import { showToast } from './toast.js';
 import { todayISO, toISODate, parseLocaleNumber, formatMoney, formatHours, parseISODate } from '../format.js';
-import { hoursBetween, crossesMidnight, entryAmount } from '../payroll.js';
+import { hoursBetween, crossesMidnight, entryAmount, shiftOvertime } from '../payroll.js';
 import { suggestType } from '../holidays.js';
+import { timeSelectHTML } from './timeSelect.js';
 
 const TYPE_OPTIONS = [
   { key: 'normal', label: 'Normal', mult: 'multipliers.normal' },
@@ -10,16 +11,31 @@ const TYPE_OPTIONS = [
   { key: 'holiday', label: 'Resmi tatil', mult: 'multipliers.holiday' },
 ];
 
+const DAY_NAMES = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
+
+function scheduleDefaultsForDate(dateISO, settings) {
+  const date = parseISODate(dateISO);
+  const daySchedule = settings.weeklySchedule?.[date.getDay()];
+  if (daySchedule && daySchedule.works) {
+    return { shiftStart: daySchedule.start, shiftEnd: daySchedule.end };
+  }
+  return { shiftStart: '10:00', shiftEnd: '14:00' };
+}
+
 export function openEntrySheet(store, existingEntry) {
   const settings = store.getState().settings;
   const isEdit = !!existingEntry;
+  const initialDate = existingEntry?.date || todayISO();
+  const scheduleDefaults = scheduleDefaultsForDate(initialDate, settings);
 
   const formState = {
-    date: existingEntry?.date || todayISO(),
-    mode: existingEntry?.start ? 'range' : (settings.defaultEntryMode || 'hours'),
+    date: initialDate,
+    mode: existingEntry?.start ? 'range' : (settings.defaultEntryMode || 'shift'),
     hours: existingEntry?.hours ?? 3,
     start: existingEntry?.start || '18:00',
-    end: existingEntry?.end || '21:00',
+    end: existingEntry?.end || '19:00',
+    shiftStart: scheduleDefaults.shiftStart,
+    shiftEnd: scheduleDefaults.shiftEnd,
     type: existingEntry?.type || 'normal',
     note: existingEntry?.note || '',
     typeAuto: !existingEntry, // yeni kayıtta otomatik öneri açık başlar
@@ -45,8 +61,14 @@ export function openEntrySheet(store, existingEntry) {
   });
 }
 
+function computedHoursFor(formState, settings) {
+  if (formState.mode === 'range') return hoursBetween(formState.start, formState.end);
+  if (formState.mode === 'shift') return shiftOvertime(parseISODate(formState.date), formState.shiftStart, formState.shiftEnd, settings).overtimeHours;
+  return parseLocaleNumber(formState.hours) || 0;
+}
+
 function renderBody(formState, settings) {
-  const computedHours = formState.mode === 'range' ? hoursBetween(formState.start, formState.end) : formState.hours;
+  const computedHours = computedHoursFor(formState, settings);
   const previewAmount = entryAmount({ hours: computedHours, type: formState.type }, settings);
   const midnightNote = formState.mode === 'range' && crossesMidnight(formState.start, formState.end)
     ? '<div class="field__hint">Ertesi güne sarkıyor</div>' : '';
@@ -70,11 +92,12 @@ function renderBody(formState, settings) {
       <label class="field__label">Süre</label>
       <div class="segmented" id="modeSegmented">
         <button class="segmented__item ${formState.mode === 'hours' ? 'is-active' : ''}" type="button" data-mode="hours">Saat</button>
+        <button class="segmented__item ${formState.mode === 'shift' ? 'is-active' : ''}" type="button" data-mode="shift">Giriş-Çıkış</button>
         <button class="segmented__item ${formState.mode === 'range' ? 'is-active' : ''}" type="button" data-mode="range">Aralık</button>
       </div>
     </div>
 
-    <div id="modeBody">${renderModeBody(formState)}</div>
+    <div id="modeBody">${renderModeBody(formState, settings)}</div>
     <div id="midnightNote">${midnightNote}</div>
 
     <div class="field">
@@ -97,7 +120,7 @@ function renderBody(formState, settings) {
   `;
 }
 
-function renderModeBody(formState) {
+function renderModeBody(formState, settings) {
   if (formState.mode === 'hours') {
     return `
       <div class="field">
@@ -110,6 +133,23 @@ function renderModeBody(formState) {
       </div>
     `;
   }
+
+  if (formState.mode === 'shift') {
+    return `
+      <div class="input-row">
+        <div class="field">
+          <label class="field__label" style="font-size:12px;">İlk giriş</label>
+          ${timeSelectHTML('shiftStart', formState.shiftStart)}
+        </div>
+        <div class="field">
+          <label class="field__label" style="font-size:12px;">Son çıkış</label>
+          ${timeSelectHTML('shiftEnd', formState.shiftEnd)}
+        </div>
+      </div>
+      <div id="shiftBreakdown">${shiftBreakdownHTML(formState, settings)}</div>
+    `;
+  }
+
   return `
     <div class="input-row">
       <div class="field">
@@ -125,22 +165,26 @@ function renderModeBody(formState) {
   `;
 }
 
-// 24 saatlik özel saat/dakika seçici — tarayıcının yerel <input type="time">
-// bileşenine bağlı kalmadan her cihazda tutarlı şekilde 24 saat formatında
-// gösterir (AM/PM karışıklığı olmaz, Türkiye'de saat hep 24 saatlik yazılır).
-function timeSelectHTML(prefix, value) {
-  const [h, m] = value.split(':');
-  const hours = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
-  const minutes = ['00', '15', '30', '45'];
+function shiftBreakdownHTML(formState, settings) {
+  const date = parseISODate(formState.date);
+  const result = shiftOvertime(date, formState.shiftStart, formState.shiftEnd, settings);
+  const dayName = DAY_NAMES[date.getDay()];
+
+  if (!result.scheduled) {
+    return `
+      <div class="field__hint" style="margin-bottom:14px;">
+        ${dayName} çalışma günün değil — girdiğin ${formatHours(result.overtimeHours)} tamamen mesai sayılır.
+      </div>
+    `;
+  }
+
+  const scheduleLabel = `${dayName} normal mesain: ${result.scheduled.start}–${result.scheduled.end}`;
+  if (result.overtimeHours <= 0) {
+    return `<div class="field__hint" style="margin-bottom:14px;">${scheduleLabel}. Bugün fazla mesain görünmüyor.</div>`;
+  }
   return `
-    <div class="time-select">
-      <select class="input time-select__part" id="${prefix}Hour">
-        ${hours.map((hh) => `<option value="${hh}" ${hh === h ? 'selected' : ''}>${hh}</option>`).join('')}
-      </select>
-      <span class="time-select__colon">:</span>
-      <select class="input time-select__part" id="${prefix}Minute">
-        ${minutes.map((mm) => `<option value="${mm}" ${mm === m ? 'selected' : ''}>${mm}</option>`).join('')}
-      </select>
+    <div class="field__hint" style="margin-bottom:14px;">
+      ${scheduleLabel}. ${result.scheduled.end}–${formState.shiftEnd} arası <b style="color:var(--accent);">${formatHours(result.overtimeHours)}</b> mesai sayılır.
     </div>
   `;
 }
@@ -153,13 +197,13 @@ function formatHoursInput(hours) {
 
 function wireEvents(bodyEl, footerEl, formState, settings, store, existingEntry) {
   function updatePreview() {
-    const computedHours = formState.mode === 'range' ? hoursBetween(formState.start, formState.end) : (parseLocaleNumber(formState.hours) || 0);
+    const computedHours = computedHoursFor(formState, settings);
     const amount = entryAmount({ hours: computedHours, type: formState.type }, settings);
     bodyEl.querySelector('#previewValue').textContent = formatMoney(amount);
   }
 
   function rerenderModeBody() {
-    bodyEl.querySelector('#modeBody').innerHTML = renderModeBody(formState);
+    bodyEl.querySelector('#modeBody').innerHTML = renderModeBody(formState, settings);
     bindModeBodyEvents();
     updatePreview();
   }
@@ -213,6 +257,21 @@ function wireEvents(bodyEl, footerEl, formState, settings, store, existingEntry)
           updatePreview();
         });
       });
+    } else if (formState.mode === 'shift') {
+      const shiftStartHour = bodyEl.querySelector('#shiftStartHour');
+      const shiftStartMinute = bodyEl.querySelector('#shiftStartMinute');
+      const shiftEndHour = bodyEl.querySelector('#shiftEndHour');
+      const shiftEndMinute = bodyEl.querySelector('#shiftEndMinute');
+      function updateShift() {
+        formState.shiftStart = `${shiftStartHour.value}:${shiftStartMinute.value}`;
+        formState.shiftEnd = `${shiftEndHour.value}:${shiftEndMinute.value}`;
+        bodyEl.querySelector('#shiftBreakdown').innerHTML = shiftBreakdownHTML(formState, settings);
+        updatePreview();
+      }
+      shiftStartHour.addEventListener('change', updateShift);
+      shiftStartMinute.addEventListener('change', updateShift);
+      shiftEndHour.addEventListener('change', updateShift);
+      shiftEndMinute.addEventListener('change', updateShift);
     } else {
       const startHour = bodyEl.querySelector('#startHour');
       const startMinute = bodyEl.querySelector('#startMinute');
@@ -239,6 +298,12 @@ function wireEvents(bodyEl, footerEl, formState, settings, store, existingEntry)
   const dateInput = bodyEl.querySelector('#dateInput');
   dateInput.addEventListener('input', () => {
     formState.date = dateInput.value;
+    if (formState.mode === 'shift') {
+      const defaults = scheduleDefaultsForDate(formState.date, settings);
+      formState.shiftStart = defaults.shiftStart;
+      formState.shiftEnd = defaults.shiftEnd;
+      rerenderModeBody();
+    }
     if (settings.autoDetectType && formState.typeAuto) {
       const suggestion = suggestType(parseISODate(formState.date), formState.date, settings);
       formState.type = suggestion.type;
@@ -275,20 +340,32 @@ function wireEvents(bodyEl, footerEl, formState, settings, store, existingEntry)
   // Kaydet / Sil
   const saveBtn = footerEl.querySelector('#saveEntryBtn');
   saveBtn.addEventListener('click', () => {
-    const hours = formState.mode === 'range' ? hoursBetween(formState.start, formState.end) : parseLocaleNumber(formState.hours);
+    const hours = computedHoursFor(formState, settings);
     if (!hours || hours <= 0) {
-      showToast('Geçerli bir saat girmelisin');
+      showToast(formState.mode === 'shift' ? 'Bu saatlerde mesai görünmüyor' : 'Geçerli bir saat girmelisin');
       return;
     }
     if (!formState.date) {
       showToast('Bir tarih seçmelisin');
       return;
     }
+
+    let start = null;
+    let end = null;
+    if (formState.mode === 'range') {
+      start = formState.start;
+      end = formState.end;
+    } else if (formState.mode === 'shift') {
+      const result = shiftOvertime(parseISODate(formState.date), formState.shiftStart, formState.shiftEnd, settings);
+      start = result.windowStart;
+      end = result.windowEnd;
+    }
+
     const payload = {
       date: formState.date,
       hours,
-      start: formState.mode === 'range' ? formState.start : null,
-      end: formState.mode === 'range' ? formState.end : null,
+      start,
+      end,
       type: formState.type,
       note: formState.note.trim(),
     };

@@ -3,6 +3,19 @@
 const STORAGE_KEY = 'mesai.state';
 const SCHEMA_VERSION = 1;
 
+// Haftalık çalışma programı: JS Date.getDay() sırasına göre (0=Pazar..6=Cumartesi).
+// Hafta içi 08:30-18:00, Cumartesi 08:30-12:45, Pazar kapalı — bu varsayılan
+// Ayarlar ekranından tamamen değiştirilebilir.
+const DEFAULT_WEEKLY_SCHEDULE = {
+  0: { works: false, start: '08:30', end: '18:00' },
+  1: { works: true, start: '08:30', end: '18:00' },
+  2: { works: true, start: '08:30', end: '18:00' },
+  3: { works: true, start: '08:30', end: '18:00' },
+  4: { works: true, start: '08:30', end: '18:00' },
+  5: { works: true, start: '08:30', end: '18:00' },
+  6: { works: true, start: '08:30', end: '12:45' },
+};
+
 const DEFAULT_SETTINGS = {
   monthlySalary: 0,
   hoursDivisor: 225,
@@ -11,17 +24,30 @@ const DEFAULT_SETTINGS = {
   multipliers: { normal: 1.5, weekend: 2, holiday: 2 },
   weekendDays: [0],
   autoDetectType: true,
-  defaultEntryMode: 'hours',
+  defaultEntryMode: 'shift',
   theme: 'auto',
+  weeklySchedule: DEFAULT_WEEKLY_SCHEDULE,
 };
 
 function defaultState() {
   return {
     schemaVersion: SCHEMA_VERSION,
-    settings: { ...DEFAULT_SETTINGS, multipliers: { ...DEFAULT_SETTINGS.multipliers } },
+    settings: {
+      ...DEFAULT_SETTINGS,
+      multipliers: { ...DEFAULT_SETTINGS.multipliers },
+      weeklySchedule: mergeWeeklySchedule(null),
+    },
     entries: [],
     adjustments: [],
   };
+}
+
+function mergeWeeklySchedule(schedule) {
+  const merged = {};
+  for (let d = 0; d <= 6; d++) {
+    merged[d] = { ...DEFAULT_WEEKLY_SCHEDULE[d], ...(schedule?.[d] || {}) };
+  }
+  return merged;
 }
 
 function mergeSettings(settings) {
@@ -30,6 +56,7 @@ function mergeSettings(settings) {
     ...(settings || {}),
     multipliers: { ...DEFAULT_SETTINGS.multipliers, ...(settings?.multipliers || {}) },
     weekendDays: Array.isArray(settings?.weekendDays) ? settings.weekendDays : DEFAULT_SETTINGS.weekendDays,
+    weeklySchedule: mergeWeeklySchedule(settings?.weeklySchedule),
   };
 }
 

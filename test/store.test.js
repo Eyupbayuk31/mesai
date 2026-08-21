@@ -27,6 +27,26 @@ test('Store - varsayılan durum boş', () => {
   assert.equal(s.settings.hoursDivisor, 225);
 });
 
+test('Store - varsayılan haftalık program: hafta içi 08:30-18:00, cmt kısa, paz kapalı', () => {
+  const store = freshStore();
+  const schedule = store.getState().settings.weeklySchedule;
+  assert.equal(schedule[1].works, true);
+  assert.equal(schedule[1].start, '08:30');
+  assert.equal(schedule[1].end, '18:00');
+  assert.equal(schedule[6].end, '12:45');
+  assert.equal(schedule[0].works, false);
+});
+
+test('Store - weeklySchedule kısmi güncellemede diğer günler korunur', () => {
+  const store = freshStore();
+  store.updateSettings({
+    weeklySchedule: { ...store.getState().settings.weeklySchedule, 0: { works: true, start: '10:00', end: '14:00' } },
+  });
+  const schedule = store.getState().settings.weeklySchedule;
+  assert.equal(schedule[0].works, true);
+  assert.equal(schedule[1].start, '08:30'); // dokunulmayan gün varsayılanda kalır
+});
+
 test('Store - addEntry ve kalıcılık', () => {
   const store = freshStore();
   const rec = store.addEntry({ date: '2026-08-14', hours: 3.5, type: 'normal' });

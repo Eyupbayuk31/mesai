@@ -3,8 +3,10 @@ import { downloadFile, csvForEntries } from './exportUtils.js';
 import { parseLocaleNumber, formatMoney } from '../format.js';
 import { hourlyRate, entryAmount } from '../payroll.js';
 import { openSheet, closeSheet } from './sheet.js';
+import { timeSelectHTML } from './timeSelect.js';
 
 const WEEKDAY_LABELS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+const WEEKDAY_LABELS_FULL = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'];
 // JS getDay(): 0=Pazar..6=Cmt. Ekranda Pazartesi'den başlatmak için eşleme.
 const WEEKDAY_JS_VALUES = [1, 2, 3, 4, 5, 6, 0];
 
@@ -55,6 +57,12 @@ export function renderSettings(container, state, ctx) {
       </div>
     </div>
 
+    <div class="section-title">Haftalık çalışma programı</div>
+    <div class="card" id="weeklyScheduleCard">
+      <p class="field__hint" style="margin-top:-4px; margin-bottom:14px;">"Giriş-Çıkış" ile mesai girerken, buradaki normal saatlerin üstündeki kısım otomatik mesai sayılır.</p>
+      ${WEEKDAY_JS_VALUES.map((dayNum, i) => dayScheduleRowHTML(dayNum, WEEKDAY_LABELS_FULL[i], settings.weeklySchedule[dayNum])).join('')}
+    </div>
+
     <div class="section-title">Dönem ve ödeme</div>
     <div class="card">
       <div class="input-row">
@@ -86,6 +94,7 @@ export function renderSettings(container, state, ctx) {
       <label class="field__label">Mesai giriş varsayılanı</label>
       <div class="segmented" id="entryModeSegmented" style="margin-bottom:16px;">
         <button class="segmented__item ${settings.defaultEntryMode === 'hours' ? 'is-active' : ''}" data-mode="hours" type="button">Saat</button>
+        <button class="segmented__item ${settings.defaultEntryMode === 'shift' ? 'is-active' : ''}" data-mode="shift" type="button">Giriş-Çıkış</button>
         <button class="segmented__item ${settings.defaultEntryMode === 'range' ? 'is-active' : ''}" data-mode="range" type="button">Aralık</button>
       </div>
       <label class="field__label">Tema</label>
@@ -94,6 +103,11 @@ export function renderSettings(container, state, ctx) {
         <button class="segmented__item ${settings.theme === 'light' ? 'is-active' : ''}" data-theme="light" type="button">Açık</button>
         <button class="segmented__item ${settings.theme === 'dark' ? 'is-active' : ''}" data-theme="dark" type="button">Koyu</button>
       </div>
+    </div>
+
+    <div class="section-title">Uygulama</div>
+    <div class="card">
+      <div class="link-row" id="installRow"><span>Ana ekrana ekle</span><span class="link-row__chevron">›</span></div>
     </div>
 
     <div class="section-title">Yedekleme</div>
@@ -112,10 +126,75 @@ export function renderSettings(container, state, ctx) {
 
   wireSalary(container, ctx, settings);
   wireMultipliers(container, ctx, settings);
+  wireWeeklySchedule(container, ctx, settings);
   wirePeriodSettings(container, ctx, settings);
   wireAppearance(container, ctx, settings);
+  wireInstall(container, ctx);
   wireBackup(container, ctx, state);
   wireDangerZone(container, ctx);
+}
+
+function wireInstall(container, ctx) {
+  container.querySelector('#installRow').addEventListener('click', async () => {
+    if (ctx.canInstall()) {
+      await ctx.promptInstall();
+      return;
+    }
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    if (isStandalone) {
+      showToast('Uygulama zaten ana ekranına eklenmiş');
+    } else {
+      showToast('Tarayıcı menüsünden "Ana ekrana ekle" seçeneğini kullan');
+    }
+  });
+}
+
+function dayScheduleRowHTML(dayNum, label, daySchedule) {
+  return `
+    <div class="day-schedule-row">
+      <div class="day-schedule-row__header">
+        <span class="day-schedule-row__label">${label}</span>
+        <button class="switch ${daySchedule.works ? 'is-on' : ''}" data-day-toggle="${dayNum}" type="button" aria-label="${label} çalışıyor musun"></button>
+      </div>
+      ${daySchedule.works ? `
+        <div class="day-schedule-row__times">
+          ${timeSelectHTML(`day${dayNum}Start`, daySchedule.start)}
+          <span class="day-schedule-row__dash">–</span>
+          ${timeSelectHTML(`day${dayNum}End`, daySchedule.end)}
+        </div>
+      ` : `<div class="field__hint">Bu gün çalışmıyorsun</div>`}
+    </div>
+  `;
+}
+
+function wireWeeklySchedule(container, ctx, settings) {
+  const card = container.querySelector('#weeklyScheduleCard');
+
+  card.addEventListener('click', (e) => {
+    const toggleBtn = e.target.closest('[data-day-toggle]');
+    if (!toggleBtn) return;
+    const dayNum = toggleBtn.dataset.dayToggle;
+    const current = settings.weeklySchedule[dayNum];
+    ctx.store.updateSettings({
+      weeklySchedule: { ...settings.weeklySchedule, [dayNum]: { ...current, works: !current.works } },
+    });
+  });
+
+  card.addEventListener('change', (e) => {
+    const select = e.target.closest('select[id^="day"]');
+    if (!select) return;
+    const match = select.id.match(/^day(\d)(Start|End)(Hour|Minute)$/);
+    if (!match) return;
+    const [, dayNum, part] = match;
+    const hourSel = card.querySelector(`#day${dayNum}${part}Hour`);
+    const minuteSel = card.querySelector(`#day${dayNum}${part}Minute`);
+    const timeValue = `${hourSel.value}:${minuteSel.value}`;
+    const current = settings.weeklySchedule[dayNum];
+    const key = part === 'Start' ? 'start' : 'end';
+    ctx.store.updateSettings({
+      weeklySchedule: { ...settings.weeklySchedule, [dayNum]: { ...current, [key]: timeValue } },
+    });
+  });
 }
 
 function commitNumberOnChange(input, onCommit) {
