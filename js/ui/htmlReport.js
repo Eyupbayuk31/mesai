@@ -57,22 +57,40 @@ function entryRows(entries, settings) {
   `).join('');
 }
 
-function adjustmentRows(adjustments) {
-  if (adjustments.length === 0) return '';
+function adjustmentRows(summary) {
+  const rows = [];
+  if (summary.mealPay > 0) {
+    rows.push(`
+      <tr>
+        <td>Yemek parası (${summary.allowanceDays} gün × ${formatMoney(summary.mealAllowance, { decimals: false })})</td>
+        <td class="num" style="color:#12946b;">+ ${formatMoney(summary.mealPay)}</td>
+      </tr>
+    `);
+  }
+  if (summary.transportPay > 0) {
+    rows.push(`
+      <tr>
+        <td>Yol parası (${summary.allowanceDays} gün × ${formatMoney(summary.transportAllowance, { decimals: false })})</td>
+        <td class="num" style="color:#12946b;">+ ${formatMoney(summary.transportPay)}</td>
+      </tr>
+    `);
+  }
+  for (const a of summary.adjustments) {
+    rows.push(`
+      <tr>
+        <td>${escapeHTML(a.label || ADJ_LABEL[a.kind] || a.kind)}</td>
+        <td class="num" style="color:${a.kind === 'bonus' ? '#12946b' : '#e2483d'};">
+          ${a.kind === 'bonus' ? '+' : '−'} ${formatMoney(a.amount)}
+        </td>
+      </tr>
+    `);
+  }
+  if (rows.length === 0) return '';
   return `
     <h2>Ek kalemler</h2>
     <table class="table">
       <thead><tr><th>Kalem</th><th class="num">Tutar</th></tr></thead>
-      <tbody>
-        ${adjustments.map((a) => `
-          <tr>
-            <td>${escapeHTML(a.label || ADJ_LABEL[a.kind] || a.kind)}</td>
-            <td class="num" style="color:${a.kind === 'bonus' ? '#12946b' : '#e2483d'};">
-              ${a.kind === 'bonus' ? '+' : '−'} ${formatMoney(a.amount)}
-            </td>
-          </tr>
-        `).join('')}
-      </tbody>
+      <tbody>${rows.join('')}</tbody>
     </table>
   `;
 }
@@ -111,12 +129,14 @@ function yearChartSVG(ySummary) {
   `;
 }
 
-function yearTableRows(ySummary) {
+function yearTableRows(ySummary, withMeal, withTransport) {
   return ySummary.months.map((m, i) => `
     <tr>
       <td>${MONTH_NAMES[i]}</td>
       <td class="num">${formatHours(m.hours)}</td>
       <td class="num">${formatMoney(m.amount)}</td>
+      ${withMeal ? `<td class="num">${formatMoney(m.meal, { decimals: false })}</td>` : ''}
+      ${withTransport ? `<td class="num">${formatMoney(m.transport, { decimals: false })}</td>` : ''}
     </tr>
   `).join('');
 }
@@ -130,6 +150,9 @@ export function buildHtmlReport({ profileName, periodKey, summary, settings, sco
 }
 
 function buildYearReport({ profileName, yearSummary, settings }) {
+  // Yan ödeme girilmişse aylık tabloya ilgili kolonlar da eklenir.
+  const withMeal = Number(settings.mealAllowance) > 0;
+  const withTransport = Number(settings.transportAllowance) > 0;
   return htmlShell({
     title: `Mesai Raporu — ${escapeHTML(profileName)} — ${yearSummary.year}`,
     headerTitle: `${escapeHTML(profileName)} — ${yearSummary.year} yılı`,
@@ -146,13 +169,15 @@ function buildYearReport({ profileName, yearSummary, settings }) {
       <div class="chart">${yearChartSVG(yearSummary)}</div>
 
       <table class="table">
-        <thead><tr><th>Ay</th><th class="num">Saat</th><th class="num">Tutar</th></tr></thead>
+        <thead><tr><th>Ay</th><th class="num">Saat</th><th class="num">Tutar</th>${withMeal ? '<th class="num">Yemek</th>' : ''}${withTransport ? '<th class="num">Yol</th>' : ''}</tr></thead>
         <tbody>
-          ${yearTableRows(yearSummary)}
+          ${yearTableRows(ySummary, withMeal, withTransport)}
           <tr class="total-row">
             <td>Toplam</td>
             <td class="num">${formatHours(yearSummary.totalHours)}</td>
             <td class="num">${formatMoney(yearSummary.totalOvertimePay)}</td>
+            ${withMeal ? `<td class="num">${formatMoney(yearSummary.totalMealPay, { decimals: false })}</td>` : ''}
+            ${withTransport ? `<td class="num">${formatMoney(yearSummary.totalTransportPay, { decimals: false })}</td>` : ''}
           </tr>
         </tbody>
       </table>
@@ -191,7 +216,7 @@ function buildPeriodReport({ profileName, periodKey, summary, settings }) {
         </tbody>
       </table>
 
-      ${adjustmentRows(summary.adjustments)}
+      ${adjustmentRows(summary)}
 
       <h2>Günlük kayıtlar (${summary.entryCount})</h2>
       ${summary.entries.length === 0 ? `<p style="color:var(--text-secondary); font-size:13px;">Bu dönemde kayıt yok.</p>` : `

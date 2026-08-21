@@ -1,6 +1,7 @@
 // Ücret hesap motoru. Tüm fonksiyonlar saf (yan etkisiz).
 
 import { isDateInPeriod } from './period.js';
+import { isHoliday } from './holidays.js';
 
 export function hourlyRate(settings) {
   const salary = Number(settings.monthlySalary) || 0;
@@ -103,6 +104,20 @@ const EMPTY_TYPE_TOTALS = () => ({
   holiday: { hours: 0, amount: 0 },
 });
 
+// Dönemin günlük yan ödeme (yemek/yol parası) gün sayısı: haftalık programda
+// çalışılan günler; resmi tatile denk gelenler düşülür (o gün kart yüklenmez).
+export function workdaysForPeriod(periodKey, settings) {
+  const [y, m] = periodKey.split('-').map(Number);
+  const daysInMonth = new Date(y, m, 0).getDate();
+  let count = 0;
+  for (let day = 1; day <= daysInMonth; day++) {
+    const iso = `${periodKey}-${String(day).padStart(2, '0')}`;
+    const dow = new Date(y, m - 1, day).getDay();
+    if (settings.weeklySchedule?.[dow]?.works && !isHoliday(iso)) count++;
+  }
+  return count;
+}
+
 export function periodSummary(state, periodKey) {
   const settings = state.settings;
   const entries = state.entries.filter((e) => isDateInPeriod(e.date, periodKey));
@@ -133,7 +148,14 @@ export function periodSummary(state, periodKey) {
   }
 
   const baseSalary = Number(settings.monthlySalary) || 0;
-  const netTotal = baseSalary + overtimePay + bonuses - advances - deductions;
+  const mealAllowance = Number(settings.mealAllowance) || 0;
+  const transportAllowance = Number(settings.transportAllowance) || 0;
+  const allowanceDays = (mealAllowance > 0 || transportAllowance > 0)
+    ? workdaysForPeriod(periodKey, settings)
+    : 0;
+  const mealPay = allowanceDays * mealAllowance;
+  const transportPay = allowanceDays * transportAllowance;
+  const netTotal = baseSalary + overtimePay + mealPay + transportPay + bonuses - advances - deductions;
 
   return {
     periodKey,
@@ -142,6 +164,11 @@ export function periodSummary(state, periodKey) {
     byType,
     overtimePay,
     baseSalary,
+    allowanceDays,
+    mealAllowance,
+    mealPay,
+    transportAllowance,
+    transportPay,
     bonuses,
     advances,
     deductions,
@@ -155,12 +182,23 @@ export function yearSummary(state, year) {
   const months = [];
   let totalHours = 0;
   let totalOvertimePay = 0;
+  let totalMealPay = 0;
+  let totalTransportPay = 0;
   for (let m = 1; m <= 12; m++) {
     const periodKey = `${year}-${String(m).padStart(2, '0')}`;
     const summary = periodSummary(state, periodKey);
-    months.push({ periodKey, month: m, hours: summary.totalHours, amount: summary.overtimePay });
+    months.push({
+      periodKey,
+      month: m,
+      hours: summary.totalHours,
+      amount: summary.overtimePay,
+      meal: summary.mealPay,
+      transport: summary.transportPay,
+    });
     totalHours += summary.totalHours;
     totalOvertimePay += summary.overtimePay;
+    totalMealPay += summary.mealPay;
+    totalTransportPay += summary.transportPay;
   }
-  return { year, months, totalHours, totalOvertimePay };
+  return { year, months, totalHours, totalOvertimePay, totalMealPay, totalTransportPay };
 }

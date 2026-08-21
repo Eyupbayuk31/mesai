@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { hourlyRate, entryAmount, hoursBetween, crossesMidnight, periodSummary, yearSummary, shiftOvertime, addMinutesToTime } from '../js/payroll.js';
+import { hourlyRate, entryAmount, hoursBetween, crossesMidnight, periodSummary, yearSummary, shiftOvertime, addMinutesToTime, workdaysForPeriod } from '../js/payroll.js';
 
 const baseSettings = {
   monthlySalary: 30000,
@@ -118,6 +118,77 @@ const weeklySettings = {
     6: { works: true, start: '08:30', end: '12:45' },
   },
 };
+
+// Yalnızca Pzt–Cum çalışan program (0=Pazar, 6=Cumartesi kapalı)
+const monFriSchedule = {
+  weeklySchedule: {
+    0: { works: false }, 1: { works: true }, 2: { works: true },
+    3: { works: true }, 4: { works: true }, 5: { works: true },
+    6: { works: false },
+  },
+};
+
+test('workdaysForPeriod - varsayılan program: Pazar hariç tüm günler (Ağustos 2026 = 26)', () => {
+  // Ağustos 2026: 5 Pazar var, 30 Ağustos Zafer Bayramı Pazar'a denk gelir
+  assert.equal(workdaysForPeriod('2026-08', weeklySettings), 26);
+});
+
+test('workdaysForPeriod - resmi tatil iş gününden düşülür', () => {
+  // Temmuz 2026 Pzt–Cum: 23 iş günü, 15 Temmuz (Çarşamba) düşülünce 22
+  assert.equal(workdaysForPeriod('2026-07', monFriSchedule), 22);
+});
+
+test('workdaysForPeriod - program tanımsızsa 0 döner', () => {
+  assert.equal(workdaysForPeriod('2026-07', {}), 0);
+});
+
+test('periodSummary - yemek ve yol parası gün x bedel olarak netTotal\'a eklenir', () => {
+  const state = {
+    settings: { ...baseSettings, mealAllowance: 250, transportAllowance: 55, ...monFriSchedule },
+    entries: [{ id: '1', date: '2026-07-01', hours: 2, type: 'normal' }],
+    adjustments: [],
+  };
+  const summary = periodSummary(state, '2026-07');
+  assert.equal(summary.allowanceDays, 22);
+  assert.equal(summary.mealPay, 5500);      // 22 x 250
+  assert.equal(summary.transportPay, 1210); // 22 x 55
+  assert.equal(Math.round(summary.netTotal * 100) / 100, 30000 + 400 + 5500 + 1210); // maaş + mesai + yemek + yol
+});
+
+test('periodSummary - bedeller 0/boşsa yan ödeme 0, netTotal değişmez', () => {
+  const state = { settings: baseSettings, entries: [], adjustments: [] };
+  const summary = periodSummary(state, '2026-08');
+  assert.equal(summary.mealPay, 0);
+  assert.equal(summary.transportPay, 0);
+  assert.equal(summary.netTotal, summary.baseSalary);
+});
+
+test('periodSummary - yalnız yol parası girilirse gün sayısı yine hesaplanır', () => {
+  const state = {
+    settings: { ...baseSettings, transportAllowance: 100, ...monFriSchedule },
+    entries: [],
+    adjustments: [],
+  };
+  const summary = periodSummary(state, '2026-07');
+  assert.equal(summary.allowanceDays, 22);
+  assert.equal(summary.mealPay, 0);
+  assert.equal(summary.transportPay, 2200);
+});
+
+test('yearSummary - aylık yemek/yol toplamları ve yıllık toplamlar doğru', () => {
+  const state = {
+    settings: { ...baseSettings, mealAllowance: 100, transportAllowance: 50, ...monFriSchedule },
+    entries: [],
+    adjustments: [],
+  };
+  const ys = yearSummary(state, 2026);
+  assert.equal(ys.months[6].meal, 2200);      // Temmuz: 22 gün x 100
+  assert.equal(ys.months[6].transport, 1100); // Temmuz: 22 gün x 50
+  const sumMeals = ys.months.reduce((s, m) => s + m.meal, 0);
+  const sumTransport = ys.months.reduce((s, m) => s + m.transport, 0);
+  assert.equal(ys.totalMealPay, sumMeals);
+  assert.equal(ys.totalTransportPay, sumTransport);
+});
 
 test('shiftOvertime - hafta içi normal çıkışta mesai yok', () => {
   const date = new Date(2026, 7, 21); // Cuma

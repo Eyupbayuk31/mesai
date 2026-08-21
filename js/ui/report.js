@@ -49,6 +49,10 @@ export function renderReport(container, state, ctx) {
           </div>
         `).join('')}
         <div class="row row--total"><span class="row__label">Toplam mesai</span><span class="row__value">${formatMoney(summary.overtimePay)}</span></div>
+        ${summary.mealPay > 0 ? `
+        <div class="row"><span class="row__label">Yemek parası <span style="color:var(--text-tertiary);">${summary.allowanceDays} gün × ${formatMoney(summary.mealAllowance, { decimals: false })}</span></span><span class="row__value">${formatMoney(summary.mealPay, { decimals: false })}</span></div>` : ''}
+        ${summary.transportPay > 0 ? `
+        <div class="row"><span class="row__label">Yol parası <span style="color:var(--text-tertiary);">${summary.allowanceDays} gün × ${formatMoney(summary.transportAllowance, { decimals: false })}</span></span><span class="row__value">${formatMoney(summary.transportPay, { decimals: false })}</span></div>` : ''}
       </div>
     </div>
 

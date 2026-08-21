@@ -24,6 +24,9 @@ sunucuya veri gönderilmez.
 
 **Diğer**
 - Saat ücretin **aylık maaşından otomatik** hesaplanır (varsayılan: maaş ÷ 225)
+- **Yemek ve yol parası**: günlük bedelleri gir, tutarlar ayın iş günü sayısına
+  göre (haftalık program − resmi tatiller) otomatik hesaplanıp tahmini ödemeye
+  ve raporlara eklenir
 - Dönem = takvim ayı; **ödeme günü ve gecikmesi** ayarlanabilir (örn. Ağustos
   dönemi → 10 Eylül'de öder)
 - **Çoklu profil**: Eyüp ve Fuat'ın kayıtları/ayarları tamamen ayrı tutulur

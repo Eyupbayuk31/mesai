@@ -20,6 +20,9 @@ const DEFAULT_WEEKLY_SCHEDULE = {
 const DEFAULT_SETTINGS = {
   monthlySalary: 0,
   hoursDivisor: 225,
+  // Günlük yan ödemeler (yemek kartı / ulaşım) — 0 = kapalı.
+  mealAllowance: 0,
+  transportAllowance: 0,
   payDay: 10,
   payMonthOffset: 1,
   multipliers: { normal: 1.5, weekend: 2, holiday: 2 },

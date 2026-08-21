@@ -1,6 +1,6 @@
-import { formatMoney } from '../../format.js';
-import { hourlyRate } from '../../payroll.js';
-import { parseLocaleNumber } from '../../format.js';
+import { formatMoney, parseLocaleNumber } from '../../format.js';
+import { hourlyRate, workdaysForPeriod } from '../../payroll.js';
+import { currentPeriodKey } from '../../period.js';
 import { commitNumberOnChange } from './shared.js';
 
 export const title = 'Maaş ve ücret';
@@ -22,6 +22,29 @@ export function render(container, state, ctx) {
       <div class="preview-strip" style="margin-top:14px; margin-bottom:0;">
         <span class="preview-strip__label">Saat ücretin</span>
         <span class="preview-strip__value" id="rateDisplay">${formatMoney(hourlyRate(settings))}</span>
+      </div>
+    </div>
+
+    <div class="section-title">Yemek ve yol parası</div>
+    <div class="card">
+      <div class="field" style="margin-bottom:14px;">
+        <label class="field__label">Günlük yemek bedeli (₺)</label>
+        <input class="input" type="text" inputmode="decimal" id="mealInput" value="${settings.mealAllowance || ''}" placeholder="ör. 250" />
+        <div class="field__hint">Çalıştığın her gün yemek kartına yatan tutar.</div>
+      </div>
+      <div class="field" style="margin-bottom:6px;">
+        <label class="field__label">Günlük yol bedeli (₺)</label>
+        <input class="input" type="text" inputmode="decimal" id="transportInput" value="${settings.transportAllowance || ''}" placeholder="ör. 55" />
+        <div class="field__hint">İşe geliş-gidiş için ödenen günlük ulaşım tutarı.</div>
+      </div>
+      <div class="field__hint" style="margin-bottom:14px;">İkisi de resmi tatiller düşülerek ayın iş günü sayısıyla çarpılır.</div>
+      <div class="preview-strip" style="margin-bottom:8px; margin-top:0;">
+        <span class="preview-strip__label">Bu ay yemek</span>
+        <span class="preview-strip__value" id="mealPreview">—</span>
+      </div>
+      <div class="preview-strip" style="margin-bottom:0; margin-top:0;">
+        <span class="preview-strip__label">Bu ay yol</span>
+        <span class="preview-strip__value" id="transportPreview">—</span>
       </div>
     </div>
 
@@ -65,6 +88,26 @@ export function render(container, state, ctx) {
 
   commitNumberOnChange(salaryInput, (v) => ctx.store.updateSettings({ monthlySalary: v }));
   commitNumberOnChange(divisorInput, (v) => ctx.store.updateSettings({ hoursDivisor: v || 225 }));
+
+  const mealInput = container.querySelector('#mealInput');
+  const transportInput = container.querySelector('#transportInput');
+  const mealPreview = container.querySelector('#mealPreview');
+  const transportPreview = container.querySelector('#transportPreview');
+  function updateAllowancePreviews() {
+    const days = workdaysForPeriod(currentPeriodKey(), ctx.store.getState().settings);
+    const dailyMeal = parseLocaleNumber(mealInput.value) || 0;
+    const dailyTransport = parseLocaleNumber(transportInput.value) || 0;
+    const line = (daily) => (daily > 0
+      ? `${days} gün × ${formatMoney(daily, { decimals: false })} = ${formatMoney(days * daily, { decimals: false })}`
+      : '—');
+    mealPreview.textContent = line(dailyMeal);
+    transportPreview.textContent = line(dailyTransport);
+  }
+  mealInput.addEventListener('input', updateAllowancePreviews);
+  transportInput.addEventListener('input', updateAllowancePreviews);
+  updateAllowancePreviews();
+  commitNumberOnChange(mealInput, (v) => ctx.store.updateSettings({ mealAllowance: v }));
+  commitNumberOnChange(transportInput, (v) => ctx.store.updateSettings({ transportAllowance: v }));
 
   const map = { multNormal: 'normal', multWeekend: 'weekend', multHoliday: 'holiday' };
   for (const [id, key] of Object.entries(map)) {

@@ -58,6 +58,8 @@ export function renderHome(container, state, ctx) {
         <div class="rows">
           <div class="row"><span class="row__label">Maaş</span><span class="row__value">${formatMoney(summary.baseSalary, { decimals: false })}</span></div>
           <div class="row"><span class="row__label">Mesai ücreti</span><span class="row__value is-positive">+ ${formatMoney(summary.overtimePay, { decimals: false })}</span></div>
+          ${summary.mealPay > 0 ? `<div class="row"><span class="row__label">Yemek parası <span style="color:var(--text-tertiary);">(${summary.allowanceDays} gün)</span></span><span class="row__value is-positive">+ ${formatMoney(summary.mealPay, { decimals: false })}</span></div>` : ''}
+          ${summary.transportPay > 0 ? `<div class="row"><span class="row__label">Yol parası <span style="color:var(--text-tertiary);">(${summary.allowanceDays} gün)</span></span><span class="row__value is-positive">+ ${formatMoney(summary.transportPay, { decimals: false })}</span></div>` : ''}
           ${summary.bonuses > 0 ? `<div class="row"><span class="row__label">Prim</span><span class="row__value is-positive">+ ${formatMoney(summary.bonuses, { decimals: false })}</span></div>` : ''}
           ${summary.advances > 0 ? `<div class="row"><span class="row__label">Avans</span><span class="row__value is-negative">− ${formatMoney(summary.advances, { decimals: false })}</span></div>` : ''}
           ${summary.deductions > 0 ? `<div class="row"><span class="row__label">Kesinti</span><span class="row__value is-negative">− ${formatMoney(summary.deductions, { decimals: false })}</span></div>` : ''}
