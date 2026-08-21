@@ -114,14 +114,34 @@ function renderModeBody(formState) {
     <div class="input-row">
       <div class="field">
         <label class="field__label" style="font-size:12px;">Başlangıç</label>
-        <input class="input" type="time" id="startInput" value="${formState.start}" />
+        ${timeSelectHTML('start', formState.start)}
       </div>
       <div class="field">
         <label class="field__label" style="font-size:12px;">Bitiş</label>
-        <input class="input" type="time" id="endInput" value="${formState.end}" />
+        ${timeSelectHTML('end', formState.end)}
       </div>
     </div>
     <div class="field__hint" id="rangeComputed" style="margin-top:-8px;margin-bottom:16px;">= ${formatHours(hoursBetween(formState.start, formState.end))}</div>
+  `;
+}
+
+// 24 saatlik özel saat/dakika seçici — tarayıcının yerel <input type="time">
+// bileşenine bağlı kalmadan her cihazda tutarlı şekilde 24 saat formatında
+// gösterir (AM/PM karışıklığı olmaz, Türkiye'de saat hep 24 saatlik yazılır).
+function timeSelectHTML(prefix, value) {
+  const [h, m] = value.split(':');
+  const hours = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+  const minutes = ['00', '15', '30', '45'];
+  return `
+    <div class="time-select">
+      <select class="input time-select__part" id="${prefix}Hour">
+        ${hours.map((hh) => `<option value="${hh}" ${hh === h ? 'selected' : ''}>${hh}</option>`).join('')}
+      </select>
+      <span class="time-select__colon">:</span>
+      <select class="input time-select__part" id="${prefix}Minute">
+        ${minutes.map((mm) => `<option value="${mm}" ${mm === m ? 'selected' : ''}>${mm}</option>`).join('')}
+      </select>
+    </div>
   `;
 }
 
@@ -194,20 +214,24 @@ function wireEvents(bodyEl, footerEl, formState, settings, store, existingEntry)
         });
       });
     } else {
-      const startInput = bodyEl.querySelector('#startInput');
-      const endInput = bodyEl.querySelector('#endInput');
+      const startHour = bodyEl.querySelector('#startHour');
+      const startMinute = bodyEl.querySelector('#startMinute');
+      const endHour = bodyEl.querySelector('#endHour');
+      const endMinute = bodyEl.querySelector('#endMinute');
       const computedEl = bodyEl.querySelector('#rangeComputed');
       function updateRange() {
-        formState.start = startInput.value;
-        formState.end = endInput.value;
+        formState.start = `${startHour.value}:${startMinute.value}`;
+        formState.end = `${endHour.value}:${endMinute.value}`;
         const h = hoursBetween(formState.start, formState.end);
         computedEl.textContent = `= ${formatHours(h)}`;
         const noteTarget = bodyEl.querySelector('#midnightNote');
         if (noteTarget) noteTarget.innerHTML = crossesMidnight(formState.start, formState.end) ? '<div class="field__hint">Ertesi güne sarkıyor</div>' : '';
         updatePreview();
       }
-      startInput.addEventListener('input', updateRange);
-      endInput.addEventListener('input', updateRange);
+      startHour.addEventListener('change', updateRange);
+      startMinute.addEventListener('change', updateRange);
+      endHour.addEventListener('change', updateRange);
+      endMinute.addEventListener('change', updateRange);
     }
   }
 
