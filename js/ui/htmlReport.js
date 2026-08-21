@@ -239,12 +239,12 @@ function htmlShell({ title, headerTitle, metaRight, body }) {
 <title>${title}</title>
 <style>
   :root {
-    --accent: #f5900f;
-    --accent-strong: #d97706;
-    --text: #14171f;
-    --text-secondary: #5b6472;
-    --border: #e6e8ee;
-    --bg-soft: #f7f8fb;
+    --accent: #d97d0d;
+    --accent-strong: #9a5404;
+    --text: #1c1913;
+    --text-secondary: #5c564a;
+    --border: #e7e1d2;
+    --bg-soft: #f7f4ec;
   }
   * { box-sizing: border-box; }
   body {

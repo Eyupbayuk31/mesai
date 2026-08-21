@@ -44,7 +44,7 @@ export function renderHome(container, state, ctx) {
     </div>
 
     ${!hasSalary ? salaryCtaHTML() : `
-      <div class="card">
+      <div class="card card--bordro">
         <div class="hero">
           <div class="hero__label">Bu dönem mesai</div>
           <div class="hero__value">${formatHours(summary.totalHours)}</div>
@@ -52,19 +52,16 @@ export function renderHome(container, state, ctx) {
           ${comparisonHTML(summary, prevSummary, periodKey)}
         </div>
         ${typeChipsHTML(summary)}
-      </div>
-
-      <div class="card">
-        <div class="rows">
-          <div class="row"><span class="row__label">Maaş</span><span class="row__value">${formatMoney(summary.baseSalary, { decimals: false })}</span></div>
-          <div class="row"><span class="row__label">Mesai ücreti</span><span class="row__value is-positive">+ ${formatMoney(summary.overtimePay, { decimals: false })}</span></div>
-          ${summary.mealPay > 0 ? `<div class="row"><span class="row__label">Yemek parası <span style="color:var(--text-tertiary);">(${summary.allowanceDays} gün)</span></span><span class="row__value is-positive">+ ${formatMoney(summary.mealPay, { decimals: false })}</span></div>` : ''}
-          ${summary.transportPay > 0 ? `<div class="row"><span class="row__label">Yol parası <span style="color:var(--text-tertiary);">(${summary.allowanceDays} gün)</span></span><span class="row__value is-positive">+ ${formatMoney(summary.transportPay, { decimals: false })}</span></div>` : ''}
-          ${summary.bonuses > 0 ? `<div class="row"><span class="row__label">Prim</span><span class="row__value is-positive">+ ${formatMoney(summary.bonuses, { decimals: false })}</span></div>` : ''}
-          ${(summary.advances > 0 || summary.deductions > 0) ? `<div class="row row--subtotal"><span class="row__label">Toplam gelir</span><span class="row__value">${formatMoney(summary.totalIncome, { decimals: false })}</span></div>` : ''}
-          ${summary.advances > 0 ? `<div class="row"><span class="row__label">Avans</span><span class="row__value is-negative">− ${formatMoney(summary.advances, { decimals: false })}</span></div>` : ''}
-          ${summary.deductions > 0 ? `<div class="row"><span class="row__label">Kesinti</span><span class="row__value is-negative">− ${formatMoney(summary.deductions, { decimals: false })}</span></div>` : ''}
-          <div class="row row--total"><span class="row__label">Tahmini eline geçecek</span><span class="row__value">${formatMoney(summary.netTotal)}</span></div>
+        <div class="rows rows--receipt">
+          ${receiptRow('Maaş', formatMoney(summary.baseSalary, { decimals: false }))}
+          ${receiptRow('Mesai ücreti', `+ ${formatMoney(summary.overtimePay, { decimals: false })}`, { valueCls: 'is-positive' })}
+          ${summary.mealPay > 0 ? receiptRow(`Yemek parası <span style="color:var(--text-tertiary);">(${summary.allowanceDays} gün)</span>`, `+ ${formatMoney(summary.mealPay, { decimals: false })}`, { valueCls: 'is-positive' }) : ''}
+          ${summary.transportPay > 0 ? receiptRow(`Yol parası <span style="color:var(--text-tertiary);">(${summary.allowanceDays} gün)</span>`, `+ ${formatMoney(summary.transportPay, { decimals: false })}`, { valueCls: 'is-positive' }) : ''}
+          ${summary.bonuses > 0 ? receiptRow('Prim', `+ ${formatMoney(summary.bonuses, { decimals: false })}`, { valueCls: 'is-positive' }) : ''}
+          ${(summary.advances > 0 || summary.deductions > 0) ? receiptRow('Toplam gelir', formatMoney(summary.totalIncome, { decimals: false }), { rowCls: 'row--subtotal' }) : ''}
+          ${summary.advances > 0 ? receiptRow('Avans', `− ${formatMoney(summary.advances, { decimals: false })}`, { valueCls: 'is-negative' }) : ''}
+          ${summary.deductions > 0 ? receiptRow('Kesinti', `− ${formatMoney(summary.deductions, { decimals: false })}`, { valueCls: 'is-negative' }) : ''}
+          ${receiptRow('Tahmini eline geçecek', formatMoney(summary.netTotal), { rowCls: 'row--total' })}
         </div>
       </div>
 
@@ -142,6 +139,11 @@ function comparisonHTML(summary, prevSummary, periodKey) {
       ${arrow} Geçen aya göre ${up ? '+' : '−'}${formatHours(Math.abs(diff))}
     </div>
   `;
+}
+
+// Fiş (receipt) satırı: etiket ······ değer. Kılavuz çizgisi CSS'te.
+function receiptRow(label, value, { rowCls = '', valueCls = '' } = {}) {
+  return `<div class="row ${rowCls}"><span class="row__label">${label}</span><span class="row__leader"></span><span class="row__value ${valueCls}">${value}</span></div>`;
 }
 
 function typeChipsHTML(summary) {

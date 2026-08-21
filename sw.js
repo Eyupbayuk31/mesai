@@ -1,9 +1,15 @@
-const CACHE_NAME = 'mesai-v8';
+const CACHE_NAME = 'mesai-v9';
 const APP_SHELL = [
   './',
   './index.html',
   './manifest.webmanifest',
   './css/style.css',
+  './fonts/plex-mono-latin-500.woff2',
+  './fonts/plex-mono-latin-ext-500.woff2',
+  './fonts/plex-mono-latin-600.woff2',
+  './fonts/plex-mono-latin-ext-600.woff2',
+  './fonts/plex-mono-latin-700.woff2',
+  './fonts/plex-mono-latin-ext-700.woff2',
   './js/app.js',
   './js/store.js',
   './js/profile.js',
