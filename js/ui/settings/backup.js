@@ -5,7 +5,7 @@ import { entryAmount } from '../../payroll.js';
 import { profileName } from '../../profile.js';
 import {
   getSyncConfig, setSyncConfig, clearSyncConfig,
-  verifyToken, gistScopeProblem, sanitizeToken, backupFileName,
+  verifyToken, gistScopeProblem, sanitizeToken, describeTokenKind, backupFileName,
   findBackupGist, listBackups, readGistFile, SyncError,
 } from '../../githubSync.js';
 import { todayStamp } from './shared.js';
@@ -208,9 +208,10 @@ function wireCloudSync(container, state, ctx) {
     } catch (err) {
       // Token'ın kendisini asla gösterme; teşhis için uzunluk ve temizlenen
       // karakter sayısı yeterli (telefonda görünmez karakter yakalamak için).
-      const diag = `\n\nTeşhis: girilen token ${token.length} karakter`
+      const kind = describeTokenKind(token);
+      const diag = `\n\nTeşhis: ${token.length} karakter, tür: ${kind.kind}`
         + (removed > 0 ? `, yapıştırmadan ${removed} geçersiz karakter temizlendi` : '')
-        + '. Classic token normalde 40 karakterdir.';
+        + `.\n${kind.text}`;
       reportError(err instanceof SyncError ? new SyncError(err.message + diag) : err);
       done();
     }

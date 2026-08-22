@@ -62,3 +62,12 @@ export function openSheet(options) {
 }
 
 backdrop.addEventListener('click', () => closeSheet());
+
+// Esc ile kapatma — masaüstünde sayfa ortada bir pencere gibi açıldığı için
+// klavyeyle kapatabilmek beklenen davranış.
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && currentSheetEl) {
+    e.preventDefault();
+    closeSheet();
+  }
+});

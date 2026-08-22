@@ -26,6 +26,40 @@ export function sanitizeToken(raw) {
   return { token, removed: input.length - token.length };
 }
 
+// Token'ın TÜRÜNÜ ön ekinden anlar. Ön ek gizli bilgi değildir (GitHub bunu
+// tokenların başına bilerek koyar) ama "neden kabul edilmedi" sorusunu çoğu
+// zaman tek başına cevaplar: yanlış tür mü, hiç token değil mi, süresi mi
+// dolmuş.
+export function describeTokenKind(token) {
+  const t = String(token || '');
+  if (t.startsWith('github_pat_')) {
+    return {
+      kind: 'fine-grained',
+      ok: false,
+      text: 'Bu bir "fine-grained" token. GitHub bu türle gist API\'sine izin vermiyor — '
+        + 'Tokens (classic) altından yeni bir token oluşturman gerekiyor.',
+    };
+  }
+  if (t.startsWith('ghp_')) {
+    const ok = t.length === 40;
+    return {
+      kind: 'classic',
+      ok,
+      text: ok
+        ? 'Tür ve uzunluk doğru (classic token). GitHub yine de kabul etmediyse token silinmiş '
+          + 'veya süresi dolmuş demektir; yenisini oluştur.'
+        : `Classic token gibi görünüyor ama uzunluk ${t.length} (40 olmalı) — kopyalarken bir kısmı eksik kalmış.`,
+    };
+  }
+  if (/^gh[ousr]_/.test(t)) {
+    return { kind: 'diğer', ok: false, text: 'Bu bir kişisel erişim tokenı değil (OAuth/uygulama tokenı). Tokens (classic) altından yeni bir token oluştur.' };
+  }
+  if (/^[0-9a-f]{40}$/i.test(t)) {
+    return { kind: 'eski', ok: false, text: 'Bu çok eski biçimde bir token. GitHub artık kabul etmiyor; yenisini oluştur.' };
+  }
+  return { kind: 'bilinmiyor', ok: false, text: 'Bu bir GitHub tokenına benzemiyor (token\'lar "ghp_" ile başlar). Yanlış bir şey kopyalanmış olabilir.' };
+}
+
 export function backupFileName(profileId) {
   return `mesai-${profileId}.json`;
 }
@@ -67,7 +101,9 @@ export function clearSyncConfig() {
 // (ör. geçerli bir token'a "süresi dolmuş" demek) böylece ayıklanabilir.
 function messageForStatus(status, githubMessage) {
   const detail = githubMessage ? ` GitHub: "${githubMessage}"` : '';
-  if (status === 401) return `Token kabul edilmedi (401). Kopyalarken eksik/fazla karakter kalmış olabilir.${detail}`;
+  // Nedenini burada tahmin etmiyoruz; çağıran taraf token'ın türüne bakıp
+  // kesin teşhisi ekliyor (describeTokenKind).
+  if (status === 401) return `Token kabul edilmedi (401).${detail}`;
   if (status === 403) return `Yetki reddedildi (403). Token'da "gist" izni işaretli mi?${detail}`;
   if (status === 404) return `Bulunamadı (404). Token'da "gist" izni yoksa GitHub gist'leri de 404 döndürür.${detail}`;
   if (status === 422) return `GitHub isteği reddetti (422).${detail}`;

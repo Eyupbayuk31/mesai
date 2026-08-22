@@ -14,7 +14,8 @@ globalThis.localStorage = makeMemoryLocalStorage();
 
 const {
   backupFileName, getSyncConfig, setSyncConfig, clearSyncConfig,
-  pushBackup, pullBackup, verifyToken, gistScopeProblem, sanitizeToken, findBackupGist, SyncError,
+  pushBackup, pullBackup, verifyToken, gistScopeProblem, sanitizeToken, findBackupGist,
+  describeTokenKind, SyncError,
 } = await import('../js/githubSync.js');
 
 // Çağrıları kaydeden sahte fetch.
@@ -33,6 +34,41 @@ const jsonResponse = (status, data, scopesHeader = 'gist') => ({
   json: async () => data,
   text: async () => JSON.stringify(data),
   headers: { get: (name) => (name.toLowerCase() === 'x-oauth-scopes' ? scopesHeader : null) },
+});
+
+
+test('describeTokenKind - dogru uzunlukta classic token', () => {
+  const res = describeTokenKind('ghp_' + 'a'.repeat(36));
+  assert.equal(res.kind, 'classic');
+  assert.equal(res.ok, true);
+  assert.match(res.text, /süresi mi|silinmiş|süresi dolmuş/);
+});
+
+test('describeTokenKind - kisa classic token uzunlugu soyler', () => {
+  const res = describeTokenKind('ghp_kisa');
+  assert.equal(res.ok, false);
+  assert.match(res.text, /uzunluk 8/);
+});
+
+test('describeTokenKind - fine-grained token gist desteklemez', () => {
+  const res = describeTokenKind('github_pat_11ABCDEF');
+  assert.equal(res.kind, 'fine-grained');
+  assert.match(res.text, /classic/i);
+});
+
+test('describeTokenKind - OAuth tokenlari ayirt edilir', () => {
+  assert.equal(describeTokenKind('gho_abc').kind, 'diğer');
+  assert.equal(describeTokenKind('ghs_abc').kind, 'diğer');
+});
+
+test('describeTokenKind - eski 40 haneli hex bicimi', () => {
+  assert.equal(describeTokenKind('a1b2c3d4'.repeat(5)).kind, 'eski');
+});
+
+test('describeTokenKind - token olmayan metin', () => {
+  const res = describeTokenKind('parolam123');
+  assert.equal(res.kind, 'bilinmiyor');
+  assert.match(res.text, /benzemiyor/);
 });
 
 test('backupFileName - profil başına ayrı dosya', () => {

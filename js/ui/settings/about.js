@@ -3,7 +3,7 @@ import { profileName } from '../../profile.js';
 
 // Uygulama sürümü — her yayınla burası ve sw.js CACHE_VERSION birlikte artar.
 // Ayarlar → Uygulama hakkında'da görünür; güncelleme gelmiş mi buradan anlaşılır.
-export const APP_VERSION = '3.2.0';
+export const APP_VERSION = '3.2.1';
 
 export const title = 'Uygulama hakkında';
 
