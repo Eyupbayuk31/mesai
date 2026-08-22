@@ -81,17 +81,6 @@ function backupSummary(state) {
   return `${days} gün önce`;
 }
 
-// Çekiliş sayacı — menüde küçük bir özet.
-function lunchSummary() {
-  try {
-    const counts = JSON.parse(localStorage.getItem('mesai.lunch.counts')) || {};
-    const toplam = Object.values(counts).reduce((a, b) => a + (Number(b) || 0), 0);
-    return toplam ? `${toplam} çekiliş yapıldı` : 'Öğle yemeği çekilişi';
-  } catch {
-    return 'Öğle yemeği çekilişi';
-  }
-}
-
 const MENU_ICONS = {
   salary: '<circle cx="12" cy="12" r="9"/><path d="M14.5 9.2A2.6 2.6 0 0 0 12 8c-1.4 0-2.5.8-2.5 2s1.1 2 2.5 2 2.5.8 2.5 2-1.1 2-2.5 2a2.6 2.6 0 0 1-2.5-1.2M12 6.5v11"/>',
   schedule: '<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3.5v3M16 3.5v3"/>',
@@ -139,7 +128,7 @@ function renderSettingsMenu(container, state, ctx) {
       ${menuRowHTML('budget', 'Bütçe kategorileri', budgetSummaryLabel(settings))}
       ${menuRowHTML('appearance', 'Görünüm', themeSummary(settings))}
       ${menuRowHTML('backup', 'Yedekleme', backupSummary(state))}
-      ${menuRowHTML('lunch', 'Kim ısmarlasın?', lunchSummary())}
+      ${menuRowHTML('lunch', 'Kim ısmarlasın?', 'Öğle yemeği çekilişi')}
       ${menuRowHTML('about', 'Uygulama hakkında', '')}
     </div>
   `;

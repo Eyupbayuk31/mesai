@@ -6,25 +6,8 @@
 
 const KISILER = ['Eyüp', 'Fuat', 'Gökmen'];
 const KAZANAN = 'Fuat';
-const SAYAC_KEY = 'mesai.lunch.counts';
 
 export const title = 'Kim ısmarlasın?';
-
-// Sayaç sadece bu cihazda durur; senkronlanan veriye karışmaz.
-function readCounts() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(SAYAC_KEY));
-    if (raw && typeof raw === 'object') return raw;
-  } catch {}
-  return {};
-}
-
-function bumpCount(name) {
-  const counts = readCounts();
-  counts[name] = (counts[name] || 0) + 1;
-  try { localStorage.setItem(SAYAC_KEY, JSON.stringify(counts)); } catch {}
-  return counts;
-}
 
 export function render(container, state, ctx) {
   container.innerHTML = `
@@ -36,9 +19,6 @@ export function render(container, state, ctx) {
       <div class="lunch__note" id="lunchNote">Çekilişe katılanlar: ${KISILER.join(' · ')}</div>
       <button class="btn btn--primary" id="lunchDrawBtn" type="button">Çekilişi başlat</button>
     </div>
-
-    <div class="section-title">Şeref tablosu</div>
-    <div class="card" id="lunchBoard">${boardHTML()}</div>
   `;
 
   const stage = container.querySelector('#lunchStage');
@@ -58,9 +38,6 @@ export function render(container, state, ctx) {
       stage.classList.add('is-winner');
       nameEl.textContent = KAZANAN;
       noteEl.innerHTML = `<b>${KAZANAN} abi</b> ısmarlıyor! 🎉`;
-      const counts = bumpCount(KAZANAN);
-      const board = container.querySelector('#lunchBoard');
-      if (board) board.innerHTML = boardHTML(counts);
       btn.disabled = false;
       btn.textContent = 'Tekrar çek';
     });
@@ -95,25 +72,4 @@ function spin(nameEl, onDone) {
   };
 
   tur();
-}
-
-function boardHTML(counts = readCounts()) {
-  const toplam = KISILER.reduce((sum, k) => sum + (counts[k] || 0), 0);
-  if (!toplam) {
-    return `<p class="field__hint" style="margin:0;">Henüz çekiliş yapılmadı. Kader bekliyor.</p>`;
-  }
-  return `
-    <div class="rows">
-      ${KISILER.map((k) => {
-    const adet = counts[k] || 0;
-    const yuzde = toplam ? Math.round((adet / toplam) * 100) : 0;
-    return `
-          <div class="row">
-            <span class="row__label">${k}</span>
-            <span class="row__value ${adet ? 'is-negative' : ''}">${adet} kez${adet ? ` · %${yuzde}` : ''}</span>
-          </div>`;
-  }).join('')}
-    </div>
-    <p class="field__hint" style="margin:10px 0 0;">Toplam ${toplam} çekiliş. İstatistik yalan söylemez.</p>
-  `;
 }
