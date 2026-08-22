@@ -4,6 +4,7 @@ import { todayISO, toISODate, parseLocaleNumber, formatMoney, formatHours, parse
 import { hoursBetween, crossesMidnight, entryAmount, shiftOvertime, addMinutesToTime } from '../payroll.js';
 import { suggestType } from '../holidays.js';
 import { timeSelectHTML } from './timeSelect.js';
+import { nowHM, defaultEndTime } from '../timeDefaults.js';
 
 const TYPE_OPTIONS = [
   { key: 'normal', label: 'Normal', mult: 'multipliers.normal' },
@@ -28,15 +29,21 @@ export function openEntrySheet(store, existingEntry, options = {}) {
   const isEdit = !!existingEntry;
   const initialDate = existingEntry?.date || options.date || todayISO();
   const scheduleDefaults = scheduleDefaultsForDate(initialDate, settings);
+  // Bugüne yeni kayıt giriliyorsa çıkış saati şu anki saatle gelir.
+  const isToday = initialDate === todayISO();
+  const endDefaults = {
+    shiftEnd: defaultEndTime({ isNew: !isEdit, isToday, defaultEnd: scheduleDefaults.shiftEnd }),
+    rangeEnd: defaultEndTime({ isNew: !isEdit, isToday, defaultEnd: '19:00' }),
+  };
 
   const formState = {
     date: initialDate,
     mode: existingEntry?.start ? 'range' : (settings.defaultEntryMode || 'shift'),
     hours: existingEntry?.hours ?? 3,
     start: existingEntry?.start || '18:00',
-    end: existingEntry?.end || '19:00',
+    end: existingEntry?.end || endDefaults.rangeEnd,
     shiftStart: scheduleDefaults.shiftStart,
-    shiftEnd: scheduleDefaults.shiftEnd,
+    shiftEnd: endDefaults.shiftEnd,
     type: existingEntry?.type || 'normal',
     note: existingEntry?.note || '',
     typeAuto: !existingEntry, // yeni kayıtta otomatik öneri açık başlar
@@ -163,6 +170,10 @@ function renderModeBody(formState, settings) {
         ${timeSelectHTML('end', formState.end)}
       </div>
     </div>
+    <div class="quick-chips" id="rangeNowChips" style="margin-top:-8px;">
+      <button class="quick-chip quick-chip--now" type="button" data-now="start">Başlangıç: şimdi</button>
+      <button class="quick-chip quick-chip--now" type="button" data-now="end">Bitiş: şimdi</button>
+    </div>
     <div class="field__hint" id="rangeComputed" style="margin-top:-8px;margin-bottom:16px;">= ${formatHours(hoursBetween(formState.start, formState.end))}</div>
   `;
 }
@@ -182,7 +193,8 @@ function shiftQuickChipsHTML(formState, settings) {
   const date = parseISODate(formState.date);
   const daySchedule = settings.weeklySchedule?.[date.getDay()];
   const base = daySchedule && daySchedule.works ? daySchedule.end : formState.shiftStart;
-  return QUICK_OFFSETS.map((o) => `<button class="quick-chip" type="button" data-quick-offset="${o.minutes}" data-quick-base="${base}">${o.label}</button>`).join('');
+  return `<button class="quick-chip quick-chip--now" type="button" data-now="shiftEnd">Şimdi</button>`
+    + QUICK_OFFSETS.map((o) => `<button class="quick-chip" type="button" data-quick-offset="${o.minutes}" data-quick-base="${base}">${o.label}</button>`).join('');
 }
 
 function shiftBreakdownHTML(formState, settings) {
@@ -297,6 +309,14 @@ function wireEvents(bodyEl, footerEl, formState, settings, store, existingEntry)
       bodyEl.querySelector('#shiftEndHour').addEventListener('change', () => updateShift());
       bodyEl.querySelector('#shiftEndMinute').addEventListener('change', () => updateShift());
       bodyEl.querySelector('#shiftQuickChips').addEventListener('click', (e) => {
+        // "Şimdi": çıkarken saati elle aramak yerine tek dokunuş.
+        if (e.target.closest('[data-now]')) {
+          const [nh, nm] = nowHM().split(':');
+          bodyEl.querySelector('#shiftEndHour').value = nh;
+          bodyEl.querySelector('#shiftEndMinute').value = nm;
+          updateShift();
+          return;
+        }
         const chip = e.target.closest('[data-quick-offset]');
         if (!chip) return;
         const newEnd = addMinutesToTime(chip.dataset.quickBase, Number(chip.dataset.quickOffset));
@@ -320,6 +340,18 @@ function wireEvents(bodyEl, footerEl, formState, settings, store, existingEntry)
         if (noteTarget) noteTarget.innerHTML = crossesMidnight(formState.start, formState.end) ? '<div class="field__hint">Ertesi güne sarkıyor</div>' : '';
         updatePreview();
       }
+      // Kendi kimliğiyle seçilir: gövdede daha önce gelen tarih çipleri de
+      // .quick-chips sınıfını taşıyor.
+      bodyEl.querySelector('#rangeNowChips')?.addEventListener('click', (e) => {
+        const chip = e.target.closest('[data-now]');
+        if (!chip) return;
+        const [nh, nm] = nowHM().split(':');
+        const target = chip.dataset.now;
+        (target === 'start' ? startHour : endHour).value = nh;
+        (target === 'start' ? startMinute : endMinute).value = nm;
+        updateRange();
+      });
+
       startHour.addEventListener('change', updateRange);
       startMinute.addEventListener('change', updateRange);
       endHour.addEventListener('change', updateRange);

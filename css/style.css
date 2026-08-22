@@ -2159,3 +2159,10 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
     justify-content: center;
   }
 }
+
+/* "Şimdi" çipi diğer hızlı çiplerden ayrılsın: farklı bir iş yapıyor. */
+.quick-chip--now {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  font-weight: 750;
+}
