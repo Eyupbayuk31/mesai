@@ -1785,3 +1785,16 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
 @media (min-width: 900px) {
   .bar-chart--mini { height: 104px; }
 }
+
+/* --- Bütçe: kategori dağılım şeridi --- */
+.cat-bar {
+  display: flex;
+  height: 10px;
+  margin: 4px 0 16px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--divider);
+}
+
+.cat-bar__seg { display: block; min-width: 2px; }
+.cat-bar__seg + .cat-bar__seg { border-left: 1px solid var(--surface); }

@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { budgetSummary, budgetTips, categoryOf, allCategories, CATEGORIES } from '../js/budget.js';
+import {
+  budgetSummary, budgetTips, categoryOf, allCategories, CATEGORIES,
+  spendingPace, comparePreviousPeriod, spentThrough,
+} from '../js/budget.js';
 
 function makeMemoryLocalStorage() {
   const map = new Map();
@@ -328,3 +331,106 @@ test('Store - sürekli gider ekle/güncelle/kaldır', async () => {
   store.removeRecurring(def.id);
   assert.equal(store.getState().recurring.length, 0);
 });
+
+// --- Harcama hızı ------------------------------------------------------
+
+const paceState = (expenses, recurring = []) => ({
+  settings: { ...baseSettings, monthlySalary: 30000 },
+  entries: [], adjustments: [], expenses, recurring,
+});
+
+test('spendingPace - değişken harcama ay sonuna ileri sarılır', () => {
+  // Ayın 10'unda 1000 TL değişken harcama → günde 100 → 31 günde 3100
+  const state = paceState([{ id: 'x1', date: '2026-08-05', amount: 1000, category: 'market' }]);
+  const pace = spendingPace(budgetSummary(state, '2026-08', '2026-08-10'), '2026-08-10');
+  assert.equal(pace.projected, 3100);
+  assert.equal(pace.reliable, true);
+});
+
+test('spendingPace - SÜREKLİ giderler ileri sarılmaz, olduğu gibi eklenir', () => {
+  // Kira 5000 (sürekli) + 1000 değişken. Kira güne bölünüp 31'le çarpılsaydı
+  // tahmin 15.500 TL gibi saçma bir sayı olurdu.
+  const state = paceState(
+    [{ id: 'x1', date: '2026-08-05', amount: 1000, category: 'market' }],
+    [{ id: 'r1', label: 'kira', amount: 5000, category: 'fatura', day: 1, since: '2026-07', active: true }],
+  );
+  const pace = spendingPace(budgetSummary(state, '2026-08', '2026-08-10'), '2026-08-10');
+  assert.equal(pace.projected, 5000 + 3100, `beklenmedik: ${pace.projected}`);
+});
+
+test('spendingPace - bugünden sonraki tarihli harcama hıza katılmaz', () => {
+  const state = paceState([
+    { id: 'x1', date: '2026-08-05', amount: 1000, category: 'market' },
+    { id: 'x2', date: '2026-08-28', amount: 9000, category: 'market' },
+  ]);
+  const pace = spendingPace(budgetSummary(state, '2026-08', '2026-08-10'), '2026-08-10');
+  assert.equal(pace.projected, 3100, 'ileri tarihli harcama günlük hızı bozmamalı');
+});
+
+test('spendingPace - ayın ilk günlerinde güvenilmez işaretlenir', () => {
+  const state = paceState([{ id: 'x1', date: '2026-08-02', amount: 500, category: 'market' }]);
+  assert.equal(spendingPace(budgetSummary(state, '2026-08', '2026-08-03'), '2026-08-03').reliable, false);
+});
+
+test('spendingPace - bütçe yetiyorsa tükenme günü yok', () => {
+  const state = paceState([{ id: 'x1', date: '2026-08-05', amount: 100, category: 'market' }]);
+  const pace = spendingPace(budgetSummary(state, '2026-08', '2026-08-10'), '2026-08-10');
+  assert.equal(pace.runsOutOn, null);
+  assert.equal(pace.daysShort, 0);
+});
+
+test('spendingPace - bütçe yetmiyorsa tükenme günü ve açık gün sayısı', () => {
+  // 30.000 bütçe, ayın 10'unda 15.000 harcanmış → günde 1500 → 20. günde biter
+  const state = paceState([{ id: 'x1', date: '2026-08-03', amount: 15000, category: 'market' }]);
+  const summary = budgetSummary(state, '2026-08', '2026-08-10');
+  const pace = spendingPace(summary, '2026-08-10');
+  assert.ok(pace.projected > summary.expectedTotal, 'bütçe aşılmalı');
+  assert.equal(pace.runsOutOn, '2026-08-20');
+  assert.equal(pace.daysShort, 11);
+});
+
+test('spendingPace - geçmiş veya gelecek dönemde tahmin yok', () => {
+  const state = paceState([{ id: 'x1', date: '2026-07-05', amount: 1000, category: 'market' }]);
+  assert.equal(spendingPace(budgetSummary(state, '2026-07', '2026-08-10'), '2026-08-10'), null);
+});
+
+// --- Geçen aya kıyas ---------------------------------------------------
+
+test('spentThrough - ayın N gününe kadarki harcama', () => {
+  const state = paceState([
+    { id: 'x1', date: '2026-08-03', amount: 100, category: 'market' },
+    { id: 'x2', date: '2026-08-09', amount: 200, category: 'market' },
+    { id: 'x3', date: '2026-08-20', amount: 900, category: 'market' },
+  ]);
+  assert.equal(spentThrough(state, '2026-08', 10), 300);
+  assert.equal(spentThrough(state, '2026-08', 31), 1200);
+});
+
+test('comparePreviousPeriod - aynı güne kadar kıyaslanır', () => {
+  const state = paceState([
+    { id: 'p1', date: '2026-07-05', amount: 800, category: 'market' },
+    { id: 'p2', date: '2026-07-25', amount: 5000, category: 'market' }, // 10'undan sonra, sayılmamalı
+    { id: 'x1', date: '2026-08-04', amount: 1000, category: 'market' },
+  ]);
+  const cmp = comparePreviousPeriod(state, '2026-08', '2026-08-10');
+  assert.equal(cmp.prevSpent, 800, 'geçen ayın yalnızca 10. gününe kadarı');
+  assert.equal(cmp.thisSpent, 1000);
+  assert.equal(cmp.diff, 200);
+  assert.equal(cmp.partial, true);
+});
+
+test('comparePreviousPeriod - geçen ay hiç harcama yoksa kıyas yok', () => {
+  const state = paceState([{ id: 'x1', date: '2026-08-04', amount: 1000, category: 'market' }]);
+  assert.equal(comparePreviousPeriod(state, '2026-08', '2026-08-10'), null);
+});
+
+test('comparePreviousPeriod - bitmiş dönemde tüm ay kıyaslanır', () => {
+  const state = paceState([
+    { id: 'p1', date: '2026-06-20', amount: 400, category: 'market' },
+    { id: 'x1', date: '2026-07-25', amount: 900, category: 'market' },
+  ]);
+  const cmp = comparePreviousPeriod(state, '2026-07', '2026-08-10');
+  assert.equal(cmp.partial, false);
+  assert.equal(cmp.diff, 500);
+});
+

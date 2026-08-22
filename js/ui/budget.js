@@ -1,7 +1,7 @@
 // Bütçe sekmesi: dönem harcamaları, kategori dökümü ve tahmini ödemeden kalan.
 
 import { currentPeriodKey, periodLabel, shiftPeriod } from '../period.js';
-import { budgetSummary, budgetTips, allCategories } from '../budget.js';
+import { budgetSummary, budgetTips, allCategories, spendingPace, comparePreviousPeriod } from '../budget.js';
 import { openRecurringSheet } from './expenseSheet.js';
 import { formatMoney, formatDayMonthShort, formatWeekdayShort, todayISO } from '../format.js';
 import { enableSwipeToDelete } from './swipe.js';
@@ -11,6 +11,8 @@ export function renderBudget(container, state, ctx) {
   const periodKey = ctx.budgetPeriodKey || currentPeriodKey();
   const summary = budgetSummary(state, periodKey);
   const isCurrent = periodKey === currentPeriodKey();
+  const pace = spendingPace(summary);
+  const comparison = comparePreviousPeriod(state, periodKey);
 
   const recentExpenses = [...summary.expenses]
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : (a.createdAt < b.createdAt ? 1 : -1)));
@@ -37,11 +39,16 @@ export function renderBudget(container, state, ctx) {
         <div class="hero__label">Kalan bütçe</div>
         <div class="hero__value ${summary.remaining < 0 ? 'is-negative' : ''}">${formatMoney(summary.remaining, { decimals: false })}</div>
         <div class="hero__sub">toplam bütçe ${formatMoney(summary.expectedTotal, { decimals: false })} − harcama ${formatMoney(summary.spent, { decimals: false })}</div>
-        ${summary.dailyAllowance !== null ? `
-        <div class="hero__compare ${summary.remaining < 0 ? 'is-down' : 'is-up'}">
-          ${summary.remaining < 0 ? 'bütçe aşıldı' : `günde ${formatMoney(summary.dailyAllowance, { decimals: false })} harcayabilirsin`} · ${summary.daysLeft} gün kaldı
-        </div>` : ''}
+        <div class="hero__badges">
+          ${summary.dailyAllowance !== null ? `
+          <div class="hero__compare ${summary.remaining < 0 ? 'is-down' : 'is-up'}">
+            ${summary.remaining < 0 ? 'bütçe aşıldı' : `günde ${formatMoney(summary.dailyAllowance, { decimals: false })} harcayabilirsin`} · ${summary.daysLeft} gün kaldı
+          </div>` : ''}
+          ${comparisonHTML(comparison)}
+        </div>
+        ${paceHTML(pace, summary)}
       </div>
+      ${categoryBarHTML(summary)}
       <div class="rows rows--receipt">
         ${receiptRow('Toplam bütçe', formatMoney(summary.expectedTotal, { decimals: false }))}
         ${summary.advances > 0 ? receiptRow('Avans geri eklendi', `+ ${formatMoney(summary.advances, { decimals: false })}`, { valueCls: 'is-positive' }) : ''}
@@ -61,6 +68,7 @@ export function renderBudget(container, state, ctx) {
         <div class="hero__value">${formatMoney(summary.spent, { decimals: false })}</div>
         <div class="hero__sub">${summary.expenseCount} kayıt</div>
       </div>
+      ${categoryBarHTML(summary)}
       <div class="cta-note">Tahmini ödemenden düşerek kalan bütçeyi görmek için Ayarlar → Maaş ve ücret'ten maaşını gir.</div>
       <button class="btn btn--ghost" id="goSalary" type="button" style="margin-top:8px;">Maaşımı gir</button>
     </div>`}
@@ -113,6 +121,50 @@ export function renderBudget(container, state, ctx) {
       },
     });
   }
+}
+
+
+// Geçen dönemle kıyas — ayın aynı gününe kadarki harcamalar karşılaştırılır.
+function comparisonHTML(comparison) {
+  if (!comparison) return '';
+  const { diff, partial } = comparison;
+  if (Math.abs(diff) < 1) return `<div class="hero__compare is-neutral">Geçen ayla aynı</div>`;
+  // Harcamada ARTIŞ kötüdür: renk mantığı mesai kartının tersi.
+  const up = diff > 0;
+  return `
+    <div class="hero__compare ${up ? 'is-down' : 'is-up'}">
+      Geçen ${partial ? 'ayın aynı gününe göre' : 'aya göre'} ${up ? '+' : '−'}${formatMoney(Math.abs(diff), { decimals: false })}
+    </div>
+  `;
+}
+
+// "Bu hızla ay sonunda ne kadar, bütçe ne zaman biter?"
+function paceHTML(pace, summary) {
+  if (!pace) return '';
+  const short = pace.runsOutOn !== null;
+  const prefix = pace.reliable ? 'Bu hızla ay sonunda' : 'Kaba tahmin — ay sonunda';
+  return `
+    <div class="projection ${short ? 'is-behind' : ''}">
+      ${prefix} <b>${formatMoney(pace.projected, { decimals: false })}</b> harcarsın
+      ${short ? `· bütçe <b>${formatDayMonthShort(pace.runsOutOn)}</b> günü biter
+        <span class="projection__warn">${pace.daysShort} gün açık</span>` : ''}
+    </div>
+  `;
+}
+
+// Kategori dökümünün renkli şeridi. Altındaki fiş satırları zaten kesin
+// tutarları veriyor; şerit "para nereye gidiyor" sorusunu tek bakışta cevaplar.
+function categoryBarHTML(summary) {
+  if (summary.spent <= 0 || summary.byCategory.length < 2) return '';
+  return `
+    <div class="cat-bar" role="img" aria-label="Kategori dağılımı">
+      ${summary.byCategory.map((c) => {
+    const pct = (c.amount / summary.spent) * 100;
+    return `<span class="cat-bar__seg" style="width:${pct.toFixed(2)}%; background:${c.color};"
+                  title="${escapeHTML(c.label)} · ${formatMoney(c.amount, { decimals: false })} (%${Math.round(pct)})"></span>`;
+  }).join('')}
+    </div>
+  `;
 }
 
 function expenseRowHTML(e, settings) {

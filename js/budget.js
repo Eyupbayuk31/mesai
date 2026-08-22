@@ -2,7 +2,7 @@
 // Tüm fonksiyonlar saf; kalem CRUD işlemleri Store'da.
 
 import { periodSummary } from './payroll.js';
-import { periodRange } from './period.js';
+import { periodRange, shiftPeriod } from './period.js';
 import { parseISODate, formatMoney, todayISO } from './format.js';
 
 // Harcama kategorileri — renkler CSS değişkenlerinden bağımsız sabit hex,
@@ -148,4 +148,94 @@ export function budgetTips(s, todayStr = todayISO()) {
   if (s.expenseCount === 0) tips.push('Harcamalarını girdikçe öneriler sana özelleşir.');
   tips.push(GENERIC_TIPS[dayOfMonth % GENERIC_TIPS.length]);
   return tips.slice(0, 2);
+}
+
+// --- Harcama hızı ve kıyas -------------------------------------------------
+
+// Dönemin kaçıncı gününde olduğumuz (geçmiş dönemde ayın tamamı, gelecekte 0).
+function elapsedDaysOf(periodKey, todayStr) {
+  const { startISO, endISO } = periodRange(periodKey);
+  const totalDays = Number(endISO.slice(8, 10));
+  if (todayStr < startISO) return { elapsedDays: 0, totalDays };
+  if (todayStr > endISO) return { elapsedDays: totalDays, totalDays };
+  return { elapsedDays: Number(todayStr.slice(8, 10)), totalDays };
+}
+
+/**
+ * "Bu hızla ay sonunda ne kadar harcarım, bütçe ne zaman biter?"
+ *
+ * Önemli ayrım: sürekli giderler (kira, kredi…) ayın tamamı için zaten bilinir,
+ * bunları güne bölüp ileri sarmak tahmini şişirir. Bu yüzden yalnızca GERÇEK
+ * (değişken) harcamalar ileri sarılır, sabitler olduğu gibi eklenir.
+ */
+export function spendingPace(summary, todayStr = todayISO()) {
+  if (!summary?.isCurrent) return null;
+  const { elapsedDays, totalDays } = elapsedDaysOf(summary.periodKey, todayStr);
+  if (elapsedDays <= 0 || elapsedDays >= totalDays) return null;
+
+  let fixed = 0;
+  let variableToDate = 0;
+  for (const e of summary.expenses) {
+    const amount = Number(e.amount) || 0;
+    if (e.virtual) fixed += amount;
+    else if (e.date <= todayStr) variableToDate += amount;
+  }
+
+  const dailyVariable = variableToDate / elapsedDays;
+  const projected = Math.round(fixed + dailyVariable * totalDays);
+
+  const result = {
+    projected,
+    dailyVariable,
+    reliable: elapsedDays >= 5,
+    runsOutOn: null,
+    daysShort: 0,
+  };
+
+  // Bütçe bilinmiyorsa (maaş girilmemiş) tükenme günü hesaplanamaz.
+  if (!summary.hasSalary || summary.expectedTotal <= 0) return result;
+
+  if (projected > summary.expectedTotal && dailyVariable > 0) {
+    // Sabitler ay boyunca zaten düşülecek; değişken harcama kalan bütçeyi
+    // hangi günde bitirir?
+    const budgetForVariable = summary.expectedTotal - fixed;
+    const dayCount = budgetForVariable <= 0 ? 0 : budgetForVariable / dailyVariable;
+    const day = Math.min(totalDays, Math.max(1, Math.ceil(dayCount)));
+    const { startISO } = periodRange(summary.periodKey);
+    result.runsOutOn = `${startISO.slice(0, 8)}${String(day).padStart(2, '0')}`;
+    result.daysShort = Math.max(0, totalDays - day);
+  }
+  return result;
+}
+
+// Bir dönemde ayın N'ine kadar (o gün dahil) yapılan harcama.
+export function spentThrough(state, periodKey, dayOfMonth) {
+  const cutoff = `${periodKey}-${String(Math.min(31, Math.max(1, dayOfMonth))).padStart(2, '0')}`;
+  return budgetSummary(state, periodKey, cutoff).expenses
+    .filter((e) => e.date <= cutoff)
+    .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+}
+
+/**
+ * Geçen dönemle kıyas. Ayın aynı gününe kadarki harcamalar karşılaştırılır —
+ * yoksa ayın başında her zaman "geçen aydan az harcadım" der ve anlamsız olur.
+ * Geçen dönemde hiç harcama yoksa kıyas gösterilmez.
+ */
+export function comparePreviousPeriod(state, periodKey, todayStr = todayISO()) {
+  const { elapsedDays, totalDays } = elapsedDaysOf(periodKey, todayStr);
+  const day = elapsedDays > 0 ? elapsedDays : totalDays;
+  const prevKey = shiftPeriod(periodKey, -1);
+
+  const prevSpent = spentThrough(state, prevKey, day);
+  if (prevSpent <= 0) return null;
+
+  const thisSpent = spentThrough(state, periodKey, day);
+  return {
+    diff: thisSpent - prevSpent,
+    thisSpent,
+    prevSpent,
+    throughDay: day,
+    // Ay bitmişse "aynı güne kadar" demek yanıltıcı olur, tüm ay kıyaslanmıştır.
+    partial: elapsedDays > 0 && elapsedDays < totalDays,
+  };
 }
