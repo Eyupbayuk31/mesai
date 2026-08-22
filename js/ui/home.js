@@ -6,6 +6,7 @@ import { entryRowHTML } from './entryRow.js';
 import { enableSwipeToDelete } from './swipe.js';
 import { showToast } from './toast.js';
 import { openSheet } from './sheet.js';
+import { mountPeriodInfo } from './periodNav.js';
 import {
   periodProgress, projectPeriod, overtimeShare,
   weeklyBuckets, periodRecord, busiestWeekday, todayNudge,
@@ -63,10 +64,31 @@ export function renderHome(container, state, ctx) {
 
     ${nudge.show ? nudgeHTML() : ''}
 
-    <div class="panes">
-    <div class="pane">
+    ${hasSalary ? `
+    <div class="stat-strip stat-strip--kpi">
+      <div class="stat-strip__item stat-strip__item--wide">
+        <div class="stat-strip__label">Tahmini eline geçecek</div>
+        <div class="stat-strip__value">${formatMoney(summary.netTotal, { decimals: false })}</div>
+      </div>
+      <div class="stat-strip__divider"></div>
+      <div class="stat-strip__item">
+        <div class="stat-strip__label">Bu hafta</div>
+        <div class="stat-strip__value">${formatHours(thisWeekHours(state.entries))}</div>
+      </div>
+      <div class="stat-strip__divider"></div>
+      <div class="stat-strip__item">
+        <div class="stat-strip__label">Kayıt</div>
+        <div class="stat-strip__value">${summary.entryCount}</div>
+      </div>
+      <div class="stat-strip__divider"></div>
+      <div class="stat-strip__item">
+        <div class="stat-strip__label">Saat ücreti</div>
+        <div class="stat-strip__value">${formatMoney(summary.baseSalary / (settings.hoursDivisor || 225), { decimals: false })}</div>
+      </div>
+    </div>` : ''}
+
     ${!hasSalary ? salaryCtaHTML() : `
-      <div class="card card--bordro">
+      <div class="card card--bordro card--split">
         <div class="hero">
           <div class="hero__label">Bu dönem mesai</div>
           <div class="hero__value">${formatHours(summary.totalHours)}</div>
@@ -78,6 +100,7 @@ export function renderHome(container, state, ctx) {
           ${goalBarHTML(summary, settings.monthlyGoalHours)}
           ${projectionHTML(projection, settings.monthlyGoalHours)}
         </div>
+        <div class="card__detail">
         ${typeChipsHTML(summary)}
         <div class="rows rows--receipt">
           ${receiptRow('Maaş', formatMoney(summary.baseSalary, { decimals: false }))}
@@ -91,34 +114,19 @@ export function renderHome(container, state, ctx) {
           ${summary.deductions > 0 ? receiptRow('Kesinti', `− ${formatMoney(summary.deductions, { decimals: false })}`, { valueCls: 'is-negative' }) : ''}
           ${receiptRow('Tahmini eline geçecek', formatMoney(summary.netTotal), { rowCls: 'row--total' })}
         </div>
-      </div>
-
-      <div class="stat-strip">
-        <div class="stat-strip__item">
-          <div class="stat-strip__label">Bu hafta</div>
-          <div class="stat-strip__value">${formatHours(thisWeekHours(state.entries))}</div>
-        </div>
-        <div class="stat-strip__divider"></div>
-        <div class="stat-strip__item">
-          <div class="stat-strip__label">Kayıt</div>
-          <div class="stat-strip__value">${summary.entryCount}</div>
-        </div>
-        <div class="stat-strip__divider"></div>
-        <div class="stat-strip__item">
-          <div class="stat-strip__label">Saat ücreti</div>
-          <div class="stat-strip__value">${formatMoney(summary.baseSalary / (settings.hoursDivisor || 225), { decimals: false })}</div>
         </div>
       </div>
-
-      ${weeklyChartHTML(state.entries)}
-
-      ${statusCardHTML(state, periodKey)}
 
       <button class="btn btn--primary" id="quickAdd" type="button" style="margin-top:14px;">
         <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
         Bugün mesai ekle
       </button>
     `}
+
+    <div class="panes">
+    <div class="pane">
+    ${weeklyChartHTML(state.entries)}
+    ${hasSalary ? statusCardHTML(state, periodKey) : ''}
     </div>
 
     <div class="pane">
@@ -132,6 +140,11 @@ export function renderHome(container, state, ctx) {
     </div>
     </div>
   `;
+
+  mountPeriodInfo(ctx, {
+    label: periodLabel(periodKey),
+    sub: `${formatFullDate(toISODate(payDate))} · ${daysText}`,
+  });
 
   container.querySelector('#goSettings')?.addEventListener('click', () => {
     ctx.navigate({ tab: 'settings', page: 'salary' });

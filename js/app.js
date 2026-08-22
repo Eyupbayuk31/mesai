@@ -7,9 +7,10 @@ import { renderReport } from './ui/report.js';
 import { renderBudget } from './ui/budget.js';
 import * as loansPage from './ui/loans.js';
 import { renderSettingsRoute, settingsPageTitle } from './ui/settings/index.js';
-import { getActiveProfile } from './profile.js';
+import { getActiveProfile, profileName } from './profile.js';
 import { showToast } from './ui/toast.js';
-import { SyncEngine } from './sync/engine.js';
+import { SyncEngine, readStatus, relativeTime } from './sync/engine.js';
+import { APP_VERSION } from './ui/settings/about.js';
 
 const appEl = document.getElementById('app');
 const activeProfile = getActiveProfile();
@@ -30,6 +31,7 @@ function boot(profileId) {
   const topbarBack = document.getElementById('topbarBack');
   const topbarAction = document.getElementById('topbarAction');
   const tabbar = document.getElementById('tabbar');
+  const topbarContext = document.getElementById('topbarContext');
   const fab = document.getElementById('fab');
 
   const TAB_TITLES = { home: 'Özet', entries: 'Kayıtlar', report: 'Rapor', budget: 'Bütçe', settings: 'Ayarlar' };
@@ -43,7 +45,7 @@ function boot(profileId) {
     // Bütçe sekmesinin görüntülediği dönem sekmeler arası korunur.
     budgetPeriodKey: currentPeriodKey(),
     // Kayıtlar sekmesinin görünüm/filtre/sayfa durumu sekmeler arası korunur.
-    entriesView: { mode: 'list', periodKey: currentPeriodKey(), allTime: false, type: 'all', page: 1 },
+    entriesView: { mode: 'list', periodKey: currentPeriodKey(), allTime: false, type: 'all', page: 1, sort: { key: 'date', dir: 'desc' } },
     setReportPeriod(key) { ctx.reportPeriodKey = key; render(); },
     setBudgetPeriod(key) { ctx.budgetPeriodKey = key; render(); },
     openExpense: async (expense = null, opts = {}) => {
@@ -64,6 +66,18 @@ function boot(profileId) {
     openEntryForDate: async (dateISO, entry) => {
       const { openEntrySheet } = await import('./ui/entry.js');
       openEntrySheet(store, entry || null, { date: dateISO });
+    },
+    // Üst çubuğun orta yuvası: ekranlar kendi bağlamını (dönem gezinme gibi)
+    // buraya basar. Masaüstünde görünür, mobilde CSS ile gizlidir.
+    setTopbarContext(html, wire) {
+      if (!html) {
+        topbarContext.hidden = true;
+        topbarContext.innerHTML = '';
+        return;
+      }
+      topbarContext.hidden = false;
+      topbarContext.innerHTML = html;
+      if (wire) wire(topbarContext);
     },
     setTopbarAction(label, onClick) {
       if (!label) { topbarAction.hidden = true; topbarAction.onclick = null; return; }
@@ -126,6 +140,30 @@ function boot(profileId) {
     return settingsPageTitle(page);
   }
 
+  // Kenar çubuğunun boş orta/alt kısmı: profil, senkron durumu, sürüm.
+  // Masaüstünde görünür; mobilde CSS gizler.
+  function renderSidebar(state) {
+    const name = profileName(profileId);
+    document.getElementById('sidebarAvatar').textContent = name.charAt(0);
+    document.getElementById('sidebarName').textContent = name;
+    document.getElementById('sidebarVersion').textContent = `v${APP_VERSION}`;
+
+    const syncEl = document.getElementById('sidebarSync');
+    const status = readStatus();
+    const off = !status || status.state === 'off' || status.state === 'idle';
+    syncEl.hidden = off;
+    if (off) return;
+    const bad = status.state === 'error' || status.state === 'offline';
+    syncEl.classList.toggle('is-error', bad);
+    const when = relativeTime(status.lastSyncAt);
+    document.getElementById('sidebarSyncText').textContent =
+      status.state === 'syncing' ? 'Senkronlanıyor…'
+        : status.state === 'offline' ? 'İnternet yok'
+          : status.state === 'error' ? 'Senkron hatası'
+            : status.state === 'pending' ? 'Değişiklik bekliyor'
+              : when ? `Senkron: ${when}` : 'Senkron edildi';
+  }
+
   function applyTheme() {
     const theme = store.getState().settings.theme;
     document.documentElement.dataset.theme = theme === 'auto' ? '' : theme;
@@ -149,6 +187,10 @@ function boot(profileId) {
     fab.querySelector('.fab__label').textContent = fabAction;
     fab.setAttribute('aria-label', fabAction);
     ctx.setTopbarAction(null);
+    ctx.setTopbarContext(null);
+    // Ekran başına ızgara şeması CSS'te .screen--<sekme> ile seçilir.
+    screenEl.className = `screen screen--${tab}${page ? ' screen--sub' : ''}`;
+    renderSidebar(state);
 
     if (tab === 'home') renderHome(screenEl, state, ctx);
     else if (tab === 'entries') renderEntries(screenEl, state, ctx);
@@ -167,6 +209,11 @@ function boot(profileId) {
   });
 
   topbarBack.addEventListener('click', () => router.back());
+
+  document.getElementById('sidebarProfile').addEventListener('click', () => ctx.switchProfile());
+  document.getElementById('sidebarSync').addEventListener('click', () => {
+    router.navigate({ tab: 'settings', page: 'backup' });
+  });
 
   fab.addEventListener('click', async () => {
     // Bütçe sekmesinde + düğmesi harcama ekler, diğerlerinde mesai.

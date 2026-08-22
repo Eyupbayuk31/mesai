@@ -5,6 +5,7 @@ import { budgetSummary, budgetTips, allCategories, spendingPace, comparePrevious
 import { openRecurringSheet } from './expenseSheet.js';
 import { formatMoney, formatDayMonthShort, formatWeekdayShort, todayISO } from '../format.js';
 import { enableSwipeToDelete } from './swipe.js';
+import { mountPeriodNav } from './periodNav.js';
 import { showToast } from './toast.js';
 
 export function renderBudget(container, state, ctx) {
@@ -31,10 +32,8 @@ export function renderBudget(container, state, ctx) {
       </button>
     </div>
 
-    <div class="panes">
-    <div class="pane">
     ${summary.hasSalary ? `
-    <div class="card card--bordro">
+    <div class="card card--bordro card--split">
       <div class="hero">
         <div class="hero__label">Kalan bütçe</div>
         <div class="hero__value ${summary.remaining < 0 ? 'is-negative' : ''}">${formatMoney(summary.remaining, { decimals: false })}</div>
@@ -48,6 +47,7 @@ export function renderBudget(container, state, ctx) {
         </div>
         ${paceHTML(pace, summary)}
       </div>
+      <div class="card__detail">
       ${categoryBarHTML(summary)}
       <div class="rows rows--receipt">
         ${receiptRow('Toplam bütçe', formatMoney(summary.expectedTotal, { decimals: false }))}
@@ -55,6 +55,7 @@ export function renderBudget(container, state, ctx) {
         ${receiptRow('Harcama', `− ${formatMoney(summary.spent, { decimals: false })}`, { valueCls: 'is-negative' })}
         ${summary.byCategory.map((c) => receiptRow(`<span style="color:var(--text-tertiary);"><span class="dot" style="background:${c.color};"></span>${c.label}</span>`, formatMoney(c.amount, { decimals: false }))).join('')}
         ${receiptRow('Kalan', formatMoney(summary.remaining, { decimals: false }), { rowCls: 'row--total' })}
+      </div>
       </div>
       ${summary.upcomingTotal > 0 ? `
       <div class="recurring-note">
@@ -73,6 +74,8 @@ export function renderBudget(container, state, ctx) {
       <button class="btn btn--ghost" id="goSalary" type="button" style="margin-top:8px;">Maaşımı gir</button>
     </div>`}
 
+    <div class="panes">
+    <div class="pane">
     ${loansRowHTML(summary)}
 
     <div class="section-title">Öneriler</div>
@@ -95,6 +98,13 @@ export function renderBudget(container, state, ctx) {
     </div>
     </div>
   `;
+
+  mountPeriodNav(ctx, {
+    label: periodLabel(periodKey),
+    sub: `${summary.expenseCount} harcama · ${formatMoney(summary.spent, { decimals: false })}`,
+    onPrev: () => ctx.setBudgetPeriod(shiftPeriod(periodKey, -1)),
+    onNext: () => ctx.setBudgetPeriod(shiftPeriod(periodKey, 1)),
+  });
 
   container.querySelector('#prevPeriod').addEventListener('click', () => ctx.setBudgetPeriod(shiftPeriod(periodKey, -1)));
   container.querySelector('#nextPeriod').addEventListener('click', () => ctx.setBudgetPeriod(shiftPeriod(periodKey, 1)));

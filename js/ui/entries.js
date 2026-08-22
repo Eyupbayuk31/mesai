@@ -8,6 +8,8 @@ import { enableSwipeToDelete } from './swipe.js';
 import { showToast } from './toast.js';
 import { paginate, paginationHTML } from './pagination.js';
 import { calendarHTML, groupEntriesByDate } from './calendar.js';
+import { mountPeriodNav } from './periodNav.js';
+import { entryTableHTML, sortEntries } from './entryTable.js';
 
 const TYPE_FILTERS = [
   { key: 'all', label: 'Tümü' },
@@ -22,6 +24,11 @@ export function filterEntries(entries, view) {
     .filter((e) => (view.allTime ? true : periodKeyFromISODate(e.date) === view.periodKey))
     .filter((e) => (view.type === 'all' ? true : e.type === view.type))
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : (a.createdAt < b.createdAt ? 1 : -1)));
+}
+
+// Masaüstü tablosunda daha çok satır sığar; sayfa başına kayıt buna göre değişir.
+function perPageFor() {
+  return (typeof window !== 'undefined' && window.matchMedia('(min-width: 900px)').matches) ? 25 : 15;
 }
 
 export function renderEntries(container, state, ctx) {
@@ -61,7 +68,7 @@ export function renderEntries(container, state, ctx) {
     ` : calendarSectionHTML(filtered, state, view)}
   `;
 
-  wireCommon(container, ctx, view);
+  wireCommon(container, ctx, view, `${filtered.length} kayıt · ${formatHours(totalHours)}`);
   if (view.mode === 'list') wireList(container, state, ctx, filtered);
   else wireCalendar(container, ctx);
 }
@@ -69,9 +76,12 @@ export function renderEntries(container, state, ctx) {
 function listSectionHTML(filtered, settings, view, filterActive) {
   if (filtered.length === 0) return emptyStateHTML(filterActive);
 
-  const pageData = paginate(filtered, view.page);
+  const sort = view.sort || { key: 'date', dir: 'desc' };
+  const sorted = sortEntries(filtered, sort.key, sort.dir, settings);
+  const pageData = paginate(sorted, view.page, perPageFor());
   return `
     <ul class="list" id="entryList">${pageData.items.map((e) => entryRowHTML(e, settings)).join('')}</ul>
+    <div class="entry-table-wrap" id="entryTableWrap">${entryTableHTML(pageData.items, settings, sort)}</div>
     ${paginationHTML(pageData)}
     ${pageData.totalPages > 1
       ? `<p class="list-meta">${pageData.from}–${pageData.to} / ${pageData.total} kayıt</p>`
@@ -110,7 +120,15 @@ function emptyStateHTML(filterActive) {
   `;
 }
 
-function wireCommon(container, ctx, view) {
+function wireCommon(container, ctx, view, meta) {
+  mountPeriodNav(ctx, {
+    label: view.allTime ? 'Tüm zamanlar' : periodLabel(view.periodKey),
+    sub: meta,
+    disabled: view.allTime,
+    onPrev: () => ctx.setEntriesView({ periodKey: shiftPeriod(view.periodKey, -1), page: 1 }),
+    onNext: () => ctx.setEntriesView({ periodKey: shiftPeriod(view.periodKey, 1), page: 1 }),
+  });
+
   container.querySelector('#viewSegmented').addEventListener('click', (e) => {
     const btn = e.target.closest('[data-view]');
     if (!btn) return;
@@ -144,6 +162,8 @@ function wireList(container, state, ctx, filtered) {
     ctx.setEntriesView({ page: Number(btn.dataset.page) });
   });
 
+  wireTable(container, state, ctx);
+
   const listEl = container.querySelector('#entryList');
   if (!listEl) return;
   enableSwipeToDelete(listEl, {
@@ -157,6 +177,40 @@ function wireList(container, state, ctx, filtered) {
       const { openEntrySheet } = await import('./entry.js');
       openEntrySheet(ctx.store, entry);
     },
+  });
+}
+
+// Tablo: başlığa tıklayınca sırala, satıra tıklayınca düzenle, çöp kutusuyla sil.
+function wireTable(container, state, ctx) {
+  const wrap = container.querySelector('#entryTableWrap');
+  if (!wrap) return;
+
+  wrap.addEventListener('click', async (e) => {
+    const sortBtn = e.target.closest('[data-sort]');
+    if (sortBtn) {
+      const key = sortBtn.dataset.sort;
+      const current = ctx.entriesView.sort || { key: 'date', dir: 'desc' };
+      // Aynı sütuna tekrar basınca yön döner, başka sütunda varsayılan azalan.
+      const dir = current.key === key && current.dir === 'desc' ? 'asc' : 'desc';
+      ctx.setEntriesView({ sort: { key, dir }, page: 1 });
+      return;
+    }
+
+    const delBtn = e.target.closest('[data-delete]');
+    if (delBtn) {
+      const entry = state.entries.find((x) => x.id === delBtn.dataset.delete);
+      if (!entry) return;
+      ctx.store.removeEntry(entry.id);
+      showToast('Mesai kaydı silindi', { actionLabel: 'Geri al', onAction: () => ctx.store.addEntry(entry) });
+      return;
+    }
+
+    const row = e.target.closest('[data-id]');
+    if (!row) return;
+    const entry = state.entries.find((x) => x.id === row.dataset.id);
+    if (!entry) return;
+    const { openEntrySheet } = await import('./entry.js');
+    openEntrySheet(ctx.store, entry);
   });
 }
 

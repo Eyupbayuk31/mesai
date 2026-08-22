@@ -1367,7 +1367,7 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
 @media (min-width: 900px) {
   :root {
     --sidebar-w: 248px;
-    --content-max: 1080px;
+    --content-max: 1280px;
   }
 
   body { background: var(--bg); }
@@ -1535,7 +1535,7 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
 
 /* Çok geniş ekranlarda içerik ortada kalsın, satır uzunluğu kontrollü olsun. */
 @media (min-width: 1500px) {
-  :root { --content-max: 1180px; }
+  :root { --content-max: 1360px; }
 }
 
 /* --- "Kim ısmarlasın?" çekilişi --- */
@@ -1866,4 +1866,296 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
   cursor: pointer;
   padding: 2px 0;
   white-space: nowrap;
+}
+
+/* ==========================================================================
+   Masaüstü pano düzeni (v4)
+   Mobil görünüm bu bloktan etkilenmez; her şey 900px üstünde.
+   ========================================================================== */
+
+/* Mobilde yalnız masaüstünde anlamlı olan parçalar gizli durur. */
+.topbar__slot,
+.sidebar-profile,
+.sidebar-foot,
+.entry-table-wrap,
+.stat-strip__item--wide { display: none; }
+
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (min-width: 900px) {
+  /* --- Üst çubuk: sol başlık · orta bağlam · sağ işlem --- */
+  .topbar { gap: 20px; }
+  .topbar__slot {
+    display: flex;
+    align-items: center;
+    margin-left: auto;
+  }
+  .topbar__slot--end { margin-left: 0; }
+
+  .period-nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px;
+    border-radius: 999px;
+    border: 1px solid var(--divider);
+    background: var(--surface);
+  }
+  .period-nav--static { border-color: transparent; background: none; padding-right: 10px; }
+
+  .period-nav__btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px; height: 30px;
+    border: 0;
+    border-radius: 50%;
+    background: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+  .period-nav__btn:hover:not([disabled]) { background: var(--divider); color: var(--text); }
+  .period-nav__btn[disabled] { opacity: 0.3; cursor: default; }
+
+  .period-nav__body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1.25;
+    padding: 0 6px;
+    min-width: 132px;
+  }
+  .period-nav__label { font-size: 13.5px; font-weight: 700; letter-spacing: -0.01em; }
+  .period-nav__sub {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--text-tertiary);
+    white-space: nowrap;
+  }
+
+  /* Dönem gezinme yukarı taşındı; ekran içindeki kart masaüstünde gereksiz. */
+  .screen > .period-card { display: none; }
+
+  /* --- Kenar çubuğu: profil ve alt bölge --- */
+  .sidebar-profile {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    margin-bottom: 12px;
+    padding: 8px 10px;
+    border: 0;
+    border-radius: var(--radius-md);
+    background: none;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .sidebar-profile:hover { background: var(--divider); }
+  .sidebar-profile__avatar {
+    width: 30px; height: 30px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--accent-soft);
+    color: var(--accent-strong);
+    font-size: 13px;
+    font-weight: 800;
+  }
+  .sidebar-profile__text { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+  .sidebar-profile__name { font-size: 13.5px; font-weight: 700; }
+  .sidebar-profile__hint { font-size: 10.5px; color: var(--text-tertiary); }
+
+  .sidebar-foot {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: auto;
+    padding-top: 12px;
+    /* "Mesai ekle" butonu mutlak konumlu; onun yeri boş bırakılır. */
+    padding-bottom: 60px;
+  }
+  .sidebar-sync {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 10px;
+    border: 0;
+    border-radius: 999px;
+    background: none;
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .sidebar-sync:hover { background: var(--divider); }
+  .sidebar-sync__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--positive); flex-shrink: 0; }
+  .sidebar-sync.is-error { color: var(--negative); }
+  .sidebar-sync.is-error .sidebar-sync__dot { background: var(--negative); }
+  .sidebar-version {
+    padding: 0 10px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-tertiary);
+    opacity: 0.7;
+  }
+
+  /* --- KPI şeridi: sayfanın üstünde tam genişlik --- */
+  .stat-strip--kpi {
+    margin: 0 0 20px;
+    padding: 16px 8px;
+  }
+  .stat-strip__item--wide { display: block; }
+  .stat-strip--kpi .stat-strip__label { font-size: 11px; }
+  .stat-strip--kpi .stat-strip__value { font-size: 23px; }
+  .stat-strip--kpi .stat-strip__item--wide .stat-strip__value { color: var(--accent); }
+
+  /* --- Ana ızgara: iki denk sütun --- */
+  .screen--home .panes,
+  .screen--budget .panes { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+
+  /* --- Bölünmüş kart: solda özet, sağda döküm --- */
+  .card--split {
+    display: grid;
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1fr);
+    gap: 26px;
+    align-items: start;
+  }
+  .card--split .hero {
+    padding: 4px 0;
+    border-right: 1px dashed var(--divider);
+    padding-right: 24px;
+  }
+  .card--split .card__detail { min-width: 0; padding-top: 4px; }
+  .card--split .chips { margin-top: 0 !important; margin-bottom: 14px; }
+
+  /* Ekran altında kalan boşluk azalsın; içerik yukarı toplanır. */
+  .screen { padding-bottom: 40px; }
+
+  /* --- Kayıtlar tablosu --- */
+  .screen--entries .list { display: none; }
+  .entry-table-wrap {
+    display: block;
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+  }
+  .entry-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  .entry-table th {
+    padding: 11px 14px;
+    text-align: left;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    border-bottom: 1px solid var(--divider);
+    white-space: nowrap;
+  }
+  .entry-table th.is-numeric,
+  .entry-table td.is-numeric { text-align: right; }
+  .entry-table th button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border: 0;
+    background: none;
+    padding: 0;
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    cursor: pointer;
+  }
+  .entry-table th button:hover { color: var(--text-secondary); }
+  .entry-table th.is-numeric button { flex-direction: row-reverse; }
+  /* Sıralama oku yalnız etkin sütunda görünür, yön ile döner. */
+  .entry-table th button svg { opacity: 0; transition: transform 0.15s ease; }
+  .entry-table th.is-sorted { color: var(--accent-strong); }
+  .entry-table th.is-sorted button svg { opacity: 1; }
+  .entry-table th.is-sorted.is-desc button svg { transform: rotate(180deg); }
+
+  .entry-table td {
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--divider);
+    color: var(--text-secondary);
+  }
+  .entry-table tbody tr:last-child td { border-bottom: 0; }
+  .entry-table__row { cursor: pointer; }
+  .entry-table__row:hover td { background: var(--divider); }
+  .entry-table__date,
+  .entry-table__hours,
+  .entry-table__amount { font-family: var(--font-mono); }
+  .entry-table__date { color: var(--text); font-weight: 600; }
+  .entry-table__hours { color: var(--text); font-weight: 700; }
+  .entry-table__amount { color: var(--positive); font-weight: 700; }
+  .entry-table__weekday { color: var(--text-tertiary); font-size: 12px; }
+  .entry-table__note {
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-tertiary);
+  }
+  .entry-table__actions { width: 44px; text-align: right; }
+  .entry-table__delete {
+    border: 0;
+    background: none;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    padding: 4px;
+    line-height: 0;
+    opacity: 0;
+    transition: opacity 0.15s ease, color 0.15s ease;
+  }
+  .entry-table__row:hover .entry-table__delete { opacity: 1; }
+  .entry-table__delete:hover { color: var(--negative); }
+
+  .type-tag { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; }
+}
+
+/* Dar masaüstü / geniş tablet: tek sütun, KPI ikişerli. */
+@media (min-width: 900px) and (max-width: 1120px) {
+  .panes { grid-template-columns: minmax(0, 1fr) !important; }
+  .card--split { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .card--split .hero { border-right: 0; padding-right: 0; }
+  .stat-strip--kpi { flex-wrap: wrap; }
+  .stat-strip--kpi .stat-strip__item { flex: 1 1 40%; padding: 8px 0; }
+  .stat-strip--kpi .stat-strip__divider { display: none; }
+}
+
+@media (min-width: 900px) {
+  /* Kenar çubuğunda zaten "Mesai ekle" ve senkron durumu var; içerikte
+     tekrar etmesinler. */
+  .screen--home #quickAdd,
+  .screen .sync-pill { display: none; }
+
+  /* Bölünmüş kartta özet sütunu biraz daha geniş olsun: hedef çubuğu ve
+     tahmin satırı sıkışmasın. */
+  .card--split { grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); }
+
+  /* Sağ sütundaki ilk kartın üst boşluğu sola hizalansın. */
+  .pane > .status-card:first-child { margin-top: 0; }
+}
+
+@media (min-width: 900px) {
+  /* Döküm sütunu uzun olduğunda özet sütunu tepede asılı kalmasın. */
+  .card--split { align-items: stretch; }
+  .card--split .hero {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
 }

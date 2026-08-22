@@ -1,4 +1,5 @@
 import { periodLabel, shiftPeriod, currentPeriodKey } from '../period.js';
+import { mountPeriodNav } from './periodNav.js';
 import { periodSummary, yearSummary, entryAmount } from '../payroll.js';
 import { formatMoney, formatHours } from '../format.js';
 import { entryRowHTML } from './entryRow.js';
@@ -116,6 +117,12 @@ export function renderReport(container, state, ctx) {
     </div>
     </div>
   `;
+
+  mountPeriodNav(ctx, {
+    label: periodLabel(periodKey),
+    onPrev: () => ctx.setReportPeriod(shiftPeriod(periodKey, -1)),
+    onNext: () => ctx.setReportPeriod(shiftPeriod(periodKey, 1)),
+  });
 
   container.querySelector('#prevPeriod').addEventListener('click', () => ctx.setReportPeriod(shiftPeriod(periodKey, -1)));
   container.querySelector('#nextPeriod').addEventListener('click', () => ctx.setReportPeriod(shiftPeriod(periodKey, 1)));
