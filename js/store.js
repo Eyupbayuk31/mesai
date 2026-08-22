@@ -19,6 +19,9 @@ const DEFAULT_WEEKLY_SCHEDULE = {
 
 const DEFAULT_SETTINGS = {
   monthlySalary: 0,
+  // Maaş değişiklikleri: [{ id, fromPeriod: 'YYYY-MM', amount }]
+  // Boşsa davranış eskisi gibi: tek maaş tüm dönemlerde geçerli.
+  salaryHistory: [],
   hoursDivisor: 225,
   // Günlük yan ödemeler (yemek kartı / ulaşım) — 0 = kapalı.
   mealAllowance: 0,
@@ -56,6 +59,9 @@ function defaultState() {
     // Krediler/borçlar: her ay taksiti bütçeden düşer, ödendikçe borç azalır.
     // [{id, label, amount, installments, firstPeriod, day, category, active}]
     loans: [],
+    // Şirketin gerçekten ödediği tutarlar: [{id, periodKey, amount, note}]
+    // Hesapla karşılaştırıp eksik ödeme yakalamak için.
+    payslips: [],
     // Silinen kayıtların mezar taşları: { entries: { id: silinmeZamanı }, ... }
     // Senkronda "bu kayıt silindi mi yoksa karşı cihazda yeni mi eklendi?"
     // sorusunun tek cevabı bu. Olmazsa silinen kayıt diğer cihazdan geri gelir.
@@ -65,10 +71,10 @@ function defaultState() {
   };
 }
 
-const TOMBSTONE_COLLECTIONS = ['entries', 'expenses', 'recurring', 'adjustments', 'loans'];
+const TOMBSTONE_COLLECTIONS = ['entries', 'expenses', 'recurring', 'adjustments', 'loans', 'payslips'];
 
 function emptyTombstones() {
-  return { entries: {}, expenses: {}, recurring: {}, adjustments: {}, loans: {} };
+  return { entries: {}, expenses: {}, recurring: {}, adjustments: {}, loans: {}, payslips: {} };
 }
 
 function normalizeTombstones(raw) {
@@ -98,6 +104,7 @@ function mergeSettings(settings) {
     multipliers: { ...DEFAULT_SETTINGS.multipliers, ...(settings?.multipliers || {}) },
     weekendDays: Array.isArray(settings?.weekendDays) ? settings.weekendDays : DEFAULT_SETTINGS.weekendDays,
     customCategories: Array.isArray(settings?.customCategories) ? settings.customCategories : [],
+    salaryHistory: Array.isArray(settings?.salaryHistory) ? settings.salaryHistory : [],
     weeklySchedule: mergeWeeklySchedule(settings?.weeklySchedule),
     breakWindow: { ...DEFAULT_SETTINGS.breakWindow, ...(settings?.breakWindow || {}) },
   };
@@ -112,6 +119,7 @@ function migrate(raw) {
   state.recurring = Array.isArray(raw?.recurring) ? raw.recurring : [];
   state.adjustments = Array.isArray(raw?.adjustments) ? raw.adjustments : [];
   state.loans = Array.isArray(raw?.loans) ? raw.loans : [];
+  state.payslips = Array.isArray(raw?.payslips) ? raw.payslips : [];
   state.tombstones = normalizeTombstones(raw?.tombstones);
   state.settingsUpdatedAt = typeof raw?.settingsUpdatedAt === 'string' ? raw.settingsUpdatedAt : null;
   state.schemaVersion = SCHEMA_VERSION;
@@ -296,6 +304,24 @@ export class Store {
       ...s,
       loans: s.loans.map((l) => (l.id === id ? { ...l, ...partial, updatedAt: new Date().toISOString() } : l)),
     }));
+  }
+
+  // Bir döneme yalnızca tek bordro kaydı olur; varsa güncellenir.
+  setPayslip(periodKey, partial) {
+    const now = new Date().toISOString();
+    this.update((s) => {
+      const existing = s.payslips.find((p) => p.periodKey === periodKey);
+      if (existing) {
+        return { ...s, payslips: s.payslips.map((p) => (p.periodKey === periodKey ? { ...p, ...partial, updatedAt: now } : p)) };
+      }
+      const record = { id: `p_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, periodKey, ...partial, createdAt: now, updatedAt: now };
+      return { ...s, payslips: [...s.payslips, record] };
+    });
+  }
+
+  removePayslip(periodKey) {
+    const found = this.state.payslips.find((p) => p.periodKey === periodKey);
+    if (found) this.update((s) => withTombstone(s, 'payslips', found.id));
   }
 
   removeLoan(id) {

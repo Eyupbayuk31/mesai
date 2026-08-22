@@ -1,5 +1,7 @@
 import { periodLabel, shiftPeriod, currentPeriodKey } from '../period.js';
 import { mountPeriodNav } from './periodNav.js';
+import { comparePayslip, explainPayslipDiff, payslipFor } from '../payslip.js';
+import { parseLocaleNumber } from '../format.js';
 import { periodSummary, yearSummary, entryAmount } from '../payroll.js';
 import { formatMoney, formatHours } from '../format.js';
 import { entryRowHTML } from './entryRow.js';
@@ -43,6 +45,8 @@ export function renderReport(container, state, ctx) {
 
     <div class="panes">
     <div class="pane">
+    ${payslipCardHTML(state, summary, settings)}
+
     <div class="section-title">Dönem özeti</div>
     <div class="card">
       <div class="rows">
@@ -117,6 +121,22 @@ export function renderReport(container, state, ctx) {
     </div>
     </div>
   `;
+
+  container.querySelector('#payslipSaveBtn')?.addEventListener('click', () => {
+    const input = container.querySelector('#payslipAmount');
+    const amount = parseLocaleNumber(input.value);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      showToast('Bordrodaki tutarı gir');
+      input.focus();
+      return;
+    }
+    ctx.store.setPayslip(periodKey, { amount });
+  });
+
+  container.querySelector('#payslipClearBtn')?.addEventListener('click', () => {
+    ctx.store.removePayslip(periodKey);
+    showToast('Bordro kaydı silindi');
+  });
 
   mountPeriodNav(ctx, {
     label: periodLabel(periodKey),
@@ -232,6 +252,56 @@ function renderBar(monthData, ySummary) {
         <div class="bar-chart__bar ${monthData.hours > 0 ? 'has-value' : ''}" style="height:${heightPct}%; ${isCurrent ? 'outline:2px solid var(--accent); outline-offset:2px;' : ''}" title="${formatHours(monthData.hours)}"></div>
       </div>
       <div class="bar-chart__label">${MONTH_SHORT[monthData.month - 1]}</div>
+    </div>
+  `;
+}
+
+
+// --- Bordro karşılaştırma -------------------------------------------------
+// Şirketin ödediğiyle hesabın tutup tutmadığı. Mesai takip etmenin asıl
+// karşılığı burada görünür.
+function payslipCardHTML(state, summary, settings) {
+  const slip = payslipFor(state, summary.periodKey);
+  if (!slip) {
+    return `
+      <div class="section-title">Bordro karşılaştırma</div>
+      <div class="card">
+        <p class="field__hint" style="margin:-2px 0 12px;">
+          Şirketin bu dönem için yatırdığı tutarı gir; hesapla tutuyor mu bakalım.
+          Hesaba göre <b>${formatMoney(summary.netTotal)}</b> olmalı.
+        </p>
+        <div class="field" style="margin-bottom:10px;">
+          <label class="field__label">Bordroda yazan / yatan tutar (₺)</label>
+          <input class="input input--amount" type="text" inputmode="decimal" id="payslipAmount" placeholder="0" autocomplete="off" />
+        </div>
+        <button class="btn btn--primary btn--sm" id="payslipSaveBtn" type="button">Karşılaştır</button>
+      </div>
+    `;
+  }
+
+  const cmp = comparePayslip(summary, slip.amount);
+  const explanation = explainPayslipDiff(summary, cmp, settings);
+  const durum = {
+    match: { cls: 'is-positive', baslik: 'Tutuyor ✓', not: 'Ödenen tutar hesapla aynı.' },
+    short: { cls: 'is-negative', baslik: `${formatMoney(Math.abs(cmp.diff))} eksik`, not: 'Ödenen tutar hesabın altında.' },
+    over: { cls: 'is-positive', baslik: `${formatMoney(cmp.diff)} fazla`, not: 'Ödenen tutar hesabın üstünde.' },
+  }[cmp.status];
+
+  return `
+    <div class="section-title">Bordro karşılaştırma</div>
+    <div class="card payslip payslip--${cmp.status}">
+      <div class="payslip__head">
+        <span class="payslip__title ${durum.cls}">${durum.baslik}</span>
+        <button class="payslip__clear" id="payslipClearBtn" type="button">Sıfırla</button>
+      </div>
+      <div class="rows rows--receipt">
+        <div class="row"><span class="row__label">Hesaba göre</span><span class="row__leader"></span><span class="row__value">${formatMoney(cmp.expected)}</span></div>
+        <div class="row"><span class="row__label">Şirketin ödediği</span><span class="row__leader"></span><span class="row__value">${formatMoney(cmp.paid)}</span></div>
+        <div class="row row--total"><span class="row__label">Fark</span><span class="row__leader"></span><span class="row__value ${durum.cls}">${cmp.diff === 0 ? '—' : (cmp.diff > 0 ? '+' : '−') + formatMoney(Math.abs(cmp.diff))}</span></div>
+      </div>
+      <p class="field__hint" style="margin:12px 0 0;">
+        ${durum.not}${explanation ? ` <b style="color:var(--text-secondary);">${explanation}</b>` : ''}
+      </p>
     </div>
   `;
 }

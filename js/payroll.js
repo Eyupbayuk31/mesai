@@ -1,17 +1,81 @@
 // Ücret hesap motoru. Tüm fonksiyonlar saf (yan etkisiz).
 
-import { isDateInPeriod } from './period.js';
+import { isDateInPeriod, periodKeyFromISODate } from './period.js';
 import { isHoliday } from './holidays.js';
 
-export function hourlyRate(settings) {
-  const salary = Number(settings.monthlySalary) || 0;
+/**
+ * Bir dönemde geçerli olan maaş.
+ *
+ * Maaş tek bir değer olarak tutulsaydı zam alındığı anda GEÇMİŞ ayların
+ * raporu da değişirdi (haziran mesain yeni saat ücretiyle hesaplanmış
+ * görünürdü). Bu yüzden maaş değişiklikleri tarihiyle saklanır.
+ *
+ * Geçmiş kaydı hiç yoksa davranış eskisi gibidir: tek maaş, tüm dönemler.
+ */
+export function salaryForPeriod(settings, periodKey) {
+  const history = Array.isArray(settings?.salaryHistory) ? settings.salaryHistory : [];
+  if (history.length === 0 || !periodKey) return Number(settings?.monthlySalary) || 0;
+
+  const sorted = [...history]
+    .filter((h) => h && h.fromPeriod)
+    .sort((a, b) => (a.fromPeriod < b.fromPeriod ? -1 : 1));
+  if (sorted.length === 0) return Number(settings?.monthlySalary) || 0;
+
+  let current = null;
+  for (const item of sorted) {
+    if (item.fromPeriod <= periodKey) current = item;
+    else break;
+  }
+  // Kaydedilen en eski değişiklikten de önceki dönemler için en eski maaş
+  // kullanılır; bugünkü maaşı geçmişe uygulamaktan daha doğru bir tahmin.
+  const chosen = current || sorted[0];
+  return Number(chosen.amount) || 0;
+}
+
+// İlk maaş değişikliği eklenirken, o ana kadarki maaşın da bir başlangıcı
+// olmalı. Yoksa "1 Temmuz'dan itibaren 45.000" yazınca haziran da 45.000'e
+// geçer — düzeltmek istediğimiz hatanın aynısı olur.
+const INITIAL_FROM = '1900-01';
+
+/**
+ * Maaş geçmişine bir değişiklik ekler ve güncel maaşı da döndürür.
+ * Saf: verilen ayarları değiştirmez, yeni değerler üretir.
+ */
+export function addSalaryChange(settings, { fromPeriod, amount }, currentPeriod) {
+  const existing = Array.isArray(settings?.salaryHistory) ? settings.salaryHistory : [];
+  const history = existing.filter((h) => h && h.fromPeriod !== fromPeriod);
+
+  // Geçmiş boşken: bugüne kadarki maaş "başlangıçtan itibaren" diye saklanır.
+  const previous = Number(settings?.monthlySalary) || 0;
+  if (existing.length === 0 && previous > 0 && previous !== amount) {
+    history.push({ id: 'sh_initial', fromPeriod: INITIAL_FROM, amount: previous, initial: true });
+  }
+
+  history.push({ id: `sh_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, fromPeriod, amount });
+  history.sort((a, b) => (a.fromPeriod < b.fromPeriod ? -1 : 1));
+
+  // En yeni kayıt bugünden geçmişteyse güncel maaş odur; ileri tarihli bir
+  // zam girildiyse güncel maaş henüz değişmemiştir.
+  const applicable = history.filter((h) => h.fromPeriod <= currentPeriod);
+  const monthlySalary = applicable.length
+    ? Number(applicable[applicable.length - 1].amount) || 0
+    : previous;
+
+  return { salaryHistory: history, monthlySalary };
+}
+
+// periodKey verilirse o dönemin maaşı, verilmezse güncel maaş kullanılır.
+export function hourlyRate(settings, periodKey) {
+  const salary = periodKey ? salaryForPeriod(settings, periodKey) : (Number(settings.monthlySalary) || 0);
   const divisor = Number(settings.hoursDivisor) || 225;
   if (divisor <= 0) return 0;
   return salary / divisor;
 }
 
 export function entryAmount(entry, settings) {
-  const rate = hourlyRate(settings);
+  // Kaydın kendi tarihindeki maaş kullanılır; böylece zam sonrası eski
+  // kayıtların tutarı değişmez ve toplamlar sabit kalır.
+  const rate = hourlyRate(settings, entry?.date ? periodKeyFromISODate(entry.date) : undefined);
   const multiplier = settings.multipliers?.[entry.type] ?? 1;
   const hours = Number(entry.hours) || 0;
   return hours * rate * multiplier;
@@ -158,7 +222,7 @@ export function periodSummary(state, periodKey) {
     else if (adj.kind === 'deduction') deductions += amount;
   }
 
-  const baseSalary = Number(settings.monthlySalary) || 0;
+  const baseSalary = salaryForPeriod(settings, periodKey);
   const mealAllowance = Number(settings.mealAllowance) || 0;
   const transportAllowance = Number(settings.transportAllowance) || 0;
   const allowanceDays = (mealAllowance > 0 || transportAllowance > 0)

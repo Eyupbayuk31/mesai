@@ -2166,3 +2166,37 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
   color: var(--accent-strong);
   font-weight: 750;
 }
+
+/* Maaş geçmişi satırındaki sil düğmesi. */
+.row__remove {
+  margin-left: 8px;
+  border: 0;
+  background: none;
+  color: var(--text-tertiary);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.row__remove:hover { color: var(--negative); }
+
+/* Bordro karşılaştırma kartı. */
+.payslip__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.payslip__title { font-size: 17px; font-weight: 750; }
+.payslip__clear {
+  border: 0;
+  background: none;
+  color: var(--text-tertiary);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 0;
+}
+.payslip__clear:hover { color: var(--negative); }
+.payslip--short { border-color: color-mix(in srgb, var(--negative) 40%, var(--border)); }
