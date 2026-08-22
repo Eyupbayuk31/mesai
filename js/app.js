@@ -201,9 +201,11 @@ function boot(profileId) {
     store,
     profileId,
     onStatus: (status) => {
-      // Yalnızca Yedekleme ekranı açıkken yeniden çizmek yeterli; başka
-      // ekranlarda durum göstergesi yok, boşuna render edilmez.
-      if (router.route.tab === 'settings' && router.route.page === 'backup') render();
+      // Durum göstergesi iki yerde var: Yedekleme sayfası ve Özet'teki rozet.
+      // Başka ekranlarda boşuna render edilmez.
+      const onBackup = router.route.tab === 'settings' && router.route.page === 'backup';
+      const onHome = router.route.tab === 'home' && !router.route.page;
+      if (onBackup || onHome) render();
     },
   });
   ctx.sync.start();

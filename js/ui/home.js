@@ -6,6 +6,15 @@ import { entryRowHTML } from './entryRow.js';
 import { enableSwipeToDelete } from './swipe.js';
 import { showToast } from './toast.js';
 import { openSheet } from './sheet.js';
+import {
+  periodProgress, projectPeriod, overtimeShare,
+  weeklyBuckets, periodRecord, busiestWeekday, todayNudge,
+} from '../homeStats.js';
+import { readStatus, relativeTime } from '../sync/engine.js';
+
+// Hatırlatmayı kapatma bilgisi cihaza özeldir; senkronlanan veriye karışmaz.
+const NUDGE_KEY = 'mesai.nudge.dismissed';
+const WEEK_COUNT = 6;
 
 const RECENT_COUNT = 5;
 
@@ -35,7 +44,13 @@ export function renderHome(container, state, ctx) {
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : (a.createdAt < b.createdAt ? 1 : -1)))
     .slice(0, RECENT_COUNT);
 
+  const progress = periodProgress(periodKey, todayISO());
+  const projection = hasSalary ? projectPeriod(summary, progress) : null;
+  const share = hasSalary ? overtimeShare(summary) : null;
+  const nudge = nudgeState(state);
+
   container.innerHTML = `
+    ${syncPillHTML()}
     <div class="period-card">
       <div style="width:34px;"></div>
       <div class="period-card__body">
@@ -45,6 +60,8 @@ export function renderHome(container, state, ctx) {
       <div style="width:34px;"></div>
     </div>
 
+    ${nudge.show ? nudgeHTML() : ''}
+
     <div class="panes">
     <div class="pane">
     ${!hasSalary ? salaryCtaHTML() : `
@@ -53,8 +70,12 @@ export function renderHome(container, state, ctx) {
           <div class="hero__label">Bu dönem mesai</div>
           <div class="hero__value">${formatHours(summary.totalHours)}</div>
           <div class="hero__sub">${formatMoney(summary.overtimePay)}</div>
-          ${comparisonHTML(summary, prevSummary, periodKey)}
+          <div class="hero__badges">
+            ${comparisonHTML(summary, prevSummary, periodKey)}
+            ${shareHTML(share)}
+          </div>
           ${goalBarHTML(summary, settings.monthlyGoalHours)}
+          ${projectionHTML(projection, settings.monthlyGoalHours)}
         </div>
         ${typeChipsHTML(summary)}
         <div class="rows rows--receipt">
@@ -88,7 +109,9 @@ export function renderHome(container, state, ctx) {
         </div>
       </div>
 
-      ${statusCardHTML(state)}
+      ${weeklyChartHTML(state.entries)}
+
+      ${statusCardHTML(state, periodKey)}
 
       <button class="btn btn--primary" id="quickAdd" type="button" style="margin-top:14px;">
         <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
@@ -119,6 +142,34 @@ export function renderHome(container, state, ctx) {
 
   container.querySelector('#holidayRow')?.addEventListener('click', openHolidaySheet);
 
+  // Senkron rozeti → Yedekleme sayfası (durum ve tanılama orada).
+  container.querySelector('#syncPill')?.addEventListener('click', () => {
+    ctx.navigate({ tab: 'settings', page: 'backup' });
+  });
+
+  container.querySelector('#nudgeAdd')?.addEventListener('click', () => {
+    ctx.openEntryForDate(todayISO());
+  });
+
+  container.querySelector('#nudgeClose')?.addEventListener('click', () => {
+    try { localStorage.setItem(NUDGE_KEY, todayISO()); } catch {}
+    container.querySelector('#nudge')?.remove();
+  });
+
+  // Bir haftaya dokun → Kayıtlar sekmesi o haftanın ayıyla açılır.
+  container.querySelector('#weekChart')?.addEventListener('click', (e) => {
+    const col = e.target.closest('[data-week]');
+    if (!col) return;
+    ctx.setEntriesView({
+      periodKey: col.dataset.week.slice(0, 7),
+      allTime: false,
+      type: 'all',
+      page: 1,
+      mode: 'list',
+    });
+    ctx.setTab('entries');
+  });
+
   container.querySelector('#seeAll')?.addEventListener('click', () => {
     ctx.setEntriesView({ periodKey, allTime: false, type: 'all', page: 1, mode: 'list' });
     ctx.setTab('entries');
@@ -135,6 +186,131 @@ export function renderHome(container, state, ctx) {
       },
     });
   }
+}
+
+
+// --- Senkron rozeti -------------------------------------------------------
+// Ayarlar'a girmeden telefonla PC'nin aynı veriyi gördüğü anlaşılsın diye.
+// Senkron kapalıysa hiç basılmaz; her şey yolundayken göze batmayacak kadar küçük.
+function syncPillHTML() {
+  const status = readStatus();
+  if (!status || status.state === 'off' || status.state === 'idle') return '';
+
+  const bad = status.state === 'error' || status.state === 'offline';
+  let label;
+  if (status.state === 'syncing') label = 'Senkronlanıyor…';
+  else if (status.state === 'offline') label = 'Senkron: internet yok';
+  else if (status.state === 'error') label = 'Senkron hatası — dokun';
+  else if (status.state === 'pending') label = 'Senkron: değişiklik bekliyor';
+  else {
+    const when = relativeTime(status.lastSyncAt);
+    label = when ? `Senkron: ${when}` : 'Senkron edildi';
+  }
+
+  return `<button class="sync-pill ${bad ? 'is-error' : ''}" id="syncPill" type="button">
+    <span class="sync-pill__dot"></span>${label}
+  </button>`;
+}
+
+// --- Bugün kayıt hatırlatması --------------------------------------------
+function nudgeState(state) {
+  const result = todayNudge(state);
+  if (!result.show) return result;
+  try {
+    // Aynı gün içinde kapatıldıysa bir daha çıkmaz; ertesi gün yeniden bakılır.
+    if (localStorage.getItem(NUDGE_KEY) === result.date) return { show: false, reason: 'kapatildi' };
+  } catch {}
+  return result;
+}
+
+function nudgeHTML() {
+  return `
+    <div class="nudge" id="nudge">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nudge__icon"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5l3 2"/></svg>
+      <span class="nudge__text">Bugün mesai yaptıysan eklemeyi unutma</span>
+      <button class="nudge__add" id="nudgeAdd" type="button">Ekle</button>
+      <button class="nudge__close" id="nudgeClose" type="button" aria-label="Kapat">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+  `;
+}
+
+// --- Mesai / maaş oranı ---------------------------------------------------
+function shareHTML(share) {
+  if (share === null || share === undefined) return '';
+  const pct = share * 100;
+  // %1'in altındaki oranlar "%0" görünmesin diye tek ondalık.
+  const text = pct > 0 && pct < 10 ? pct.toFixed(1).replace('.', ',') : String(Math.round(pct));
+  return `<div class="hero__compare is-neutral">Maaşın %${text}'i kadar ek</div>`;
+}
+
+// --- Ay sonu tahmini ------------------------------------------------------
+function projectionHTML(projection, goal) {
+  if (!projection) return '';
+  const goalHours = Number(goal) || 0;
+  const behind = goalHours > 0 && projection.hours < goalHours;
+  const prefix = projection.reliable ? 'Bu hızla ay sonunda' : 'Kaba tahmin — ay sonunda';
+  return `
+    <div class="projection ${behind ? 'is-behind' : ''}">
+      ${prefix} <b>~${formatHours(projection.hours)}</b> · <b>${formatMoney(projection.pay, { decimals: false })}</b>
+      ${behind ? `<span class="projection__warn">hedefin altında</span>` : ''}
+    </div>
+  `;
+}
+
+// --- Son 6 hafta mini grafik ---------------------------------------------
+// Çubuk yüksekliği yalnızca __track belirli yükseklikteyken çözülür; markup
+// bu yüzden report.js'teki kalıbın aynısı.
+function weeklyChartHTML(entries) {
+  const buckets = weeklyBuckets(entries, WEEK_COUNT, todayISO());
+  const max = Math.max(...buckets.map((b) => b.hours), 0);
+  const total = buckets.reduce((sum, b) => sum + b.hours, 0);
+
+  return `
+    <div class="card">
+      <div class="section-header" style="margin-bottom:10px;">
+        <span class="section-title" style="margin:0;">Son ${WEEK_COUNT} hafta</span>
+        <span class="section-header__meta">${formatHours(total)}</span>
+      </div>
+      <div class="bar-chart bar-chart--mini" id="weekChart">
+        ${buckets.map((b) => {
+    const pct = max > 0 ? Math.max(3, Math.round((b.hours / max) * 100)) : 3;
+    return `
+          <button class="bar-chart__col" data-week="${b.mondayISO}" data-end="${b.sundayISO}" type="button"
+                  title="${formatDayMonthShort(b.mondayISO)} haftası · ${formatHours(b.hours)}">
+            <div class="bar-chart__track">
+              <div class="bar-chart__bar ${b.hours > 0 ? 'has-value' : ''} ${b.isCurrent ? 'is-current' : ''}" style="height:${pct}%"></div>
+            </div>
+            <div class="bar-chart__label">${formatDayMonthShort(b.mondayISO)}</div>
+          </button>`;
+  }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// --- Rekor ve en yoğun gün ------------------------------------------------
+const WEEKDAY_NAMES = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
+
+function recordRowsHTML(state, periodKey) {
+  const record = periodRecord(state.entries, periodKey);
+  const busiest = busiestWeekday(state.entries);
+  if (!record && !busiest) return '';
+  return `
+    ${record ? `
+      <div class="status-row">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="status-row__icon"><path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 5H5.5v1.5A3 3 0 0 0 8 9.4M16 5h2.5v1.5A3 3 0 0 1 16 9.4"/><path d="M12 13v3M9 20h6l-.6-2.5H9.6z"/></svg>
+        <span class="status-row__label">Ayın rekoru</span>
+        <span class="status-row__value">${formatDayMonthShort(record.date)} · ${formatHours(record.hours)}</span>
+      </div>` : ''}
+    ${busiest ? `
+      <div class="status-row">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="status-row__icon"><path d="M4 19.5V13M9.3 19.5V8M14.7 19.5v-6M20 19.5V4.5"/></svg>
+        <span class="status-row__label">En yoğun gün</span>
+        <span class="status-row__value">${WEEKDAY_NAMES[busiest.weekday]} · ${busiest.count} kayıt</span>
+      </div>` : ''}
+  `;
 }
 
 // Geçen dönemle saat farkı — ilk dönemde (kıyas yoksa) gösterilmez.
@@ -178,7 +354,7 @@ function goalBarHTML(summary, goal) {
 }
 
 // Durum kartı: sıradaki resmi tatil + haftalık puantaj (program + mesai, 45 sa sınırı)
-function statusCardHTML(state) {
+function statusCardHTML(state, periodKey = currentPeriodKey()) {
   const holiday = nextHoliday(todayISO());
   const planned = scheduledWeeklyHours(state.settings);
   const overtime = thisWeekHours(state.entries);
@@ -205,6 +381,7 @@ function statusCardHTML(state) {
         <div class="meter__fill meter__fill--overtime" style="left:${plannedPct.toFixed(1)}%; width:${overtimePct.toFixed(1)}%"></div>
         ${total > 45 ? `<div class="meter__limit" style="left:${limitPct.toFixed(1)}%" title="Kanuni sınır 45 sa"></div>` : ''}
       </div>
+      ${recordRowsHTML(state, periodKey)}
       <div class="status-card__foot">Kanuni haftalık çalışma sınırı 45 saat</div>
     </div>
   `;
