@@ -10,6 +10,7 @@ import * as budgetPage from './budget.js';
 import * as appearancePage from './appearance.js';
 import * as backupPage from './backup.js';
 import { readStatus, relativeTime } from '../../sync/engine.js';
+import * as lunchPage from './lunch.js';
 import * as aboutPage from './about.js';
 
 const PAGES = {
@@ -19,6 +20,7 @@ const PAGES = {
   budget: budgetPage,
   appearance: appearancePage,
   backup: backupPage,
+  lunch: lunchPage,
   about: aboutPage,
 };
 
@@ -79,6 +81,17 @@ function backupSummary(state) {
   return `${days} gün önce`;
 }
 
+// Çekiliş sayacı — menüde küçük bir özet.
+function lunchSummary() {
+  try {
+    const counts = JSON.parse(localStorage.getItem('mesai.lunch.counts')) || {};
+    const toplam = Object.values(counts).reduce((a, b) => a + (Number(b) || 0), 0);
+    return toplam ? `${toplam} çekiliş yapıldı` : 'Öğle yemeği çekilişi';
+  } catch {
+    return 'Öğle yemeği çekilişi';
+  }
+}
+
 const MENU_ICONS = {
   salary: '<circle cx="12" cy="12" r="9"/><path d="M14.5 9.2A2.6 2.6 0 0 0 12 8c-1.4 0-2.5.8-2.5 2s1.1 2 2.5 2 2.5.8 2.5 2-1.1 2-2.5 2a2.6 2.6 0 0 1-2.5-1.2M12 6.5v11"/>',
   schedule: '<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3.5v3M16 3.5v3"/>',
@@ -86,6 +99,7 @@ const MENU_ICONS = {
   budget: '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0l-7.2-7.2 7.2-7.2a2 2 0 0 1 1.4-.6H19a2 2 0 0 1 2 2v6.4a2 2 0 0 1-.4 1.4z"/><circle cx="15.5" cy="8.5" r="1.3"/>',
   appearance: '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17" /><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor" stroke="none"/>',
   backup: '<path d="M12 15.5V4m0 11.5-4-4m4 4 4-4"/><path d="M4.5 15v3.5a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V15"/>',
+  lunch: '<path d="M6 3.5v7a2.5 2.5 0 0 0 5 0v-7M8.5 13v7.5"/><path d="M16.5 3.5c-1.4 1-2 2.6-2 4.5s.6 3.2 2 4v8.5"/>',
   about: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.8v.2"/>',
 };
 
@@ -125,6 +139,7 @@ function renderSettingsMenu(container, state, ctx) {
       ${menuRowHTML('budget', 'Bütçe kategorileri', budgetSummaryLabel(settings))}
       ${menuRowHTML('appearance', 'Görünüm', themeSummary(settings))}
       ${menuRowHTML('backup', 'Yedekleme', backupSummary(state))}
+      ${menuRowHTML('lunch', 'Kim ısmarlasın?', lunchSummary())}
       ${menuRowHTML('about', 'Uygulama hakkında', '')}
     </div>
   `;

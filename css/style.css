@@ -1537,3 +1537,76 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
 @media (min-width: 1500px) {
   :root { --content-max: 1180px; }
 }
+
+/* --- "Kim ısmarlasın?" çekilişi --- */
+.lunch { text-align: center; }
+
+.lunch__eyebrow {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 14px;
+}
+
+.lunch__stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 118px;
+  margin-bottom: 14px;
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--border);
+  background: var(--surface-2, transparent);
+  transition: border-color .25s ease, background-color .25s ease;
+}
+
+.lunch__stage.is-winner {
+  border-style: solid;
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.lunch__name {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  color: var(--text);
+  line-height: 1.1;
+  padding: 0 12px;
+}
+
+.lunch__stage.is-winner .lunch__name {
+  color: var(--accent);
+  animation: lunch-pop .45s cubic-bezier(.2, 1.5, .4, 1) both;
+}
+
+.lunch__name.is-tick { animation: lunch-tick .12s ease-out; }
+
+.lunch__note {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 16px;
+  min-height: 21px;
+}
+
+.lunch__note b { color: var(--accent); }
+
+@keyframes lunch-tick {
+  from { opacity: .35; transform: translateY(-6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes lunch-pop {
+  0%   { transform: scale(.7); opacity: 0; }
+  60%  { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lunch__name.is-tick,
+  .lunch__stage.is-winner .lunch__name { animation: none; }
+}
