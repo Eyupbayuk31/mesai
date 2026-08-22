@@ -5,10 +5,11 @@ import { entryAmount } from '../../payroll.js';
 import { profileName } from '../../profile.js';
 import {
   getSyncConfig, setSyncConfig, clearSyncConfig,
-  verifyToken, gistScopeProblem, sanitizeToken, pushBackup, pullBackup, backupFileName,
+  verifyToken, gistScopeProblem, sanitizeToken, backupFileName,
   findBackupGist, listBackups, readGistFile, SyncError,
 } from '../../githubSync.js';
 import { todayStamp } from './shared.js';
+import { readStatus, relativeTime } from '../../sync/engine.js';
 
 export const title = 'Yedekleme';
 
@@ -22,16 +23,23 @@ function formatWhen(iso) {
 export function render(container, state, ctx) {
   const sync = getSyncConfig();
   const connected = !!sync.token;
+  const status = readStatus();
 
   container.innerHTML = `
     <div class="card">
-      <p class="field__hint" style="margin-top:-4px; margin-bottom:6px;">Veriler yalnızca bu cihazda saklanır. Telefon değişikliğine veya tarayıcı temizliğine karşı arada bir yedek al.</p>
+      <p class="field__hint" style="margin-top:-4px; margin-bottom:6px;">${connected
+        ? 'Veriler bu cihazda tutulur ve GitHub yedeğiyle otomatik senkronlanır. Telefon ve bilgisayar aynı veriyi görür.'
+        : 'Veriler yalnızca bu cihazda saklanır. Telefon değişikliğine veya tarayıcı temizliğine karşı GitHub senkronunu aç.'}</p>
     </div>
 
     <div class="section-title">GitHub yedeği (gizli gist)</div>
     <div class="card" id="syncCard">
       ${connected ? `
         <div class="rows" style="margin-bottom:14px;">
+          <div class="row">
+            <span class="row__label">Durum</span>
+            <span class="row__value ${statusClass(status)}">${escapeHTML(statusLabel(status))}</span>
+          </div>
           <div class="row">
             <span class="row__label">GitHub hesabı</span>
             <span class="row__value">${sync.login ? '@' + escapeHTML(sync.login) : 'Bağlı'}</span>
@@ -40,14 +48,14 @@ export function render(container, state, ctx) {
             <span class="row__label">Yedek dosyası</span>
             <span class="row__value">${backupFileName(ctx.profileId)}</span>
           </div>
-          <div class="row">
-            <span class="row__label">Son bulut yedeği</span>
-            <span class="row__value">${formatWhen(state.lastCloudBackupAt) || 'Henüz yok'}</span>
-          </div>
         </div>
+        ${status.message ? `<p class="field__hint" style="margin:-6px 0 12px;">${escapeHTML(status.message)}</p>` : ''}
+        <p class="field__hint" style="margin:-2px 0 12px;">
+          Senkron otomatik: uygulamayı her açtığında ve veri girdiğinde bulutla
+          karşılıklı birleşir. İki cihazda ayrı ayrı girdiklerin birbirini silmez.
+        </p>
         <div style="display:flex; gap:10px;">
-          <button class="btn btn--primary btn--sm" id="cloudSaveBtn" type="button">Kaydet</button>
-          <button class="btn btn--secondary btn--sm" id="cloudLoadBtn" type="button">Getir</button>
+          <button class="btn btn--primary btn--sm" id="cloudSyncBtn" type="button">Şimdi senkronla</button>
         </div>
         ${sync.gistId ? '' : `
           <p class="field__hint" style="margin:10px 0 0;">
@@ -194,6 +202,8 @@ function wireCloudSync(container, state, ctx) {
       showToast(found?.gistId
         ? `${login} olarak bağlanıldı — bulutta yedek bulundu`
         : `${login} olarak bağlanıldı`);
+      // Motor açılışta token yokken "kapalı" başlamıştı; şimdi devreye girsin.
+      ctx.sync?.restart();
       ctx.rerender();
     } catch (err) {
       // Token'ın kendisini asla gösterme; teşhis için uzunluk ve temizlenen
@@ -206,49 +216,12 @@ function wireCloudSync(container, state, ctx) {
     }
   });
 
-  container.querySelector('#cloudSaveBtn')?.addEventListener('click', async () => {
-    const { token, gistId } = getSyncConfig();
-    const done = setBusy(container.querySelector('#cloudSaveBtn'), 'Kaydediliyor…');
-    try {
-      const result = await pushBackup({
-        token,
-        gistId,
-        profileId: ctx.profileId,
-        json: ctx.store.exportJSON(),
-      });
-      setSyncConfig({ gistId: result.gistId });
-      ctx.store.markCloudBackedUp();
-      showToast('Buluta kaydedildi');
-      ctx.rerender();
-    } catch (err) {
-      reportError(err);
-      done();
-    }
-  });
-
-  container.querySelector('#cloudLoadBtn')?.addEventListener('click', async () => {
-    const { token, gistId } = getSyncConfig();
-    // gistId yoksa hata verilmez: yedek başka cihazda alınmış olabilir,
-    // pullBackup hesapta dosya adına göre arar.
-    const done = setBusy(container.querySelector('#cloudLoadBtn'), gistId ? 'Getiriliyor…' : 'Yedek aranıyor…');
-    try {
-      const { json, updatedAt, gistId: foundId } = await pullBackup({ token, gistId, profileId: ctx.profileId });
-      // Bulunan gist bu cihaza da yazılır; sonraki Kaydet aynı yedeğin üstüne gider.
-      if (foundId && foundId !== gistId) setSyncConfig({ gistId: foundId });
-      let parsed;
-      try {
-        parsed = JSON.parse(json);
-      } catch {
-        throw new SyncError('Yedek dosyası bozuk (geçersiz JSON)');
-      }
-      const check = ctx.store.validateImport(parsed);
-      if (!check.valid) throw new SyncError(check.error || 'Yedek dosyası geçersiz');
-      done();
-      confirmCloudRestore(ctx, parsed, check, updatedAt);
-    } catch (err) {
-      reportError(err);
-      done();
-    }
+  container.querySelector('#cloudSyncBtn')?.addEventListener('click', async () => {
+    const done = setBusy(container.querySelector('#cloudSyncBtn'), 'Senkronlanıyor…');
+    const result = await ctx.syncNow('elle');
+    done();
+    showToast(result?.state === 'error' ? (result.message || 'Senkron başarısız') : (result?.message || 'Senkronlandı'));
+    ctx.rerender();
   });
 
   container.querySelector('#cloudListRow')?.addEventListener('click', async () => {
@@ -278,6 +251,7 @@ function wireCloudSync(container, state, ctx) {
         </p>`;
         footerEl.querySelector('#confirmDisconnectBtn').addEventListener('click', () => {
           clearSyncConfig();
+          ctx.sync?.restart();
           showToast('Bağlantı kesildi');
           closeSheet();
           ctx.rerender();
@@ -410,4 +384,26 @@ function renderBackupList(bodyEl, rows, ctx, token) {
       showToast(err instanceof SyncError ? err.message : 'Yedek okunamadı');
     }
   });
+}
+
+const STATUS_LABELS = {
+  syncing: 'Senkronlanıyor…',
+  pending: 'Değişiklik bekliyor',
+  offline: 'İnternet yok',
+  error: 'Hata',
+  off: 'Kapalı',
+};
+
+function statusLabel(status) {
+  if (status.state === 'ok') {
+    const when = relativeTime(status.lastSyncAt);
+    return when ? `Senkron: ${when}` : 'Senkron edildi';
+  }
+  return STATUS_LABELS[status.state] || 'Bekliyor';
+}
+
+function statusClass(status) {
+  if (status.state === 'error' || status.state === 'offline') return 'is-negative';
+  if (status.state === 'ok') return 'is-positive';
+  return '';
 }

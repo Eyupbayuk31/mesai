@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mesai-v22';
+const CACHE_NAME = 'mesai-v23';
 const APP_SHELL = [
   './',
   './index.html',
@@ -13,6 +13,8 @@ const APP_SHELL = [
   './js/app.js',
   './js/store.js',
   './js/githubSync.js',
+  './js/sync/merge.js',
+  './js/sync/engine.js',
   './js/profile.js',
   './js/router.js',
   './js/period.js',

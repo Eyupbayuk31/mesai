@@ -8,6 +8,7 @@ import { renderBudget } from './ui/budget.js';
 import { renderSettingsRoute, settingsPageTitle } from './ui/settings/index.js';
 import { getActiveProfile } from './profile.js';
 import { showToast } from './ui/toast.js';
+import { SyncEngine } from './sync/engine.js';
 
 const appEl = document.getElementById('app');
 const activeProfile = getActiveProfile();
@@ -56,6 +57,9 @@ function boot(profileId) {
     navigate(route) { router.navigate(route); },
     back() { router.back(); },
     rerender() { render(); },
+    // Senkron motoru: Yedekleme ekranı durumu buradan okur, elle tetikler.
+    sync: null,
+    syncNow(reason) { return ctx.sync ? ctx.sync.syncNow(reason) : Promise.resolve(null); },
     openEntryForDate: async (dateISO, entry) => {
       const { openEntrySheet } = await import('./ui/entry.js');
       openEntrySheet(store, entry || null, { date: dateISO });
@@ -190,6 +194,19 @@ function boot(profileId) {
   }
 
   render();
+
+  // Otomatik senkron: bağlıysa açılışta, veri değişince, öne gelince ve
+  // düzenli aralıkla buluttaki yedekle karşılıklı birleşir.
+  ctx.sync = new SyncEngine({
+    store,
+    profileId,
+    onStatus: (status) => {
+      // Yalnızca Yedekleme ekranı açıkken yeniden çizmek yeterli; başka
+      // ekranlarda durum göstergesi yok, boşuna render edilmez.
+      if (router.route.tab === 'settings' && router.route.page === 'backup') render();
+    },
+  });
+  ctx.sync.start();
 
   // Service worker kaydı. updateViaCache:none -> sw.js her açılışta HTTP
   // önbelleğini atlayıp ağdan kontrol edilir; PWA arka planda beklerken

@@ -9,6 +9,7 @@ import * as periodPage from './period.js';
 import * as budgetPage from './budget.js';
 import * as appearancePage from './appearance.js';
 import * as backupPage from './backup.js';
+import { readStatus, relativeTime } from '../../sync/engine.js';
 import * as aboutPage from './about.js';
 
 const PAGES = {
@@ -62,6 +63,15 @@ function budgetSummaryLabel(settings) {
 }
 
 function backupSummary(state) {
+  // Bulut senkronu açıksa asıl bilgi odur; dosya yedeği ikinci plandadır.
+  const status = readStatus();
+  if (status.state === 'error') return 'Senkron hatası';
+  if (status.state === 'offline') return 'Senkron: internet yok';
+  if (status.state === 'syncing') return 'Senkronlanıyor…';
+  if (status.lastSyncAt) {
+    const when = relativeTime(status.lastSyncAt);
+    return when ? `Senkron: ${when}` : 'Senkron edildi';
+  }
   if (!state.lastBackupAt) return 'Hiç yedek alınmadı';
   const days = Math.floor((Date.now() - new Date(state.lastBackupAt).getTime()) / 86400000);
   if (days <= 0) return 'Bugün yedeklendi';

@@ -53,7 +53,31 @@ function defaultState() {
     // Her dönem için otomatik sanal harcama üretirler (budget.js).
     recurring: [],
     adjustments: [],
+    // Silinen kayıtların mezar taşları: { entries: { id: silinmeZamanı }, ... }
+    // Senkronda "bu kayıt silindi mi yoksa karşı cihazda yeni mi eklendi?"
+    // sorusunun tek cevabı bu. Olmazsa silinen kayıt diğer cihazdan geri gelir.
+    tombstones: emptyTombstones(),
+    // Ayarlar tek parça olarak en son yazan kazanır; zamanı burada.
+    settingsUpdatedAt: null,
   };
+}
+
+const TOMBSTONE_COLLECTIONS = ['entries', 'expenses', 'recurring', 'adjustments'];
+
+function emptyTombstones() {
+  return { entries: {}, expenses: {}, recurring: {}, adjustments: {} };
+}
+
+function normalizeTombstones(raw) {
+  const out = emptyTombstones();
+  for (const coll of TOMBSTONE_COLLECTIONS) {
+    const src = raw?.[coll];
+    if (!src || typeof src !== 'object') continue;
+    for (const [id, at] of Object.entries(src)) {
+      if (typeof at === 'string') out[coll][id] = at;
+    }
+  }
+  return out;
 }
 
 function mergeWeeklySchedule(schedule) {
@@ -84,6 +108,8 @@ function migrate(raw) {
   state.expenses = Array.isArray(raw?.expenses) ? raw.expenses : [];
   state.recurring = Array.isArray(raw?.recurring) ? raw.recurring : [];
   state.adjustments = Array.isArray(raw?.adjustments) ? raw.adjustments : [];
+  state.tombstones = normalizeTombstones(raw?.tombstones);
+  state.settingsUpdatedAt = typeof raw?.settingsUpdatedAt === 'string' ? raw.settingsUpdatedAt : null;
   state.schemaVersion = SCHEMA_VERSION;
   return state;
 }
@@ -97,6 +123,19 @@ function isStorageAvailable() {
   } catch {
     return false;
   }
+}
+
+// Kaydı listeden çıkarır ve yerine silinme zamanı bırakır.
+function withTombstone(state, collection, id) {
+  const at = new Date().toISOString();
+  return {
+    ...state,
+    [collection]: state[collection].filter((r) => r.id !== id),
+    tombstones: {
+      ...state.tombstones,
+      [collection]: { ...(state.tombstones?.[collection] || {}), [id]: at },
+    },
+  };
 }
 
 export class Store {
@@ -164,7 +203,11 @@ export class Store {
   }
 
   updateSettings(partial) {
-    this.update((s) => ({ ...s, settings: mergeSettings({ ...s.settings, ...partial }) }));
+    this.update((s) => ({
+      ...s,
+      settings: mergeSettings({ ...s.settings, ...partial }),
+      settingsUpdatedAt: new Date().toISOString(),
+    }));
   }
 
   addEntry(entry) {
@@ -183,7 +226,7 @@ export class Store {
   }
 
   removeEntry(id) {
-    this.update((s) => ({ ...s, entries: s.entries.filter((e) => e.id !== id) }));
+    this.update((s) => withTombstone(s, 'entries', id));
   }
 
   addExpense(expense) {
@@ -202,12 +245,13 @@ export class Store {
   }
 
   removeExpense(id) {
-    this.update((s) => ({ ...s, expenses: s.expenses.filter((e) => e.id !== id) }));
+    this.update((s) => withTombstone(s, 'expenses', id));
   }
 
   addRecurring(def) {
     const id = def.id || `r_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-    const record = { active: true, ...def, id, createdAt: new Date().toISOString() };
+    const now = new Date().toISOString();
+    const record = { active: true, ...def, id, createdAt: def.createdAt || now, updatedAt: now };
     this.update((s) => ({ ...s, recurring: [...s.recurring, record] }));
     return record;
   }
@@ -220,18 +264,19 @@ export class Store {
   }
 
   removeRecurring(id) {
-    this.update((s) => ({ ...s, recurring: s.recurring.filter((r) => r.id !== id) }));
+    this.update((s) => withTombstone(s, 'recurring', id));
   }
 
   addAdjustment(adj) {
     const id = adj.id || `a_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const record = { ...adj, id, createdAt: adj.createdAt || new Date().toISOString() };
+    const now = new Date().toISOString();
+    const record = { ...adj, id, createdAt: adj.createdAt || now, updatedAt: now };
     this.update((s) => ({ ...s, adjustments: [...s.adjustments, record] }));
     return record;
   }
 
   removeAdjustment(id) {
-    this.update((s) => ({ ...s, adjustments: s.adjustments.filter((a) => a.id !== id) }));
+    this.update((s) => withTombstone(s, 'adjustments', id));
   }
 
   replaceAll(newState) {
@@ -270,4 +315,4 @@ export class Store {
   }
 }
 
-export { LEGACY_STORAGE_KEY, SCHEMA_VERSION, DEFAULT_SETTINGS };
+export { LEGACY_STORAGE_KEY, SCHEMA_VERSION, DEFAULT_SETTINGS, TOMBSTONE_COLLECTIONS, emptyTombstones };
