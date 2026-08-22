@@ -268,6 +268,16 @@ function boot(profileId) {
     hideInstallBanner();
   });
 
+  // iOS'ta beforeinstallprompt HİÇ tetiklenmez (Apple desteklemiyor), yani
+  // yukarıdaki dinleyici orada hiç çalışmaz. Bu yüzden banner'ı biz açıyoruz;
+  // "Ekle" düğmesi Paylaş menüsü adımlarını gösterir.
+  (async () => {
+    const { isIOS, isStandalone } = await import('./ui/installGuide.js');
+    if (isIOS() && !isStandalone() && !sessionDismissed()) {
+      setTimeout(() => showInstallBanner(), 1200);
+    }
+  })();
+
   function sessionDismissed() {
     try { return window.localStorage.getItem(INSTALL_DISMISS_KEY) === '1'; } catch { return false; }
   }
@@ -286,7 +296,11 @@ function boot(profileId) {
         </button>
       </span>
     `;
-    el.querySelector('#installBannerAdd').addEventListener('click', () => ctx.promptInstall());
+    el.querySelector('#installBannerAdd').addEventListener('click', async () => {
+      if (deferredInstallPrompt) { ctx.promptInstall(); return; }
+      const { openInstallGuide } = await import('./ui/installGuide.js');
+      openInstallGuide();
+    });
     el.querySelector('#installBannerClose').addEventListener('click', () => {
       try { window.localStorage.setItem(INSTALL_DISMISS_KEY, '1'); } catch {}
       hideInstallBanner();

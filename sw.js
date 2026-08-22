@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mesai-v24';
+const CACHE_NAME = 'mesai-v25';
 const APP_SHELL = [
   './',
   './index.html',
@@ -41,6 +41,7 @@ const APP_SHELL = [
   './js/ui/settings/backup.js',
   './js/ui/settings/lunch.js',
   './js/ui/settings/about.js',
+  './js/ui/installGuide.js',
   './js/ui/sheet.js',
   './js/ui/toast.js',
   './js/ui/swipe.js',

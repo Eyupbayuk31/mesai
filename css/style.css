@@ -1610,3 +1610,43 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
   .lunch__name.is-tick,
   .lunch__stage.is-winner .lunch__name { animation: none; }
 }
+
+/* --- "Ana ekrana ekle" yönergeleri --- */
+.install-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: install;
+}
+
+.install-steps li {
+  counter-increment: install;
+  position: relative;
+  padding: 0 0 0 38px;
+  margin-bottom: 14px;
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.install-steps li:last-child { margin-bottom: 0; }
+
+.install-steps li b { color: var(--text); }
+
+.install-steps li::before {
+  content: counter(install);
+  position: absolute;
+  left: 0;
+  top: -1px;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 13px;
+  font-weight: 700;
+}

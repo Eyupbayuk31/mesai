@@ -3,7 +3,7 @@ import { profileName } from '../../profile.js';
 
 // Uygulama sürümü — her yayınla burası ve sw.js CACHE_VERSION birlikte artar.
 // Ayarlar → Uygulama hakkında'da görünür; güncelleme gelmiş mi buradan anlaşılır.
-export const APP_VERSION = '3.1.0';
+export const APP_VERSION = '3.2.0';
 
 export const title = 'Uygulama hakkında';
 
@@ -38,14 +38,14 @@ export function render(container, state, ctx) {
   `;
 
   container.querySelector('#installRow').addEventListener('click', async () => {
+    // Tarayıcı kendi kurulum penceresini verebiliyorsa onu kullan; veremiyorsa
+    // (iOS'ta hep böyle) platforma göre adımları göster.
     if (ctx.canInstall()) {
       await ctx.promptInstall();
       return;
     }
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-    showToast(isStandalone
-      ? 'Uygulama zaten ana ekranına eklenmiş'
-      : 'Tarayıcı menüsünden "Ana ekrana ekle" seçeneğini kullan');
+    const { openInstallGuide } = await import('../installGuide.js');
+    openInstallGuide();
   });
 
   container.querySelector('#checkUpdateRow').addEventListener('click', () => ctx.checkForUpdate());
