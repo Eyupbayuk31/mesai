@@ -11,6 +11,7 @@ import {
   weeklyBuckets, periodRecord, busiestWeekday, todayNudge,
 } from '../homeStats.js';
 import { readStatus, relativeTime } from '../sync/engine.js';
+import { loansSummary } from '../loans.js';
 
 // Hatırlatmayı kapatma bilgisi cihaza özeldir; senkronlanan veriye karışmaz.
 const NUDGE_KEY = 'mesai.nudge.dismissed';
@@ -141,6 +142,10 @@ export function renderHome(container, state, ctx) {
   });
 
   container.querySelector('#holidayRow')?.addEventListener('click', openHolidaySheet);
+
+  container.querySelector('#debtRow')?.addEventListener('click', () => {
+    ctx.navigate({ tab: 'budget', page: 'loans' });
+  });
 
   // Senkron rozeti → Yedekleme sayfası (durum ve tanılama orada).
   container.querySelector('#syncPill')?.addEventListener('click', () => {
@@ -293,6 +298,20 @@ function weeklyChartHTML(entries) {
 // --- Rekor ve en yoğun gün ------------------------------------------------
 const WEEKDAY_NAMES = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
 
+// Toplam kalan borç — kredi yoksa hiç görünmez.
+function debtRowHTML(state, periodKey) {
+  const loans = loansSummary(state, periodKey);
+  if (loans.totalRemaining <= 0) return '';
+  return `
+    <button class="status-row" id="debtRow" type="button">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="status-row__icon"><rect x="2.5" y="6" width="19" height="12.5" rx="2.5"/><path d="M2.5 10h19M6 14.5h4"/></svg>
+      <span class="status-row__label">Kalan borç</span>
+      <span class="status-row__value">${formatMoney(loans.totalRemaining, { decimals: false })}</span>
+      <span class="status-row__chip">${loans.openCount} kredi</span>
+    </button>
+  `;
+}
+
 function recordRowsHTML(state, periodKey) {
   const record = periodRecord(state.entries, periodKey);
   const busiest = busiestWeekday(state.entries);
@@ -381,6 +400,7 @@ function statusCardHTML(state, periodKey = currentPeriodKey()) {
         <div class="meter__fill meter__fill--overtime" style="left:${plannedPct.toFixed(1)}%; width:${overtimePct.toFixed(1)}%"></div>
         ${total > 45 ? `<div class="meter__limit" style="left:${limitPct.toFixed(1)}%" title="Kanuni sınır 45 sa"></div>` : ''}
       </div>
+      ${debtRowHTML(state, periodKey)}
       ${recordRowsHTML(state, periodKey)}
       <div class="status-card__foot">Kanuni haftalık çalışma sınırı 45 saat</div>
     </div>

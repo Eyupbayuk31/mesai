@@ -73,6 +73,8 @@ export function renderBudget(container, state, ctx) {
       <button class="btn btn--ghost" id="goSalary" type="button" style="margin-top:8px;">Maaşımı gir</button>
     </div>`}
 
+    ${loansRowHTML(summary)}
+
     <div class="section-title">Öneriler</div>
     <div class="card tips-card">
       ${budgetTips(summary).map((t) => `
@@ -101,6 +103,8 @@ export function renderBudget(container, state, ctx) {
 
   container.querySelector('#addExpense').addEventListener('click', () => ctx.openExpense());
 
+  container.querySelector('#loansRow').addEventListener('click', () => ctx.navigate({ tab: 'budget', page: 'loans' }));
+
   const listEl = container.querySelector('#expenseList');
   if (listEl) {
     enableSwipeToDelete(listEl, {
@@ -125,6 +129,22 @@ export function renderBudget(container, state, ctx) {
 
 
 // Geçen dönemle kıyas — ayın aynı gününe kadarki harcamalar karşılaştırılır.
+// Borç özeti + Borçlar sayfasına giriş. Hiç kredi yoksa da görünür ki
+// kullanıcı özelliğin varlığını fark etsin.
+function loansRowHTML(summary) {
+  const loans = summary.loans;
+  const has = loans && loans.count > 0;
+  return `
+    <div class="card card--menu" style="margin-top:14px;">
+      <div class="link-row" id="loansRow">
+        <span>Borçlar${has ? `<span class="link-row__sub">${loans.openCount} açık kredi · bu ay ${formatMoney(loans.monthlyTotal, { decimals: false })}</span>` : ''}</span>
+        <span class="link-row__value">${has ? formatMoney(loans.totalRemaining, { decimals: false }) : 'Kredi ekle'}</span>
+        <span class="link-row__chevron">›</span>
+      </div>
+    </div>
+  `;
+}
+
 function comparisonHTML(comparison) {
   if (!comparison) return '';
   const { diff, partial } = comparison;

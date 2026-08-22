@@ -53,6 +53,9 @@ function defaultState() {
     // Her dönem için otomatik sanal harcama üretirler (budget.js).
     recurring: [],
     adjustments: [],
+    // Krediler/borçlar: her ay taksiti bütçeden düşer, ödendikçe borç azalır.
+    // [{id, label, amount, installments, firstPeriod, day, category, active}]
+    loans: [],
     // Silinen kayıtların mezar taşları: { entries: { id: silinmeZamanı }, ... }
     // Senkronda "bu kayıt silindi mi yoksa karşı cihazda yeni mi eklendi?"
     // sorusunun tek cevabı bu. Olmazsa silinen kayıt diğer cihazdan geri gelir.
@@ -62,10 +65,10 @@ function defaultState() {
   };
 }
 
-const TOMBSTONE_COLLECTIONS = ['entries', 'expenses', 'recurring', 'adjustments'];
+const TOMBSTONE_COLLECTIONS = ['entries', 'expenses', 'recurring', 'adjustments', 'loans'];
 
 function emptyTombstones() {
-  return { entries: {}, expenses: {}, recurring: {}, adjustments: {} };
+  return { entries: {}, expenses: {}, recurring: {}, adjustments: {}, loans: {} };
 }
 
 function normalizeTombstones(raw) {
@@ -108,6 +111,7 @@ function migrate(raw) {
   state.expenses = Array.isArray(raw?.expenses) ? raw.expenses : [];
   state.recurring = Array.isArray(raw?.recurring) ? raw.recurring : [];
   state.adjustments = Array.isArray(raw?.adjustments) ? raw.adjustments : [];
+  state.loans = Array.isArray(raw?.loans) ? raw.loans : [];
   state.tombstones = normalizeTombstones(raw?.tombstones);
   state.settingsUpdatedAt = typeof raw?.settingsUpdatedAt === 'string' ? raw.settingsUpdatedAt : null;
   state.schemaVersion = SCHEMA_VERSION;
@@ -277,6 +281,33 @@ export class Store {
 
   removeAdjustment(id) {
     this.update((s) => withTombstone(s, 'adjustments', id));
+  }
+
+  addLoan(loan) {
+    const id = loan.id || `l_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    const now = new Date().toISOString();
+    const record = { active: true, ...loan, id, createdAt: loan.createdAt || now, updatedAt: now };
+    this.update((s) => ({ ...s, loans: [...s.loans, record] }));
+    return record;
+  }
+
+  updateLoan(id, partial) {
+    this.update((s) => ({
+      ...s,
+      loans: s.loans.map((l) => (l.id === id ? { ...l, ...partial, updatedAt: new Date().toISOString() } : l)),
+    }));
+  }
+
+  removeLoan(id) {
+    // Krediye bağlı ara ödemeler normal harcamadır; silinmez, yalnızca
+    // bağları kopar (para gerçekten harcanmıştır, bütçeden düşmeye devam eder).
+    this.update((s) => {
+      const next = withTombstone(s, 'loans', id);
+      return {
+        ...next,
+        expenses: next.expenses.map((e) => (e.loanId === id ? { ...e, loanId: undefined, updatedAt: new Date().toISOString() } : e)),
+      };
+    });
   }
 
   replaceAll(newState) {

@@ -3,6 +3,7 @@
 
 import { periodSummary } from './payroll.js';
 import { periodRange, shiftPeriod } from './period.js';
+import { loanExpensesForPeriod, loansSummary } from './loans.js';
 import { parseISODate, formatMoney, todayISO } from './format.js';
 
 // Harcama kategorileri — renkler CSS değişkenlerinden bağımsız sabit hex,
@@ -56,7 +57,9 @@ export function budgetSummary(state, periodKey, todayStr = todayISO()) {
       virtual: true,
       createdAt: `${periodKey}-01T00:00:00.000Z`,
     }));
-  const expenses = [...realExpenses, ...virtualExpenses];
+  // Kredi taksitleri de sanal harcamadır: bütçeden düşer ama elle girilmez.
+  const loanExpenses = loanExpensesForPeriod(state, periodKey);
+  const expenses = [...realExpenses, ...virtualExpenses, ...loanExpenses];
   const pay = periodSummary(state, periodKey);
 
   const byCategory = new Map();
@@ -87,7 +90,8 @@ export function budgetSummary(state, periodKey, todayStr = todayISO()) {
     periodKey,
     isCurrent,
     expenseCount: realExpenses.length,
-    virtualCount: virtualExpenses.length,
+    virtualCount: virtualExpenses.length + loanExpenses.length,
+    loans: loansSummary(state, periodKey),
     expenses,
     spent,
     byCategory: [...byCategory.entries()]

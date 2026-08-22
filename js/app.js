@@ -5,6 +5,7 @@ import { renderHome } from './ui/home.js';
 import { renderEntries } from './ui/entries.js';
 import { renderReport } from './ui/report.js';
 import { renderBudget } from './ui/budget.js';
+import * as loansPage from './ui/loans.js';
 import { renderSettingsRoute, settingsPageTitle } from './ui/settings/index.js';
 import { getActiveProfile } from './profile.js';
 import { showToast } from './ui/toast.js';
@@ -119,6 +120,12 @@ function boot(profileId) {
     },
   };
 
+  // Alt sayfa başlığı: Ayarlar'ın kendi sayfaları + Bütçe → Borçlar.
+  function subPageTitle(tab, page) {
+    if (tab === 'budget' && page === 'loans') return loansPage.title;
+    return settingsPageTitle(page);
+  }
+
   function applyTheme() {
     const theme = store.getState().settings.theme;
     document.documentElement.dataset.theme = theme === 'auto' ? '' : theme;
@@ -135,7 +142,7 @@ function boot(profileId) {
 
     // Alt sayfada geri butonu ve alt sayfanın kendi başlığı gösterilir.
     topbarBack.hidden = !page;
-    topbarTitle.textContent = page ? (settingsPageTitle(page) || TAB_TITLES[tab]) : TAB_TITLES[tab];
+    topbarTitle.textContent = page ? (subPageTitle(tab, page) || TAB_TITLES[tab]) : TAB_TITLES[tab];
     fab.hidden = !!page || !FAB_TABS.has(tab);
     // Bütçe sekmesinde aynı düğme harcama ekler; etiketi buna göre değişir.
     const fabAction = tab === 'budget' ? 'Harcama ekle' : 'Mesai ekle';
@@ -146,7 +153,10 @@ function boot(profileId) {
     if (tab === 'home') renderHome(screenEl, state, ctx);
     else if (tab === 'entries') renderEntries(screenEl, state, ctx);
     else if (tab === 'report') renderReport(screenEl, state, ctx);
-    else if (tab === 'budget') renderBudget(screenEl, state, ctx);
+    else if (tab === 'budget') {
+      if (page === 'loans') loansPage.render(screenEl, state, ctx);
+      else renderBudget(screenEl, state, ctx);
+    }
     else if (tab === 'settings') renderSettingsRoute(screenEl, state, ctx, page);
   }
 
