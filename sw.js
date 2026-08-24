@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mesai-v39';
+const CACHE_NAME = 'mesai-v40';
 const APP_SHELL = [
   './',
   './index.html',
@@ -116,8 +116,12 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
 
   if (isCode(url, event.request)) {
+    // cache: 'no-cache' — tarayıcının disk önbelleğine SORMADAN sunucuya
+    // doğrulatır (değişmemişse 304, bedava). Bu olmadan index.html eski
+    // diskten, app.js ağdan gelip uygulama yarı eski açılıyor, modül
+    // yüklenemeyince de ekran tamamen boş kalıyordu.
     event.respondWith(
-      fetch(event.request)
+      fetch(event.request.url, { cache: 'no-cache', credentials: 'same-origin' })
         .then((response) => putInCache(event.request, response))
         .catch(() => caches.match(event.request).then((cached) => cached || caches.match('./index.html')))
     );

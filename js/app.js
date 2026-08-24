@@ -25,6 +25,7 @@ const activeProfile = getActiveProfile();
 if (!activeProfile) {
   const { renderProfilePicker } = await import('./ui/profilePicker.js');
   renderProfilePicker(appEl);
+  window.__mesaiBooted = true;
 } else {
   boot(activeProfile);
 }
@@ -289,6 +290,8 @@ function boot(profileId) {
   }
 
   render();
+  // Kurtarma ağı (index.html) bu bayrağı görürse devreye girmez.
+  window.__mesaiBooted = true;
 
   // Otomatik senkron: bağlıysa açılışta, veri değişince, öne gelince ve
   // düzenli aralıkla buluttaki yedekle karşılıklı birleşir.

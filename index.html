@@ -111,5 +111,56 @@
 <div class="toast-stack" id="toastStack" aria-live="polite"></div>
 
 <script type="module" src="js/app.js"></script>
+<script>
+// Kurtarma ağı: modüller yüklenemezse (yarım güncellenmiş önbellek, kesilen
+// indirme) ekran bomboş kalıyordu ve kullanıcının elinde sert yenilemeden
+// başka çare yoktu. Bu betik modül DEĞİL — her hâlükârda çalışır.
+(function () {
+  var BOOT_TIMEOUT = 6000;
+  var failed = false;
+
+  window.addEventListener('error', function (e) {
+    // Yüklenemeyen <script>/modül: hedefi element olan hata.
+    if (e && e.target && e.target !== window && e.target.tagName === 'SCRIPT') failed = true;
+  }, true);
+
+  function repair() {
+    var done = function () {
+      window.location.replace(window.location.pathname + '?yenile=' + Date.now());
+    };
+    var jobs = [];
+    try {
+      if ('serviceWorker' in navigator) {
+        jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) {
+          return Promise.all(rs.map(function (r) { return r.unregister(); }));
+        }));
+      }
+      if (window.caches) {
+        jobs.push(caches.keys().then(function (keys) {
+          return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+        }));
+      }
+    } catch (err) { /* yine de yenile */ }
+    Promise.all(jobs).then(done, done);
+  }
+
+  function showRecovery() {
+    var el = document.getElementById('screen') || document.getElementById('app') || document.body;
+    el.innerHTML = '<div style="max-width:420px;margin:80px auto;padding:24px;text-align:center;font-family:system-ui,sans-serif;">'
+      + '<div style="font-size:17px;font-weight:700;margin-bottom:8px;">Uygulama yüklenemedi</div>'
+      + '<div style="font-size:14px;line-height:1.5;opacity:0.75;margin-bottom:18px;">Yarım kalmış bir güncelleme olabilir. Kayıtların ve ayarların cihazında duruyor, silinmez.</div>'
+      + '<button id="mesaiRepairBtn" style="padding:12px 20px;border:0;border-radius:12px;background:#c9701a;color:#fff;font-size:15px;font-weight:700;cursor:pointer;">Onar ve yeniden yükle</button>'
+      + '</div>';
+    var btn = document.getElementById('mesaiRepairBtn');
+    if (btn) btn.addEventListener('click', repair);
+  }
+
+  setTimeout(function () {
+    if (window.__mesaiBooted) return;
+    if (failed) { repair(); return; }   // dosya hiç inmemiş: doğrudan onar
+    showRecovery();                      // başka bir sebep: kullanıcıya sor
+  }, BOOT_TIMEOUT);
+})();
+</script>
 </body>
 </html>
