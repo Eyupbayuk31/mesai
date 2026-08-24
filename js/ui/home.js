@@ -114,6 +114,8 @@ export function renderHome(container, state, ctx) {
           ${summary.deductions > 0 ? receiptRow('Kesinti', `− ${formatMoney(summary.deductions, { decimals: false })}`, { valueCls: 'is-negative' }) : ''}
           ${receiptRow('Tahmini eline geçecek', formatMoney(summary.netTotal), { rowCls: 'row--total' })}
         </div>
+        ${summary.advances > 0 ? `
+        <p class="hero__note" style="text-align:left;">Avans düşüldü — Bütçe'de avans hâlâ senin paran sayılır, oradaki <b>kalan</b> bu yüzden farklı.</p>` : ''}
         </div>
       </div>
 

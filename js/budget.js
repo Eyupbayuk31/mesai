@@ -104,6 +104,8 @@ export function budgetSummary(state, periodKey, todayStr = todayISO()) {
       .filter((r) => r.active !== false && (r.since || '') === periodKey)
       .reduce((sum, r) => sum + (Number(r.amount) || 0), 0),
     expectedTotal,
+    // Avans düşülmüş hali — Özet'teki "eline geçecek" ile aynı sayı.
+    netTotal: pay.netTotal,
     advances: pay.advances,
     hasSalary,
     remaining,

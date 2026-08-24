@@ -2200,3 +2200,12 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
 }
 .payslip__clear:hover { color: var(--negative); }
 .payslip--short { border-color: color-mix(in srgb, var(--negative) 40%, var(--border)); }
+
+/* Avans varken Özet ve Bütçe'deki "kalan"ın neden farklı olduğunu açıklayan not. */
+.hero__note {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+}
+.hero__note b { color: var(--text-secondary); font-weight: 700; }

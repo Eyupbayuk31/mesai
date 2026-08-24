@@ -46,12 +46,17 @@ export function renderBudget(container, state, ctx) {
           ${comparisonHTML(comparison)}
         </div>
         ${paceHTML(pace, summary)}
+        ${summary.advances > 0 ? `
+        <p class="hero__note">Avans dahil — Özet'teki <b>eline geçecek</b>, avansın düşülmüş halidir.</p>` : ''}
       </div>
       <div class="card__detail">
       ${categoryBarHTML(summary)}
       <div class="rows rows--receipt">
-        ${receiptRow('Toplam bütçe', formatMoney(summary.expectedTotal, { decimals: false }))}
-        ${summary.advances > 0 ? receiptRow('Avans geri eklendi', `+ ${formatMoney(summary.advances, { decimals: false })}`, { valueCls: 'is-positive' }) : ''}
+        ${summary.advances > 0 ? `
+          ${receiptRow('Eline geçecek', formatMoney(summary.netTotal, { decimals: false }))}
+          ${receiptRow('Avans <span style="color:var(--text-tertiary);">(zaten aldın)</span>', `+ ${formatMoney(summary.advances, { decimals: false })}`, { valueCls: 'is-positive' })}
+          ${receiptRow('Toplam bütçe', formatMoney(summary.expectedTotal, { decimals: false }), { rowCls: 'row--subtotal' })}
+        ` : receiptRow('Toplam bütçe', formatMoney(summary.expectedTotal, { decimals: false }))}
         ${receiptRow('Harcama', `− ${formatMoney(summary.spent, { decimals: false })}`, { valueCls: 'is-negative' })}
         ${summary.byCategory.map((c) => receiptRow(`<span style="color:var(--text-tertiary);"><span class="dot" style="background:${c.color};"></span>${c.label}</span>`, formatMoney(c.amount, { decimals: false }))).join('')}
         ${receiptRow('Kalan', formatMoney(summary.remaining, { decimals: false }), { rowCls: 'row--total' })}
