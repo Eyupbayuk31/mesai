@@ -84,6 +84,21 @@ export function payslipFor(state, periodKey) {
   return (state?.payslips || []).find((p) => p && p.periodKey === periodKey) || null;
 }
 
+/**
+ * Bordro girilmiş dönemlerin karşılaştırma satırları, yeniden eskiye.
+ * Girilmemiş dönemler listeye hiç girmez — boş ay listeyi kirletmesin.
+ */
+export function payslipRows(state, summaries) {
+  const rows = [];
+  for (const summary of summaries) {
+    const slip = payslipFor(state, summary.periodKey);
+    if (!slip) continue;
+    const cmp = comparePayslip(summary, slip.amount);
+    rows.push({ periodKey: summary.periodKey, ...cmp });
+  }
+  return rows.sort((a, b) => (a.periodKey < b.periodKey ? 1 : -1));
+}
+
 /** Kaç dönem tuttu, kaç dönem eksik ödendi? Rapor özeti için. */
 export function payslipStats(state, summaries) {
   const stats = { checked: 0, match: 0, short: 0, over: 0, totalDiff: 0 };

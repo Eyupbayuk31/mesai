@@ -1,9 +1,9 @@
 import { periodLabel, shiftPeriod, currentPeriodKey } from '../period.js';
 import { mountPeriodNav } from './periodNav.js';
-import { comparePayslip, explainPayslipDiff, payslipFor } from '../payslip.js';
+import { comparePayslip, explainPayslipDiff, payslipFor, payslipRows, payslipStats } from '../payslip.js';
 import { parseLocaleNumber } from '../format.js';
 import { periodSummary, yearSummary, entryAmount } from '../payroll.js';
-import { formatMoney, formatHours } from '../format.js';
+import { formatMoney, formatHours, formatMonthYear } from '../format.js';
 import { entryRowHTML } from './entryRow.js';
 import { enableSwipeToDelete } from './swipe.js';
 import { showToast } from './toast.js';
@@ -46,6 +46,8 @@ export function renderReport(container, state, ctx) {
     <div class="panes">
     <div class="pane">
     ${payslipCardHTML(state, summary, settings)}
+
+    ${payslipHistoryHTML(state)}
 
     <div class="section-title">Dönem özeti</div>
     <div class="card">
@@ -131,6 +133,11 @@ export function renderReport(container, state, ctx) {
       return;
     }
     ctx.store.setPayslip(periodKey, { amount });
+  });
+
+  container.querySelector('#payslipHistory')?.addEventListener('click', (e) => {
+    const row = e.target.closest('[data-period]');
+    if (row) ctx.setReportPeriod(row.dataset.period);
   });
 
   container.querySelector('#payslipClearBtn')?.addEventListener('click', () => {
@@ -256,6 +263,48 @@ function renderBar(monthData, ySummary) {
   `;
 }
 
+
+
+// --- Bordro geçmişi -------------------------------------------------------
+// Tek döneme bakmak bir kalemin HER AY eksik yattığını göstermez; kalıp ancak
+// dönemler yan yana görülünce çıkar.
+const HISTORY_MONTHS = 12;
+
+function payslipHistoryHTML(state) {
+  const current = currentPeriodKey();
+  const summaries = [];
+  for (let i = 0; i < HISTORY_MONTHS; i += 1) {
+    summaries.push(periodSummary(state, shiftPeriod(current, -i)));
+  }
+
+  const rows = payslipRows(state, summaries);
+  if (rows.length === 0) return '';
+
+  const stats = payslipStats(state, summaries);
+  const diffCls = stats.totalDiff < -1 ? 'is-negative' : stats.totalDiff > 1 ? 'is-positive' : '';
+
+  return `
+    <div class="section-title">Bordro geçmişi</div>
+    <div class="card" id="payslipHistory">
+      <p class="field__hint" style="margin:-2px 0 12px;">
+        Kontrol edilen <b>${stats.checked} ay</b> · ${stats.match} tuttu${stats.short > 0 ? ` · <b style="color:var(--negative);">${stats.short} eksik</b>` : ''}${stats.over > 0 ? ` · ${stats.over} fazla` : ''}
+        ${Math.abs(stats.totalDiff) > 1 ? ` · toplam <b class="${diffCls}">${stats.totalDiff > 0 ? '+' : '−'}${formatMoney(Math.abs(stats.totalDiff), { decimals: false })}</b>` : ''}
+      </p>
+      <div class="rows">
+        ${rows.map((r) => `
+          <div class="row payslip-row" data-period="${r.periodKey}" role="button" tabindex="0">
+            <span class="row__label">${formatMonthYear(r.periodKey)}</span>
+            <span class="row__value">
+              <span class="payslip-row__nums">${formatMoney(r.expected, { decimals: false })} → ${formatMoney(r.paid, { decimals: false })}</span>
+              <span class="${r.status === 'short' ? 'is-negative' : r.status === 'over' ? 'is-positive' : 'is-positive'}">
+                ${r.status === 'match' ? 'tuttu ✓' : `${r.diff > 0 ? '+' : '−'}${formatMoney(Math.abs(r.diff), { decimals: false })}`}
+              </span>
+            </span>
+          </div>`).join('')}
+      </div>
+    </div>
+  `;
+}
 
 // --- Bordro karşılaştırma -------------------------------------------------
 // Şirketin ödediğiyle hesabın tutup tutmadığı. Mesai takip etmenin asıl

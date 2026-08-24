@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { comparePayslip, explainPayslipDiff, payslipFor, payslipStats } from '../js/payslip.js';
+import { comparePayslip, explainPayslipDiff, payslipFor, payslipStats, payslipRows } from '../js/payslip.js';
 import { salaryForPeriod, hourlyRate, entryAmount, periodSummary, addSalaryChange } from '../js/payroll.js';
 
 const settings = {
@@ -211,4 +211,36 @@ test('payslipFor / payslipStats', () => {
   assert.equal(stats.match, 1);
   assert.equal(stats.short, 1);
   assert.equal(stats.totalDiff, -278);
+});
+
+test('payslipRows - yalnız bordro girilmiş dönemler, yeniden eskiye', () => {
+  const state = {
+    payslips: [
+      { id: 'p1', periodKey: '2026-06', amount: 40000 },
+      { id: 'p2', periodKey: '2026-08', amount: 49722 },
+    ],
+  };
+  const rows = payslipRows(state, [
+    { periodKey: '2026-06', netTotal: 40000 },
+    { periodKey: '2026-07', netTotal: 45000 }, // bordro yok
+    { periodKey: '2026-08', netTotal: 50000 },
+  ]);
+  assert.deepEqual(rows.map((r) => r.periodKey), ['2026-08', '2026-06'], 'yeniden eskiye, temmuz yok');
+  assert.equal(rows[0].status, 'short');
+  assert.equal(rows[0].diff, -278);
+  assert.equal(rows[1].status, 'match');
+});
+
+test('payslipRows - hiç bordro yoksa boş dizi', () => {
+  assert.deepEqual(payslipRows({ payslips: [] }, [{ periodKey: '2026-08', netTotal: 50000 }]), []);
+});
+
+test('payslipRows - satırlar comparePayslip ile birebir tutarlı', () => {
+  const state = { payslips: [{ id: 'p1', periodKey: '2026-08', amount: 45300 }] };
+  const summary = { periodKey: '2026-08', netTotal: 46200 };
+  const [row] = payslipRows(state, [summary]);
+  assert.deepEqual(
+    { expected: row.expected, paid: row.paid, diff: row.diff, status: row.status },
+    (({ expected, paid, diff, status }) => ({ expected, paid, diff, status }))(comparePayslip(summary, 45300)),
+  );
 });

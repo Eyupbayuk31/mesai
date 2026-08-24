@@ -1,9 +1,9 @@
 // Bütçe sekmesi: dönem harcamaları, kategori dökümü ve tahmini ödemeden kalan.
 
 import { currentPeriodKey, periodLabel, shiftPeriod } from '../period.js';
-import { budgetSummary, budgetTips, allCategories, spendingPace, comparePreviousPeriod } from '../budget.js';
+import { budgetSummary, budgetTips, allCategories, spendingPace, comparePreviousPeriod, monthlySpendBuckets } from '../budget.js';
 import { openRecurringSheet } from './expenseSheet.js';
-import { formatMoney, formatDayMonthShort, formatWeekdayShort, todayISO } from '../format.js';
+import { formatMoney, formatDayMonthShort, formatWeekdayShort, formatMonthYear, todayISO } from '../format.js';
 import { enableSwipeToDelete } from './swipe.js';
 import { mountPeriodNav } from './periodNav.js';
 import { showToast } from './toast.js';
@@ -51,6 +51,7 @@ export function renderBudget(container, state, ctx) {
       </div>
       <div class="card__detail">
       ${categoryBarHTML(summary)}
+      ${fixedVariableHTML(summary)}
       <div class="rows rows--receipt">
         ${summary.advances > 0 ? `
           ${receiptRow('Eline geçecek', formatMoney(summary.netTotal, { decimals: false }))}
@@ -81,6 +82,8 @@ export function renderBudget(container, state, ctx) {
 
     <div class="panes">
     <div class="pane">
+    ${monthlyChartHTML(state, periodKey)}
+
     ${loansRowHTML(summary)}
 
     <div class="section-title">Öneriler</div>
@@ -120,6 +123,11 @@ export function renderBudget(container, state, ctx) {
 
   container.querySelector('#loansRow').addEventListener('click', () => ctx.navigate({ tab: 'budget', page: 'loans' }));
 
+  container.querySelector('#monthChart')?.addEventListener('click', (e) => {
+    const col = e.target.closest('[data-period]');
+    if (col) ctx.setBudgetPeriod(col.dataset.period);
+  });
+
   const listEl = container.querySelector('#expenseList');
   if (listEl) {
     enableSwipeToDelete(listEl, {
@@ -155,6 +163,59 @@ function loansRowHTML(summary) {
         <span>Borçlar${has ? `<span class="link-row__sub">${loans.openCount} açık kredi · bu ay ${formatMoney(loans.monthlyTotal, { decimals: false })}</span>` : ''}</span>
         <span class="link-row__value">${has ? formatMoney(loans.totalRemaining, { decimals: false }) : 'Kredi ekle'}</span>
         <span class="link-row__chevron">›</span>
+      </div>
+    </div>
+  `;
+}
+
+
+// --- Sabit / değişken ayrımı ---------------------------------------------
+// Kira, kredi taksiti ve faturalar listede market alışverişiyle aynı görünüyor;
+// oysa kısma şansı olan kısım yalnızca değişken olan.
+function fixedVariableHTML(summary) {
+  if (summary.spent <= 0 || summary.fixedTotal <= 0) return '';
+  const fixedPct = (summary.fixedTotal / summary.spent) * 100;
+  return `
+    <div class="fixvar">
+      <div class="fixvar__bar" role="img" aria-label="Sabit ve değişken gider oranı">
+        <span class="fixvar__seg fixvar__seg--fixed" style="width:${fixedPct.toFixed(2)}%"></span>
+      </div>
+      <div class="fixvar__legend">
+        <span><span class="fixvar__dot fixvar__dot--fixed"></span>Sabit ${formatMoney(summary.fixedTotal, { decimals: false })} <small>%${Math.round(fixedPct)}</small></span>
+        <span><span class="fixvar__dot"></span>Değişken ${formatMoney(summary.variableTotal, { decimals: false })} <small>%${Math.round(100 - fixedPct)}</small></span>
+      </div>
+    </div>
+  `;
+}
+
+// --- Son 6 ay harcama grafiği --------------------------------------------
+// Çubuk yüksekliği yalnızca __track belirli yükseklikteyken çözülür; markup
+// bu yüzden Özet'teki haftalık grafiğin kalıbının aynısı.
+const MONTH_COUNT = 6;
+
+function monthlyChartHTML(state, periodKey) {
+  const buckets = monthlySpendBuckets(state, periodKey, MONTH_COUNT);
+  const max = Math.max(...buckets.map((b) => b.spent), 0);
+  const average = buckets.reduce((sum, b) => sum + b.spent, 0) / MONTH_COUNT;
+
+  return `
+    <div class="card">
+      <div class="section-header" style="margin-bottom:10px;">
+        <span class="section-title" style="margin:0;">Son ${MONTH_COUNT} ay</span>
+        <span class="section-header__meta">ortalama ${formatMoney(average, { decimals: false })}</span>
+      </div>
+      <div class="bar-chart bar-chart--mini" id="monthChart">
+        ${buckets.map((b) => {
+    const pct = max > 0 ? Math.max(3, Math.round((b.spent / max) * 100)) : 3;
+    return `
+          <button class="bar-chart__col" data-period="${b.periodKey}" type="button"
+                  title="${formatMonthYear(b.periodKey)} · ${formatMoney(b.spent, { decimals: false })}">
+            <div class="bar-chart__track">
+              <div class="bar-chart__bar ${b.spent > 0 ? 'has-value' : ''} ${b.isCurrent ? 'is-current' : ''}" style="height:${pct}%"></div>
+            </div>
+            <div class="bar-chart__label">${formatMonthYear(b.periodKey).slice(0, 3)}</div>
+          </button>`;
+  }).join('')}
       </div>
     </div>
   `;

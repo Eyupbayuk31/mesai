@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   budgetSummary, budgetTips, categoryOf, allCategories, CATEGORIES,
-  spendingPace, comparePreviousPeriod, spentThrough,
+  spendingPace, comparePreviousPeriod, spentThrough, monthlySpendBuckets,
 } from '../js/budget.js';
 
 function makeMemoryLocalStorage() {
@@ -434,3 +434,73 @@ test('comparePreviousPeriod - bitmiş dönemde tüm ay kıyaslanır', () => {
   assert.equal(cmp.diff, 500);
 });
 
+// --- Sabit / değişken ayrımı --------------------------------------------
+
+const ayirState = (over = {}) => ({
+  settings: { ...baseSettings, monthlySalary: 40000 },
+  entries: [], adjustments: [],
+  expenses: [], recurring: [], loans: [],
+  ...over,
+});
+
+test('fixedTotal + variableTotal her zaman spent değerine eşittir', () => {
+  const state = ayirState({
+    expenses: [
+      { id: 'x1', date: '2026-08-03', amount: 800, category: 'market' },
+      { id: 'x2', date: '2026-08-09', amount: 1200, category: 'eglence' },
+    ],
+    recurring: [{ id: 'r1', label: 'kira', amount: 9000, category: 'fatura', day: 1, since: '2026-07', active: true }],
+    loans: [{ id: 'l1', label: 'Araba', amount: 10000, installments: 36, firstPeriod: '2026-08', day: 15, category: 'kredi', active: true }],
+  });
+  const s = budgetSummary(state, '2026-08', '2026-08-20');
+  assert.equal(s.fixedTotal, 19000, 'kira 9.000 + kredi taksiti 10.000');
+  assert.equal(s.variableTotal, 2000);
+  assert.equal(s.fixedTotal + s.variableTotal, s.spent, 'toplamlar harcamaya eşit olmalı');
+});
+
+test('kredi ARA ödemesi değişken sayılır (tek seferlik çıkış)', () => {
+  const state = ayirState({
+    expenses: [{ id: 'p1', date: '2026-08-05', amount: 50000, category: 'kredi', loanId: 'l1' }],
+    loans: [{ id: 'l1', label: 'Araba', amount: 10000, installments: 36, firstPeriod: '2026-08', day: 15, category: 'kredi', active: true }],
+  });
+  const s = budgetSummary(state, '2026-08', '2026-08-20');
+  assert.equal(s.fixedTotal, 10000, 'yalnız taksit sabit');
+  assert.equal(s.variableTotal, 50000, 'ara ödeme değişken');
+});
+
+test('sürekli gider ve kredi yoksa sabit sıfırdır', () => {
+  const state = ayirState({ expenses: [{ id: 'x1', date: '2026-08-03', amount: 500, category: 'market' }] });
+  const s = budgetSummary(state, '2026-08', '2026-08-20');
+  assert.equal(s.fixedTotal, 0);
+  assert.equal(s.variableTotal, 500);
+});
+
+// --- Son 6 ay harcama grafiği -------------------------------------------
+
+test('monthlySpendBuckets - 6 kova, eskiden yeniye, sonuncusu bu dönem', () => {
+  const state = ayirState({
+    expenses: [
+      { id: 'a', date: '2026-08-03', amount: 800, category: 'market' },
+      { id: 'b', date: '2026-06-03', amount: 1500, category: 'market' },
+    ],
+  });
+  const buckets = monthlySpendBuckets(state, '2026-08', 6);
+  assert.equal(buckets.length, 6);
+  assert.deepEqual(buckets.map((b) => b.periodKey),
+    ['2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08']);
+  assert.equal(buckets[5].isCurrent, true);
+  assert.equal(buckets[5].spent, 800);
+  assert.equal(buckets[3].spent, 1500, 'haziran');
+});
+
+test('monthlySpendBuckets - harcama olmayan aylar 0 ile yer tutar', () => {
+  const buckets = monthlySpendBuckets(ayirState(), '2026-08', 6);
+  assert.equal(buckets.length, 6);
+  assert.equal(buckets.every((b) => b.spent === 0), true);
+});
+
+test('monthlySpendBuckets - yıl sınırını geçer', () => {
+  const buckets = monthlySpendBuckets(ayirState(), '2026-02', 6);
+  assert.deepEqual(buckets.map((b) => b.periodKey),
+    ['2025-09', '2025-10', '2025-11', '2025-12', '2026-01', '2026-02']);
+});

@@ -64,9 +64,16 @@ export function budgetSummary(state, periodKey, todayStr = todayISO()) {
 
   const byCategory = new Map();
   let spent = 0;
+  // Sabit = her ay kendiliğinden gelen (sürekli giderler + kredi taksitleri).
+  // Değişken = elle girilen harcamalar; kısma şansın olan kısım burası.
+  // Kredi ARA ödemesi değişken sayılır: tek seferlik, planlanmamış bir çıkış.
+  let fixedTotal = 0;
+  let variableTotal = 0;
   for (const e of expenses) {
     const amount = Number(e.amount) || 0;
     spent += amount;
+    if (e.virtual) fixedTotal += amount;
+    else variableTotal += amount;
     byCategory.set(e.category, (byCategory.get(e.category) || 0) + amount);
   }
 
@@ -94,6 +101,8 @@ export function budgetSummary(state, periodKey, todayStr = todayISO()) {
     loans: loansSummary(state, periodKey),
     expenses,
     spent,
+    fixedTotal,
+    variableTotal,
     byCategory: [...byCategory.entries()]
       .map(([key, amount]) => ({ ...categoryOf(key, state.settings), amount }))
       .sort((a, b) => b.amount - a.amount),
@@ -244,4 +253,21 @@ export function comparePreviousPeriod(state, periodKey, todayStr = todayISO()) {
     // Ay bitmişse "aynı güne kadar" demek yanıltıcı olur, tüm ay kıyaslanmıştır.
     partial: elapsedDays > 0 && elapsedDays < totalDays,
   };
+}
+
+/**
+ * Son N dönemin harcama toplamı, eskiden yeniye. Boş aylar 0 ile yer tutar ki
+ * grafikte delik olmasın ve sütunlar hep aynı sırada dursun.
+ */
+export function monthlySpendBuckets(state, periodKey, months = 6) {
+  const buckets = [];
+  for (let i = months - 1; i >= 0; i -= 1) {
+    const key = shiftPeriod(periodKey, -i);
+    buckets.push({
+      periodKey: key,
+      spent: budgetSummary(state, key).spent,
+      isCurrent: i === 0,
+    });
+  }
+  return buckets;
 }

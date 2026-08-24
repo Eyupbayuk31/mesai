@@ -2209,3 +2209,46 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
   color: var(--text-tertiary);
 }
 .hero__note b { color: var(--text-secondary); font-weight: 700; }
+
+/* --- Bütçe: sabit / değişken ayrımı --- */
+.fixvar { margin: 0 0 16px; }
+
+.fixvar__bar {
+  display: flex;
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--accent-soft);
+}
+
+.fixvar__seg--fixed { display: block; background: var(--text-tertiary); }
+
+.fixvar__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.fixvar__legend small { color: var(--text-tertiary); font-size: 11px; }
+
+.fixvar__dot {
+  display: inline-block;
+  width: 7px; height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.fixvar__dot--fixed { background: var(--text-tertiary); }
+
+/* --- Rapor: bordro geçmişi satırı --- */
+.payslip-row { cursor: pointer; }
+.payslip-row:hover { background: var(--divider); }
+.payslip-row .row__value { display: flex; align-items: baseline; gap: 10px; }
+.payslip-row__nums {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  font-weight: 600;
+}
