@@ -3,7 +3,7 @@
 
 import {
   portfolioSummary, donutSlices, assetPosition, assetLots, lotTotal,
-  PRESET_ASSETS, nextAssetColor, DONUT_RADIUS,
+  PRESET_ASSETS, nextAssetColor, DONUT_RADIUS, priceUpdateFromLot, suggestedUnitCost,
 } from '../investments.js';
 import { formatMoney, formatDayMonth, parseLocaleNumber, todayISO } from '../format.js';
 import { openSheet, closeSheet } from './sheet.js';
@@ -202,10 +202,11 @@ function openLotSheet(ctx, lot, presetAssetId = null) {
             <input class="input" type="text" inputmode="decimal" id="lotQuantity" value="${lot ? String(lot.quantity).replace('.', ',') : ''}" placeholder="1" autocomplete="off" />
           </div>
           <div class="field">
-            <label class="field__label">Birim fiyat (₺)</label>
-            <input class="input input--amount" type="text" inputmode="decimal" id="lotUnitCost" value="${lot ? String(lot.unitCost).replace('.', ',') : ''}" placeholder="7100" autocomplete="off" />
+            <label class="field__label">Aldığın birim fiyat (₺)</label>
+            <input class="input input--amount" type="text" inputmode="decimal" id="lotUnitCost" value="${initialUnitCost(lot, assets, selectedId)}" placeholder="7100" autocomplete="off" />
           </div>
         </div>
+        <div class="field__hint" id="priceHint" style="margin:-10px 0 14px;"></div>
 
         <div class="preview-strip">
           <span class="preview-strip__label">Ödediğin</span>
@@ -236,6 +237,18 @@ function openLotSheet(ctx, lot, presetAssetId = null) {
       costEl.addEventListener('input', updatePreview);
       updatePreview();
 
+      const hintEl = bodyEl.querySelector('#priceHint');
+      // Aynı fiyatı iki kez yazdırmamak için: bilinen son fiyat forma doldurulur,
+      // kaydedilince de güncel fiyat bu alımdan tazelenir.
+      const updateHint = () => {
+        const asset = assets.find((a) => a.id === selectedId);
+        const known = suggestedUnitCost(asset);
+        hintEl.innerHTML = known
+          ? `Bilinen son fiyat <b>${formatMoney(known)}</b> yazıldı — farklı aldıysan değiştir. Kaydedince güncel fiyat da bu olur.`
+          : 'Bu fiyat aynı zamanda güncel fiyat olarak kaydedilir; ayrıca girmene gerek yok.';
+      };
+      updateHint();
+
       bodyEl.querySelector('#assetChips').addEventListener('click', (e) => {
         const chip = e.target.closest('[data-asset-id]');
         if (!chip) return;
@@ -244,6 +257,13 @@ function openLotSheet(ctx, lot, presetAssetId = null) {
         bodyEl.querySelectorAll('#assetChips .cat-chip').forEach((c) => c.classList.remove('is-active'));
         chip.classList.add('is-active');
         newFields.hidden = !!selectedId;
+        // Yeni seçilen varlığın bilinen fiyatı forma gelsin (düzenlemede dokunma).
+        if (isNew) {
+          const known = suggestedUnitCost(assets.find((a) => a.id === selectedId));
+          costEl.value = known ? String(known).replace('.', ',') : '';
+          updatePreview();
+        }
+        updateHint();
       });
 
       bodyEl.querySelector('#presetChips').addEventListener('click', (e) => {
@@ -281,6 +301,12 @@ function openLotSheet(ctx, lot, presetAssetId = null) {
         };
         if (isNew) store.addInvestment(payload);
         else store.updateInvestment(lot.id, payload);
+
+        // Alım bir fiyat gözlemidir: en yeni alım güncel fiyatı da tazeler.
+        const asset = store.getState().assets.find((a) => a.id === assetId);
+        const priceUpdate = priceUpdateFromLot(asset, payload);
+        if (priceUpdate) store.updateAsset(assetId, priceUpdate);
+
         showToast(isNew ? 'Alım eklendi' : 'Alım güncellendi');
         closeSheet();
       });
@@ -298,12 +324,13 @@ function openLotSheet(ctx, lot, presetAssetId = null) {
 
 function openPriceSheet(ctx, asset) {
   openSheet({
-    title: `${asset.label} güncel fiyat`,
+    title: `${asset.label} · güncel piyasa fiyatı`,
     footerHTML: '<button class="btn btn--primary" id="savePriceBtn" type="button">Kaydet</button>',
     build(bodyEl, footerEl) {
       bodyEl.innerHTML = `
         <p class="field__hint" style="margin:-4px 0 14px;">
-          1 ${escapeHTML(asset.unit || 'adet')} kaç lira? Kâr/zarar bu fiyata göre hesaplanır.
+          Bugün 1 ${escapeHTML(asset.unit || 'adet')} kaç lira? Kâr/zarar bu fiyata göre hesaplanır.
+          Yeni alım eklersen burayı elle güncellemene gerek yok — alım fiyatı buraya da yazılır.
         </p>
         <div class="field" style="margin-bottom:0;">
           <label class="field__label">Birim fiyat (₺)</label>
@@ -385,6 +412,13 @@ function openAssetSheet(ctx, asset) {
 // FAB'dan çağrılır: sekmedeyken + düğmesi alım ekler.
 export function openAddInvestment(ctx) {
   openLotSheet(ctx, null);
+}
+
+// Yeni alımda bilinen son fiyat hazır gelir; düzenlemede kaydın kendi fiyatı.
+function initialUnitCost(lot, assets, selectedId) {
+  if (lot) return String(lot.unitCost).replace('.', ',');
+  const known = suggestedUnitCost(assets.find((a) => a.id === selectedId));
+  return known ? String(known).replace('.', ',') : '';
 }
 
 function formatQty(value) {

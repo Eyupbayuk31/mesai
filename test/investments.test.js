@@ -144,3 +144,39 @@ test('nextAssetColor - kullanılmamış renk seçer', () => {
   const second = nextAssetColor([{ color: first }]);
   assert.notEqual(first, second);
 });
+
+// --- Alım = fiyat gözlemi ------------------------------------------------
+
+import { priceUpdateFromLot, suggestedUnitCost } from '../js/investments.js';
+
+test('priceUpdateFromLot - yeni alım güncel fiyatı da günceller', () => {
+  const asset = { id: 'a1', currentPrice: 7400, priceUpdatedAt: '2026-07-12T12:00:00.000Z' };
+  const res = priceUpdateFromLot(asset, { date: '2026-08-24', quantity: 1, unitCost: 7900 });
+  assert.equal(res.currentPrice, 7900);
+  assert.equal(res.priceUpdatedAt.slice(0, 10), '2026-08-24');
+});
+
+test('priceUpdateFromLot - fiyatı hiç girilmemiş varlıkta ilk alım fiyatı belirler', () => {
+  const res = priceUpdateFromLot({ id: 'a1' }, { date: '2026-08-24', quantity: 1, unitCost: 7100 });
+  assert.equal(res.currentPrice, 7100);
+});
+
+test('priceUpdateFromLot - geçmişe dönük alım güncel fiyatı BOZMAZ', () => {
+  const asset = { id: 'a1', currentPrice: 7900, priceUpdatedAt: '2026-08-23T12:00:00.000Z' };
+  assert.equal(priceUpdateFromLot(asset, { date: '2026-06-10', quantity: 1, unitCost: 7100 }), null);
+});
+
+test('priceUpdateFromLot - fiyat zaten aynıysa boşuna yazmaz', () => {
+  const asset = { id: 'a1', currentPrice: 7900, priceUpdatedAt: '2026-08-01T12:00:00.000Z' };
+  assert.equal(priceUpdateFromLot(asset, { date: '2026-08-24', quantity: 1, unitCost: 7900 }), null);
+});
+
+test('priceUpdateFromLot - geçersiz alımda güncelleme yok', () => {
+  assert.equal(priceUpdateFromLot({ id: 'a1' }, { date: '2026-08-24', unitCost: 0 }), null);
+  assert.equal(priceUpdateFromLot({ id: 'a1' }, { unitCost: 7900 }), null);
+});
+
+test('suggestedUnitCost - bilinen fiyat forma önerilir', () => {
+  assert.equal(suggestedUnitCost({ currentPrice: 7900 }), 7900);
+  assert.equal(suggestedUnitCost({}), null);
+});

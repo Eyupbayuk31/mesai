@@ -155,11 +155,24 @@
     if (btn) btn.addEventListener('click', repair);
   }
 
-  setTimeout(function () {
-    if (window.__mesaiBooted) return;
-    if (failed) { repair(); return; }   // dosya hiç inmemiş: doğrudan onar
-    showRecovery();                      // başka bir sebep: kullanıcıya sor
-  }, BOOT_TIMEOUT);
+  // Açıldı mı? Bayrağa GÜVENME: eski bir app.js sürümü onu bilmez ama sayfayı
+  // gayet güzel çizer. Asıl ölçüt ekranda içerik olup olmadığıdır.
+  function booted() {
+    if (window.__mesaiBooted) return true;
+    var screen = document.getElementById('screen');
+    if (!screen) return true;            // profil seçici kabuğun yerine geçmiş
+    return screen.children.length > 0;   // ekran çizilmiş
+  }
+
+  function check(lastTry) {
+    if (booted()) return;
+    if (failed) { repair(); return; }    // dosya hiç inmemiş: doğrudan onar
+    if (lastTry) showRecovery();         // hâlâ boş: kullanıcıya sor
+  }
+
+  // Yavaş bağlantıya bir şans daha: 6. saniyede bak, boşsa 11. saniyede karar ver.
+  setTimeout(function () { check(false); }, BOOT_TIMEOUT);
+  setTimeout(function () { check(true); }, BOOT_TIMEOUT + 5000);
 })();
 </script>
 </body>

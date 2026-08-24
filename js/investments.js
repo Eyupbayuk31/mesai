@@ -144,6 +144,33 @@ export function donutSlices(positions) {
   return slices;
 }
 
+/**
+ * Yeni bir alım aynı zamanda bir FİYAT GÖZLEMİDİR: bugün gramı 7.900'e
+ * aldıysan piyasa fiyatı 7.900'dür. Kullanıcı aynı sayıyı bir de "güncel
+ * fiyat" diye girmek zorunda kalmasın diye alımdan otomatik güncellenir.
+ *
+ * Yalnızca alım, elimizdeki fiyat bilgisinden DAHA YENİYSE güncellenir —
+ * geçmişe dönük girilen eski bir alım güncel fiyatı bozmaz.
+ *
+ * @returns {{currentPrice:number, priceUpdatedAt:string}|null} güncelleme gerekmiyorsa null
+ */
+export function priceUpdateFromLot(asset, lot) {
+  const unitCost = Number(lot?.unitCost) || 0;
+  if (unitCost <= 0 || !lot?.date) return null;
+
+  const lotAt = `${lot.date}T12:00:00.000Z`;
+  const knownAt = asset?.priceUpdatedAt;
+  if (knownAt && Date.parse(knownAt) > Date.parse(lotAt)) return null;
+
+  if (Number(asset?.currentPrice) === unitCost) return null;
+  return { currentPrice: unitCost, priceUpdatedAt: lotAt };
+}
+
+/** Bir varlığın alım formunda önerilecek birim fiyat: bilinen son fiyat. */
+export function suggestedUnitCost(asset) {
+  return Number(asset?.currentPrice) > 0 ? Number(asset.currentPrice) : null;
+}
+
 /** Bir dönemde (maaş ayı) yatırıma ayrılan para. */
 export function investedInPeriod(state, periodKey) {
   return (state?.investments || [])
