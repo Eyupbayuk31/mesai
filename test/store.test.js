@@ -177,3 +177,52 @@ test('Store - şema 2 olduktan sonra elle açılan mola kapatılmaz', () => {
   const store = new Store();
   assert.equal(store.getState().settings.breakWindow.enabled, true);
 });
+
+// --- Yatırım defteri ----------------------------------------------------
+
+test('Store - varlık ve alım eklenir, ortalama maliyet için lotlar ayrı durur', () => {
+  const store = freshStore();
+  const asset = store.addAsset({ label: 'Gram altın', unit: 'gram', color: '#d4a017' });
+  store.addInvestment({ assetId: asset.id, date: '2026-06-10', quantity: 1, unitCost: 7100 });
+  store.addInvestment({ assetId: asset.id, date: '2026-07-12', quantity: 1, unitCost: 7400 });
+
+  const s = store.getState();
+  assert.equal(s.assets.length, 1);
+  assert.equal(s.investments.length, 2);
+  assert.equal(s.investments[0].unitCost, 7100);
+});
+
+test('Store - setAssetPrice fiyatı ve güncelleme zamanını yazar', () => {
+  const store = freshStore();
+  const asset = store.addAsset({ label: 'THYAO', unit: 'lot' });
+  store.setAssetPrice(asset.id, 305.5);
+  const saved = store.getState().assets[0];
+  assert.equal(saved.currentPrice, 305.5);
+  assert.ok(saved.priceUpdatedAt, 'fiyat tarihi yazılmalı');
+});
+
+test('Store - varlık silinince alımları da silinir (yetim lot kalmaz)', () => {
+  const store = freshStore();
+  const a = store.addAsset({ label: 'Gram altın' });
+  const b = store.addAsset({ label: 'THYAO' });
+  const lotA = store.addInvestment({ assetId: a.id, date: '2026-06-10', quantity: 1, unitCost: 7100 });
+  store.addInvestment({ assetId: b.id, date: '2026-08-01', quantity: 10, unitCost: 300 });
+
+  store.removeAsset(a.id);
+  const s = store.getState();
+  assert.deepEqual(s.assets.map((x) => x.label), ['THYAO']);
+  assert.equal(s.investments.length, 1, 'yalnız THYAO alımı kalmalı');
+  assert.ok(s.tombstones.investments[lotA.id], 'silinen alım için mezar taşı bırakılır');
+  assert.ok(s.tombstones.assets[a.id]);
+});
+
+test('Store - alım güncellenir ve silinir', () => {
+  const store = freshStore();
+  const a = store.addAsset({ label: 'Gram altın' });
+  const lot = store.addInvestment({ assetId: a.id, date: '2026-06-10', quantity: 1, unitCost: 7100 });
+  store.updateInvestment(lot.id, { quantity: 2 });
+  assert.equal(store.getState().investments[0].quantity, 2);
+  store.removeInvestment(lot.id);
+  assert.equal(store.getState().investments.length, 0);
+  assert.ok(store.getState().tombstones.investments[lot.id]);
+});

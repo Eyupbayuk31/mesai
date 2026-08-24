@@ -6,6 +6,7 @@ import { renderEntries } from './ui/entries.js';
 import { renderReport } from './ui/report.js';
 import { renderBudget } from './ui/budget.js';
 import * as loansPage from './ui/loans.js';
+import * as investPage from './ui/investments.js';
 import { renderSettingsRoute, settingsPageTitle } from './ui/settings/index.js';
 import { getActiveProfile, profileName } from './profile.js';
 import { showToast } from './ui/toast.js';
@@ -34,9 +35,9 @@ function boot(profileId) {
   const topbarContext = document.getElementById('topbarContext');
   const fab = document.getElementById('fab');
 
-  const TAB_TITLES = { home: 'Özet', entries: 'Kayıtlar', report: 'Rapor', budget: 'Bütçe', settings: 'Ayarlar' };
+  const TAB_TITLES = { home: 'Özet', entries: 'Kayıtlar', report: 'Rapor', budget: 'Bütçe', invest: 'Yatırım', settings: 'Ayarlar' };
   // FAB yalnızca hızlı ekleme anlamı olan sekme köklerinde görünür.
-  const FAB_TABS = new Set(['home', 'entries', 'report', 'budget']);
+  const FAB_TABS = new Set(['home', 'entries', 'report', 'budget', 'invest']);
 
   const ctx = {
     store,
@@ -183,7 +184,7 @@ function boot(profileId) {
     topbarTitle.textContent = page ? (subPageTitle(tab, page) || TAB_TITLES[tab]) : TAB_TITLES[tab];
     fab.hidden = !!page || !FAB_TABS.has(tab);
     // Bütçe sekmesinde aynı düğme harcama ekler; etiketi buna göre değişir.
-    const fabAction = tab === 'budget' ? 'Harcama ekle' : 'Mesai ekle';
+    const fabAction = tab === 'budget' ? 'Harcama ekle' : tab === 'invest' ? 'Alım ekle' : 'Mesai ekle';
     fab.querySelector('.fab__label').textContent = fabAction;
     fab.setAttribute('aria-label', fabAction);
     ctx.setTopbarAction(null);
@@ -199,6 +200,7 @@ function boot(profileId) {
       if (page === 'loans') loansPage.render(screenEl, state, ctx);
       else renderBudget(screenEl, state, ctx);
     }
+    else if (tab === 'invest') investPage.render(screenEl, state, ctx);
     else if (tab === 'settings') renderSettingsRoute(screenEl, state, ctx, page);
   }
 
@@ -217,8 +219,13 @@ function boot(profileId) {
 
   fab.addEventListener('click', async () => {
     // Bütçe sekmesinde + düğmesi harcama ekler, diğerlerinde mesai.
-    if (router.getRoute().tab === 'budget') {
+    const activeTab = router.getRoute().tab;
+    if (activeTab === 'budget') {
       ctx.openExpense();
+      return;
+    }
+    if (activeTab === 'invest') {
+      investPage.openAddInvestment(ctx);
       return;
     }
     const { openEntrySheet } = await import('./ui/entry.js');

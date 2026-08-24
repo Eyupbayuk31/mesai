@@ -11,6 +11,8 @@ import { openSheet, closeSheet } from './sheet.js';
 import { downloadFile, csvForEntries } from './exportUtils.js';
 import { buildHtmlReport } from './htmlReport.js';
 import { profileName } from '../profile.js';
+import { budgetSummary, yearFinance } from '../budget.js';
+import { portfolioSummary, investedInPeriod } from '../investments.js';
 
 const TYPE_ROWS = [
   { key: 'normal', label: 'Normal' },
@@ -27,6 +29,7 @@ export function renderReport(container, state, ctx) {
   const isFuture = periodKey > currentPeriodKey();
   const year = Number(periodKey.slice(0, 4));
   const ySummary = yearSummary(state, year);
+  const finance = yearFinance(state, year);
 
   container.innerHTML = `
     <div class="period-card">
@@ -112,6 +115,8 @@ export function renderReport(container, state, ctx) {
       </div>
     </div>
 
+    ${yearFinanceHTML(finance, ySummary, state)}
+
     <div class="section-title">Dışa aktar</div>
     <div class="card">
       <button class="btn btn--primary btn--sm" id="exportHtml" type="button" style="margin-bottom:10px;">HTML rapor indir</button>
@@ -159,6 +164,11 @@ export function renderReport(container, state, ctx) {
     ctx.setTab('entries');
   });
 
+  container.querySelector('.year-table')?.addEventListener('click', (e) => {
+    const row = e.target.closest('[data-year-month]');
+    if (row) ctx.setReportPeriod(row.dataset.yearMonth);
+  });
+
   container.querySelector('#addIncome').addEventListener('click', () => openAdjustmentSheet(ctx.store, periodKey, 'income'));
   container.querySelector('#addAdvance').addEventListener('click', () => openAdjustmentSheet(ctx.store, periodKey, 'advance'));
   container.querySelector('#addDeduction').addEventListener('click', () => openAdjustmentSheet(ctx.store, periodKey, 'deduction'));
@@ -196,6 +206,13 @@ export function renderReport(container, state, ctx) {
           profileName: profileName(ctx.profileId),
           periodKey, summary, settings, scope,
           yearSummary: scope === 'year' ? ySummary : null,
+          // Gelişmiş rapor: harcama, yatırım ve kâr/zarar da aynı dosyada.
+          finance: scope === 'year' ? finance : null,
+          budget: budgetSummary(state, periodKey),
+          portfolio: portfolioSummary(state),
+          periodInvested: investedInPeriod(state, periodKey),
+          lots: state.investments || [],
+          assets: state.assets || [],
         });
         const name = scope === 'year' ? `mesai-raporu-${year}` : `mesai-raporu-${periodKey}`;
         downloadFile(`${name}.html`, html, 'text/html;charset=utf-8');
@@ -406,4 +423,72 @@ function escapeHTML(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+// --- Yıllık finans tablosu -----------------------------------------------
+
+// Yılın ay ay gelir / harcama / yatırım dökümü ve kategori kırılımı.
+// "12 ayda maaşa ne girdi, kiraya ne gitti, ne birikti" tek yerde.
+function yearFinanceHTML(finance, ySummary, state) {
+  if (finance.income <= 0 && finance.spent <= 0 && finance.invested <= 0) return '';
+  const portfolio = portfolioSummary(state);
+  const up = portfolio.totalProfit >= 0;
+  const hoursOf = (periodKey) => ySummary.months.find((m) => m.periodKey === periodKey)?.hours || 0;
+  // Verisi olmayan aylar tabloyu şişirmesin.
+  const rows = finance.months.filter((m) => m.income > 0 || m.spent > 0 || m.invested > 0);
+
+  return `
+    <div class="section-title">${finance.year} finans özeti</div>
+    <div class="card">
+      <div class="rows">
+        <div class="row"><span class="row__label">Toplam gelir</span><span class="row__value is-positive">${formatMoney(finance.income, { decimals: false })}</span></div>
+        <div class="row"><span class="row__label">Toplam harcama</span><span class="row__value is-negative">− ${formatMoney(finance.spent, { decimals: false })}</span></div>
+        <div class="row"><span class="row__label">Yatırıma ayrılan</span><span class="row__value">${formatMoney(finance.invested, { decimals: false })}</span></div>
+        <div class="row row--total"><span class="row__label">Gelir − harcama</span><span class="row__value">${formatMoney(finance.remaining, { decimals: false })}</span></div>
+        ${portfolio.totalCost > 0 ? `
+        <div class="row"><span class="row__label">Portföy kâr/zarar</span><span class="row__value ${up ? 'is-positive' : 'is-negative'}">${up ? '+' : '−'}${formatMoney(Math.abs(portfolio.totalProfit), { decimals: false })} (%${Math.abs(portfolio.profitPct).toLocaleString('tr-TR', { maximumFractionDigits: 1 })})</span></div>` : ''}
+      </div>
+
+      ${rows.length === 0 ? '' : `
+      <div class="year-table__scroll" style="margin-top:14px;">
+        <table class="year-table">
+          <thead>
+            <tr><th>Ay</th><th>Mesai</th><th>Gelir</th><th>Harcama</th><th>Yatırım</th></tr>
+          </thead>
+          <tbody>
+            ${rows.map((m) => `
+              <tr data-year-month="${m.periodKey}">
+                <td>${formatMonthYear(m.periodKey).replace(` ${finance.year}`, '')}</td>
+                <td>${formatHours(hoursOf(m.periodKey))}</td>
+                <td>${formatMoney(m.income, { decimals: false })}</td>
+                <td>${formatMoney(m.spent, { decimals: false })}</td>
+                <td>${m.invested > 0 ? formatMoney(m.invested, { decimals: false }) : '—'}</td>
+              </tr>
+            `).join('')}
+            <tr class="is-total">
+              <td>Toplam</td>
+              <td>${formatHours(ySummary.totalHours)}</td>
+              <td>${formatMoney(finance.income, { decimals: false })}</td>
+              <td>${formatMoney(finance.spent, { decimals: false })}</td>
+              <td>${formatMoney(finance.invested, { decimals: false })}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>`}
+
+      ${finance.byCategory.length === 0 ? '' : `
+      <div class="section-title" style="font-size:12px;margin-top:16px;">Harcama kırılımı</div>
+      <div class="lifetime">
+        ${finance.byCategory.map((c) => `
+          <div class="lifetime__row">
+            <span class="lifetime__dot" style="background:${c.color}"></span>
+            <span><span class="lifetime__label">${c.label}</span>
+              <span class="lifetime__avg">%${((c.amount / finance.spent) * 100).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}</span>
+            </span>
+            <span class="lifetime__total">${formatMoney(c.amount, { decimals: false })}</span>
+          </div>
+        `).join('')}
+      </div>`}
+    </div>
+  `;
 }

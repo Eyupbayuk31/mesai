@@ -504,3 +504,90 @@ test('monthlySpendBuckets - yıl sınırını geçer', () => {
   assert.deepEqual(buckets.map((b) => b.periodKey),
     ['2025-09', '2025-10', '2025-11', '2025-12', '2026-01', '2026-02']);
 });
+
+// --- Kümülatif kategori toplamları + yıllık finans ----------------------
+
+import { lifetimeByCategory, yearFinance } from '../js/budget.js';
+
+const lifetimeState = () => ({
+  settings: {
+    monthlySalary: 45000, hoursDivisor: 225, multipliers: { normal: 1.5, weekend: 2, holiday: 2 },
+    weekendDays: [0], mealAllowance: 0, transportAllowance: 0, payDay: 10, payMonthOffset: 1,
+    weeklySchedule: {}, customCategories: [],
+  },
+  entries: [], adjustments: [], payslips: [], assets: [], investments: [],
+  expenses: [
+    { id: 'e1', date: '2026-06-15', amount: 1200, category: 'market' },
+    { id: 'e2', date: '2026-07-15', amount: 800, category: 'market' },
+    { id: 'e3', date: '2026-08-02', amount: 500, category: 'yemek' },
+  ],
+  // Haziran'da tanımlanmış sürekli gider: temmuz ve ağustosta sanal üretir
+  recurring: [{ id: 'r1', label: 'Kira', amount: 10000, category: 'kira', day: 5, since: '2026-06', active: true }],
+  loans: [],
+});
+
+test('lifetimeByCategory - tüm dönemlerin kategori toplamları', () => {
+  const res = lifetimeByCategory(lifetimeState(), '2026-08-24');
+  assert.equal(res.from, '2026-06');
+  assert.equal(res.months, 3, 'haziran-temmuz-ağustos');
+
+  const kira = res.categories.find((c) => c.key === 'kira');
+  assert.equal(kira.amount, 20000, 'temmuz + ağustos kirası');
+  assert.equal(kira.monthlyAvg, 20000 / 3);
+
+  const market = res.categories.find((c) => c.key === 'market');
+  assert.equal(market.amount, 2000);
+});
+
+test('lifetimeByCategory - kategori toplamları genel toplama eşit', () => {
+  const res = lifetimeByCategory(lifetimeState(), '2026-08-24');
+  assert.equal(res.categories.reduce((t, c) => t + c.amount, 0), res.total);
+});
+
+test('lifetimeByCategory - sürekli gider tanımlandığı ayda iki kez sayılmaz', () => {
+  const res = lifetimeByCategory(lifetimeState(), '2026-08-24');
+  // Haziran'da kira sanalı üretilmez (tanım ayı), yalnız 2 ay × 10.000
+  assert.equal(res.categories.find((c) => c.key === 'kira').amount, 20000);
+});
+
+test('lifetimeByCategory - hiç veri yoksa tek ay, sıfır toplam', () => {
+  const res = lifetimeByCategory({ settings: {}, expenses: [], entries: [], recurring: [], loans: [], adjustments: [], investments: [] }, '2026-08-24');
+  assert.equal(res.total, 0);
+  assert.equal(res.months, 1);
+  assert.deepEqual(res.categories, []);
+});
+
+test('yearFinance - 12 ay, aylık toplamlar yıl toplamına eşit', () => {
+  const state = lifetimeState();
+  state.investments = [
+    { id: 'i1', assetId: 'a1', date: '2026-06-10', quantity: 1, unitCost: 7100 },
+    { id: 'i2', assetId: 'a1', date: '2026-07-12', quantity: 1, unitCost: 7400 },
+  ];
+  const res = yearFinance(state, 2026, '2026-08-24');
+  assert.equal(res.months.length, 12);
+  assert.equal(res.months.reduce((t, m) => t + m.spent, 0), res.spent);
+  assert.equal(res.months.reduce((t, m) => t + m.income, 0), res.income);
+  assert.equal(res.months.reduce((t, m) => t + m.invested, 0), res.invested);
+  assert.equal(res.invested, 14500);
+  assert.equal(res.remaining, res.income - res.spent);
+});
+
+test('yearFinance - yatırım doğru aya düşer', () => {
+  const state = lifetimeState();
+  state.investments = [{ id: 'i1', assetId: 'a1', date: '2026-07-12', quantity: 2, unitCost: 1000 }];
+  const res = yearFinance(state, 2026, '2026-08-24');
+  assert.equal(res.months.find((m) => m.month === 7).invested, 2000);
+  assert.equal(res.months.find((m) => m.month === 6).invested, 0);
+});
+
+test('yearFinance - kategori kırılımı toplamı yıl harcamasına eşit', () => {
+  const res = yearFinance(lifetimeState(), 2026, '2026-08-24');
+  assert.equal(res.byCategory.reduce((t, c) => t + c.amount, 0), res.spent);
+});
+
+test('yearFinance - veri olmayan yılda her şey sıfır, tablo yine 12 ay', () => {
+  const res = yearFinance(lifetimeState(), 2024, '2026-08-24');
+  assert.equal(res.months.length, 12);
+  assert.equal(res.spent, 0);
+  assert.equal(res.invested, 0);
+});

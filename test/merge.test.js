@@ -134,3 +134,34 @@ test('merge - harcama, sürekli gider ve ek kalemler de birleşir', () => {
   assert.deepEqual(merged.recurring.map((r) => r.id), ['r1', 'r2']);
   assert.deepEqual(merged.adjustments.map((a) => a.id), ['j1', 'j2']);
 });
+
+// --- Yatırım koleksiyonları --------------------------------------------
+
+test('merge - yatırım alımları ve varlıklar iki cihazda birleşir', () => {
+  const local = state({
+    assets: [{ id: 'a1', label: 'Gram altın', currentPrice: 7900, updatedAt: T(9) }],
+    investments: [{ id: 'i1', assetId: 'a1', date: '2026-08-01', quantity: 1, unitCost: 7100, updatedAt: T(9) }],
+  });
+  const remote = state({
+    assets: [{ id: 'a2', label: 'THYAO', currentPrice: 300, updatedAt: T(10) }],
+    investments: [{ id: 'i2', assetId: 'a2', date: '2026-08-05', quantity: 100, unitCost: 280, updatedAt: T(10) }],
+  });
+  const { merged } = mergeStates(local, remote, NOW);
+  assert.deepEqual(merged.assets.map((a) => a.id), ['a1', 'a2']);
+  assert.deepEqual(merged.investments.map((i) => i.id), ['i1', 'i2']);
+});
+
+test('merge - telefonda güncellenen fiyat PC kaydının üstüne yazar', () => {
+  const eski = { id: 'a1', label: 'Gram altın', currentPrice: 7400, updatedAt: T(9) };
+  const yeni = { ...eski, currentPrice: 7900, updatedAt: T(11) };
+  const { merged } = mergeStates(state({ assets: [eski] }), state({ assets: [yeni] }), NOW);
+  assert.equal(merged.assets[0].currentPrice, 7900);
+});
+
+test('merge - silinen alım diğer cihazda geri gelmez', () => {
+  const lot = { id: 'i1', assetId: 'a1', date: '2026-08-01', quantity: 1, unitCost: 7100, updatedAt: T(9) };
+  const local = state({ investments: [], tombstones: { investments: { i1: T(12) } } });
+  const remote = state({ investments: [lot] });
+  const { merged } = mergeStates(local, remote, NOW);
+  assert.deepEqual(merged.investments, []);
+});

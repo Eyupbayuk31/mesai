@@ -61,6 +61,14 @@ function defaultState() {
     // Krediler/borçlar: her ay taksiti bütçeden düşer, ödendikçe borç azalır.
     // [{id, label, amount, installments, firstPeriod, day, category, active}]
     loans: [],
+    // Yatırım varlıkları: [{id, label, unit, color, currentPrice, priceUpdatedAt}]
+    // Güncel fiyat ayarlarda değil burada durur — ayarlar toptan LWW ile
+    // senkronlanıyor, telefonda güncellenen fiyat PC'nin ayar yazımıyla
+    // kaybolmasın diye kayıt bazlı tutuluyor.
+    assets: [],
+    // Yatırım alımları (lot): [{id, assetId, date, quantity, unitCost, note}]
+    // Her alım ayrı kayıt; ortalama maliyet hesaplanır, elle tutulmaz.
+    investments: [],
     // Şirketin gerçekten ödediği tutarlar: [{id, periodKey, amount, note}]
     // Hesapla karşılaştırıp eksik ödeme yakalamak için.
     payslips: [],
@@ -73,10 +81,10 @@ function defaultState() {
   };
 }
 
-const TOMBSTONE_COLLECTIONS = ['entries', 'expenses', 'recurring', 'adjustments', 'loans', 'payslips'];
+const TOMBSTONE_COLLECTIONS = ['entries', 'expenses', 'recurring', 'adjustments', 'loans', 'payslips', 'assets', 'investments'];
 
 function emptyTombstones() {
-  return { entries: {}, expenses: {}, recurring: {}, adjustments: {}, loans: {}, payslips: {} };
+  return { entries: {}, expenses: {}, recurring: {}, adjustments: {}, loans: {}, payslips: {}, assets: {}, investments: {} };
 }
 
 function normalizeTombstones(raw) {
@@ -128,6 +136,8 @@ function migrate(raw) {
   state.adjustments = Array.isArray(raw?.adjustments) ? raw.adjustments : [];
   state.loans = Array.isArray(raw?.loans) ? raw.loans : [];
   state.payslips = Array.isArray(raw?.payslips) ? raw.payslips : [];
+  state.assets = Array.isArray(raw?.assets) ? raw.assets : [];
+  state.investments = Array.isArray(raw?.investments) ? raw.investments : [];
   state.tombstones = normalizeTombstones(raw?.tombstones);
   state.settingsUpdatedAt = typeof raw?.settingsUpdatedAt === 'string' ? raw.settingsUpdatedAt : null;
   state.schemaVersion = SCHEMA_VERSION;
@@ -342,6 +352,56 @@ export class Store {
         expenses: next.expenses.map((e) => (e.loanId === id ? { ...e, loanId: undefined, updatedAt: new Date().toISOString() } : e)),
       };
     });
+  }
+
+  addAsset(asset) {
+    const id = asset.id || `as_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    const now = new Date().toISOString();
+    const record = { unit: 'adet', ...asset, id, createdAt: asset.createdAt || now, updatedAt: now };
+    this.update((s) => ({ ...s, assets: [...s.assets, record] }));
+    return record;
+  }
+
+  updateAsset(id, partial) {
+    this.update((s) => ({
+      ...s,
+      assets: s.assets.map((a) => (a.id === id ? { ...a, ...partial, updatedAt: new Date().toISOString() } : a)),
+    }));
+  }
+
+  // Fiyat güncellemesi ayrı: "en son ne zaman baktım" bilgisi de tazelenir.
+  setAssetPrice(id, price) {
+    this.updateAsset(id, { currentPrice: Number(price) || 0, priceUpdatedAt: new Date().toISOString() });
+  }
+
+  // Varlık silinince alımları da silinir — yetim lot kalmasın.
+  removeAsset(id) {
+    this.update((s) => {
+      let next = withTombstone(s, 'assets', id);
+      for (const lot of s.investments.filter((i) => i.assetId === id)) {
+        next = withTombstone(next, 'investments', lot.id);
+      }
+      return next;
+    });
+  }
+
+  addInvestment(lot) {
+    const id = lot.id || `iv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    const now = new Date().toISOString();
+    const record = { ...lot, id, createdAt: lot.createdAt || now, updatedAt: now };
+    this.update((s) => ({ ...s, investments: [...s.investments, record] }));
+    return record;
+  }
+
+  updateInvestment(id, partial) {
+    this.update((s) => ({
+      ...s,
+      investments: s.investments.map((i) => (i.id === id ? { ...i, ...partial, updatedAt: new Date().toISOString() } : i)),
+    }));
+  }
+
+  removeInvestment(id) {
+    this.update((s) => withTombstone(s, 'investments', id));
   }
 
   replaceAll(newState) {

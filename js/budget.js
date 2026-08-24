@@ -5,6 +5,7 @@ import { periodSummary } from './payroll.js';
 import { periodRange, shiftPeriod } from './period.js';
 import { loanExpensesForPeriod, loansSummary } from './loans.js';
 import { parseISODate, formatMoney, todayISO } from './format.js';
+import { investedInPeriod } from './investments.js';
 
 // Harcama kategorileri — renkler CSS değişkenlerinden bağımsız sabit hex,
 // HTML raporunda da aynı palet kullanılır. Ayarlardan özel kategori eklenebilir;
@@ -270,4 +271,100 @@ export function monthlySpendBuckets(state, periodKey, months = 6) {
     });
   }
   return buckets;
+}
+
+// Verinin başladığı dönem: en eski harcama/mesai/yatırım kaydı hangi ayda?
+// Sürekli giderler ve krediler kendi başlangıçlarını taşıdığı için bu tarama
+// yalnızca gerçek kayıtlara bakar; taranacak aralığı belirler.
+function firstDataPeriod(state, todayStr) {
+  const dates = [];
+  for (const e of state.expenses || []) if (e?.date) dates.push(e.date.slice(0, 7));
+  for (const e of state.entries || []) if (e?.date) dates.push(e.date.slice(0, 7));
+  for (const i of state.investments || []) if (i?.date) dates.push(i.date.slice(0, 7));
+  for (const r of state.recurring || []) if (r?.since) dates.push(r.since);
+  for (const l of state.loans || []) if (l?.firstPeriod) dates.push(l.firstPeriod);
+  if (!dates.length) return todayStr.slice(0, 7);
+  return dates.reduce((min, d) => (d < min ? d : min));
+}
+
+/**
+ * "Bugüne kadar nereye ne kadar gitti": tüm dönemlerin kategori toplamları.
+ *
+ * Her dönem budgetSummary() ile hesaplanır — sürekli giderler ve kredi
+ * taksitleri oradan tek sefer geldiği için çifte sayım olmaz.
+ *
+ * @returns {{ categories: Array, total: number, months: number, from: string }}
+ */
+export function lifetimeByCategory(state, todayStr = todayISO()) {
+  const from = firstDataPeriod(state, todayStr);
+  const to = todayStr.slice(0, 7);
+  const totals = new Map();
+  let total = 0;
+  let months = 0;
+
+  let key = from;
+  // Aynı ayda başlayıp biten veri için de en az bir tur döner.
+  while (key <= to && months < 600) {
+    const summary = budgetSummary(state, key, todayStr);
+    for (const cat of summary.byCategory) {
+      totals.set(cat.key, (totals.get(cat.key) || 0) + cat.amount);
+    }
+    total += summary.spent;
+    months += 1;
+    key = shiftPeriod(key, 1);
+  }
+
+  const categories = [...totals.entries()]
+    .map(([catKey, amount]) => ({
+      ...categoryOf(catKey, state.settings),
+      amount,
+      monthlyAvg: months > 0 ? amount / months : 0,
+    }))
+    .sort((a, b) => b.amount - a.amount);
+
+  return { categories, total, months, from, to };
+}
+
+/**
+ * Yılın finansal tablosu: ay ay gelir / harcama / yatırım + kategori kırılımı.
+ * Hepsi mevcut hesaplardan gelir, yeni bir para mantığı yazılmaz.
+ */
+export function yearFinance(state, year, todayStr = todayISO()) {
+  const months = [];
+  const byCategory = new Map();
+  let income = 0;
+  let spent = 0;
+  let invested = 0;
+
+  for (let m = 1; m <= 12; m += 1) {
+    const periodKey = `${year}-${String(m).padStart(2, '0')}`;
+    const budget = budgetSummary(state, periodKey, todayStr);
+    const monthInvested = investedInPeriod(state, periodKey);
+    months.push({
+      periodKey,
+      month: m,
+      income: budget.netTotal,
+      spent: budget.spent,
+      invested: monthInvested,
+      remaining: budget.netTotal - budget.spent,
+    });
+    income += budget.netTotal;
+    spent += budget.spent;
+    invested += monthInvested;
+    for (const cat of budget.byCategory) {
+      byCategory.set(cat.key, (byCategory.get(cat.key) || 0) + cat.amount);
+    }
+  }
+
+  return {
+    year,
+    months,
+    income,
+    spent,
+    invested,
+    remaining: income - spent,
+    byCategory: [...byCategory.entries()]
+      .map(([key, amount]) => ({ ...categoryOf(key, state.settings), amount }))
+      .sort((a, b) => b.amount - a.amount),
+  };
 }

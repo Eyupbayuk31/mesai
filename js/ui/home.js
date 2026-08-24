@@ -13,6 +13,8 @@ import {
 } from '../homeStats.js';
 import { readStatus, relativeTime } from '../sync/engine.js';
 import { loansSummary } from '../loans.js';
+import { portfolioSummary } from '../investments.js';
+import { lifetimeByCategory } from '../budget.js';
 
 // Hatırlatmayı kapatma bilgisi cihaza özeldir; senkronlanan veriye karışmaz.
 const NUDGE_KEY = 'mesai.nudge.dismissed';
@@ -127,6 +129,7 @@ export function renderHome(container, state, ctx) {
 
     <div class="panes">
     <div class="pane">
+    ${netWorthHTML(state)}
     ${weeklyChartHTML(state.entries)}
     ${hasSalary ? statusCardHTML(state, periodKey) : ''}
     </div>
@@ -139,9 +142,15 @@ export function renderHome(container, state, ctx) {
         : ''}
     </div>
     ${recentEntries.length === 0 ? emptyStateHTML() : `<ul class="list" id="recentList">${recentEntries.map((e) => entryRowHTML(e, settings)).join('')}</ul>`}
+    ${lifetimeHTML(state)}
     </div>
     </div>
   `;
+
+  container.querySelector('#netWorthCard')?.addEventListener('click', () => ctx.setTab('invest'));
+  container.querySelector('.lifetime')?.addEventListener('click', (e) => {
+    if (e.target.closest('[data-lifetime]')) ctx.setTab('budget');
+  });
 
   mountPeriodInfo(ctx, {
     label: periodLabel(periodKey),
@@ -487,4 +496,59 @@ function handleDelete(store, id) {
     actionLabel: 'Geri al',
     onAction: () => store.addEntry(entry),
   });
+}
+
+// --- Net değer: yatırım − kalan borç -------------------------------------
+
+function netWorthHTML(state) {
+  const portfolio = portfolioSummary(state);
+  const loans = loansSummary(state, currentPeriodKey());
+  const debt = loans.totalRemaining || 0;
+  // İkisi de yoksa kart anlamsız — hiç basılmaz.
+  if (portfolio.totalValue <= 0 && debt <= 0) return '';
+
+  const net = portfolio.totalValue - debt;
+  const up = portfolio.totalProfit >= 0;
+  return `
+    <div class="card" id="netWorthCard" role="button" tabindex="0">
+      <div class="section-title" style="margin-top:0;">Net değer</div>
+      <div class="hero__value" style="font-size:26px;">${formatMoney(net, { decimals: false })}</div>
+      <div class="rows" style="margin-top:10px;">
+        ${receiptRow('Yatırım', formatMoney(portfolio.totalValue, { decimals: false }), { valueCls: 'is-positive' })}
+        ${portfolio.totalCost > 0 ? receiptRow('Yatırım kâr/zarar', `${up ? '+' : '−'}${formatMoney(Math.abs(portfolio.totalProfit), { decimals: false })} (%${Math.abs(portfolio.profitPct).toLocaleString('tr-TR', { maximumFractionDigits: 1 })})`, { valueCls: up ? 'is-positive' : 'is-negative' }) : ''}
+        ${debt > 0 ? receiptRow('Kalan borç', `− ${formatMoney(debt, { decimals: false })}`, { valueCls: 'is-negative' }) : ''}
+      </div>
+    </div>
+  `;
+}
+
+// --- Kümülatif: bugüne kadar nereye ne gitti ------------------------------
+
+const LIFETIME_ROWS = 5;
+
+function lifetimeHTML(state) {
+  const res = lifetimeByCategory(state);
+  if (res.total <= 0) return '';
+  const rows = res.categories.slice(0, LIFETIME_ROWS);
+  return `
+    <div class="section-header" style="margin-top:6px;">
+      <span class="section-title" style="margin:0;">Bugüne kadar nereye gitti</span>
+    </div>
+    <div class="card">
+      <div class="hero__value" style="font-size:24px;">${formatMoney(res.total, { decimals: false })}</div>
+      <div class="hero__sub" style="text-align:left;margin-top:2px;">${res.months} aylık toplam harcama</div>
+      <div class="lifetime" style="margin-top:10px;">
+        ${rows.map((c) => `
+          <button class="lifetime__row" type="button" data-lifetime="${c.key}">
+            <span class="lifetime__dot" style="background:${c.color}"></span>
+            <span>
+              <span class="lifetime__label">${c.label}</span>
+              <span class="lifetime__avg">ayda ${formatMoney(c.monthlyAvg, { decimals: false })}</span>
+            </span>
+            <span class="lifetime__total">${formatMoney(c.amount, { decimals: false })}</span>
+          </button>
+        `).join('')}
+      </div>
+    </div>
+  `;
 }
