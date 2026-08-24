@@ -353,3 +353,32 @@ test('rangeOvertime - Giriş-Çıkış modu ile aynı süre için aynı sonucu v
   const range = rangeOvertime('18:00', '21:00', weeklySettingsWithBreak);
   assert.equal(range.overtimeHours, shift.overtimeHours);
 });
+
+// --- Kazanç / ödeme ayrımı ----------------------------------------------
+
+test('periodSummary - avans kazancı azaltmaz, yalnız ödeme gününü küçültür', () => {
+  const state = {
+    settings: { ...weeklySettingsWithBreak, monthlySalary: 45000, mealAllowance: 0, transportAllowance: 0 },
+    entries: [],
+    adjustments: [
+      { id: 'a1', periodKey: '2026-08', kind: 'advance', amount: 10000 },
+    ],
+    expenses: [], recurring: [], loans: [], payslips: [], assets: [], investments: [],
+  };
+  const s = periodSummary(state, '2026-08');
+  assert.equal(s.earnedTotal, 45000, 'kazanç avanstan etkilenmez');
+  assert.equal(s.payoutTotal, 35000, 'ödeme günü avans düşülür');
+  assert.equal(s.netTotal, s.payoutTotal, 'netTotal geriye dönük uyumlu');
+});
+
+test('periodSummary - kesinti hem kazançtan hem ödemeden düşer', () => {
+  const state = {
+    settings: { ...weeklySettingsWithBreak, monthlySalary: 45000, mealAllowance: 0, transportAllowance: 0 },
+    entries: [],
+    adjustments: [{ id: 'd1', periodKey: '2026-08', kind: 'deduction', amount: 5000 }],
+    expenses: [], recurring: [], loans: [], payslips: [], assets: [], investments: [],
+  };
+  const s = periodSummary(state, '2026-08');
+  assert.equal(s.earnedTotal, 40000);
+  assert.equal(s.payoutTotal, 40000);
+});

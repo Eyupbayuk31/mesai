@@ -249,7 +249,14 @@ export function periodSummary(state, periodKey) {
   const mealPay = allowanceDays * mealAllowance;
   const transportPay = allowanceDays * transportAllowance;
   const totalIncome = baseSalary + overtimePay + mealPay + transportPay + bonuses + extraIncome;
-  const netTotal = totalIncome - advances - deductions;
+  // Dönemin gerçek kazancı. Avans BURADAN düşülmez: avans ayrı bir gelir ya da
+  // gider değil, aynı paranın erken ödenmiş parçasıdır. Kesinti ise hiç
+  // gelmediği için düşülür.
+  const earnedTotal = totalIncome - deductions;
+  // Ödeme günü hesaba yatacak tutar — avans zaten alındığı için burada düşer.
+  const payoutTotal = earnedTotal - advances;
+  // Geriye dönük uyum: netTotal = ödeme günü yatacak tutar.
+  const netTotal = payoutTotal;
 
   return {
     periodKey,
@@ -268,6 +275,8 @@ export function periodSummary(state, periodKey) {
     extraIncome,
     advances,
     deductions,
+    earnedTotal,
+    payoutTotal,
     netTotal,
     entries,
     adjustments,

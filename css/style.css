@@ -2545,3 +2545,40 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+
+/* ===== Rapor: analiz bölümü ===== */
+.analysis-verdict {
+  margin: 6px 0 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  font-weight: 600;
+}
+.analysis-verdict.is-positive { color: var(--text); }
+.analysis-verdict.is-negative { color: var(--text); }
+.analysis-verdict b { color: var(--accent); }
+
+.trend-list { display: flex; flex-direction: column; }
+.trend-row {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) 72px auto auto;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 2px;
+  border-bottom: 1px solid var(--divider);
+  font-size: 13px;
+}
+.trend-row:last-child { border-bottom: 0; }
+.trend-row__dot { width: 10px; height: 10px; border-radius: 50%; }
+.trend-row__label { font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trend-row__spark { display: block; }
+.trend-row__total { font-weight: 700; font-variant-numeric: tabular-nums; }
+.trend-row__dir { font-size: 11px; font-weight: 700; white-space: nowrap; min-width: 62px; text-align: right; }
+.trend-row__dir--artıyor { color: var(--negative); }
+.trend-row__dir--azalıyor { color: var(--positive); }
+.trend-row__dir--sabit, .trend-row__dir--yeni { color: var(--text-tertiary); }
+
+@media (max-width: 420px) {
+  .trend-row { grid-template-columns: 10px minmax(0, 1fr) 52px auto; }
+  .trend-row__dir { display: none; }
+  .trend-row__spark { width: 52px; }
+}

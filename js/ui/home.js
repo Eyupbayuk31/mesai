@@ -69,8 +69,8 @@ export function renderHome(container, state, ctx) {
     ${hasSalary ? `
     <div class="stat-strip stat-strip--kpi">
       <div class="stat-strip__item stat-strip__item--wide">
-        <div class="stat-strip__label">Tahmini eline geçecek</div>
-        <div class="stat-strip__value">${formatMoney(summary.netTotal, { decimals: false })}</div>
+        <div class="stat-strip__label">Bu dönem kazancın</div>
+        <div class="stat-strip__value">${formatMoney(summary.earnedTotal, { decimals: false })}</div>
       </div>
       <div class="stat-strip__divider"></div>
       <div class="stat-strip__item">
@@ -111,13 +111,13 @@ export function renderHome(container, state, ctx) {
           ${summary.transportPay > 0 ? receiptRow(`Yol parası <span style="color:var(--text-tertiary);">(${summary.allowanceDays} gün)</span>`, `+ ${formatMoney(summary.transportPay, { decimals: false })}`, { valueCls: 'is-positive' }) : ''}
           ${summary.bonuses > 0 ? receiptRow('Prim', `+ ${formatMoney(summary.bonuses, { decimals: false })}`, { valueCls: 'is-positive' }) : ''}
           ${summary.extraIncome > 0 ? receiptRow('Para girişi', `+ ${formatMoney(summary.extraIncome, { decimals: false })}`, { valueCls: 'is-positive' }) : ''}
-          ${(summary.advances > 0 || summary.deductions > 0) ? receiptRow('Toplam gelir', formatMoney(summary.totalIncome, { decimals: false }), { rowCls: 'row--subtotal' }) : ''}
-          ${summary.advances > 0 ? receiptRow('Avans', `− ${formatMoney(summary.advances, { decimals: false })}`, { valueCls: 'is-negative' }) : ''}
           ${summary.deductions > 0 ? receiptRow('Kesinti', `− ${formatMoney(summary.deductions, { decimals: false })}`, { valueCls: 'is-negative' }) : ''}
-          ${receiptRow('Tahmini eline geçecek', formatMoney(summary.netTotal), { rowCls: 'row--total' })}
+          ${receiptRow('Bu dönem kazancın', formatMoney(summary.earnedTotal), { rowCls: 'row--total' })}
+          ${summary.advances > 0 ? receiptRow('Avans olarak aldın', `− ${formatMoney(summary.advances, { decimals: false })}`, { valueCls: 'is-negative' }) : ''}
+          ${summary.advances > 0 ? receiptRow('Ödeme günü yatacak', formatMoney(summary.payoutTotal), { rowCls: 'row--subtotal' }) : ''}
         </div>
         ${summary.advances > 0 ? `
-        <p class="hero__note" style="text-align:left;">Avans düşüldü — Bütçe'de avans hâlâ senin paran sayılır, oradaki <b>kalan</b> bu yüzden farklı.</p>` : ''}
+        <p class="hero__note" style="text-align:left;">Avans ayrı bir para değil — kazancının erken ödenmiş parçası. Bütçedeki <b>kalan</b> da bu kazançtan hesaplanır.</p>` : ''}
         </div>
       </div>
 

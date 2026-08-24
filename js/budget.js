@@ -79,10 +79,10 @@ export function budgetSummary(state, periodKey, todayStr = todayISO()) {
   }
 
   const hasSalary = pay.baseSalary > 0;
-  // Bütçe avansı geri ekler: avans çekilen para eline erken geçer ve genelde
-  // fatura/harcama olarak zaten girilir — bütçede bir daha düşmek çifte sayım
-  // olur. Kesinti ise hiç gelmediği için düşülü kalır.
-  const expectedTotal = pay.netTotal + pay.advances;
+  // Bütçenin dayanağı dönemin KAZANCI: avans o kazancın erken ödenmiş parçası,
+  // ayrı bir para değil. (Eskiden netTotal'a avans geri eklenerek bulunuyordu;
+  // aynı sayı, artık doğrudan.)
+  const expectedTotal = pay.earnedTotal;
   const remaining = expectedTotal - spent;
 
   // Günlük pay yalnızca içinde bulunulan dönem için anlamlı; ayın kalan günleri
@@ -114,7 +114,9 @@ export function budgetSummary(state, periodKey, todayStr = todayISO()) {
       .filter((r) => r.active !== false && (r.since || '') === periodKey)
       .reduce((sum, r) => sum + (Number(r.amount) || 0), 0),
     expectedTotal,
-    // Avans düşülmüş hali — Özet'teki "eline geçecek" ile aynı sayı.
+    // Dönemin kazancı (avans dahil) ve ödeme günü yatacak tutar ayrı ayrı.
+    earnedTotal: pay.earnedTotal,
+    payoutTotal: pay.payoutTotal,
     netTotal: pay.netTotal,
     advances: pay.advances,
     hasSalary,
@@ -343,12 +345,12 @@ export function yearFinance(state, year, todayStr = todayISO()) {
     months.push({
       periodKey,
       month: m,
-      income: budget.netTotal,
+      income: budget.earnedTotal,
       spent: budget.spent,
       invested: monthInvested,
-      remaining: budget.netTotal - budget.spent,
+      remaining: budget.earnedTotal - budget.spent,
     });
-    income += budget.netTotal;
+    income += budget.earnedTotal;
     spent += budget.spent;
     invested += monthInvested;
     for (const cat of budget.byCategory) {

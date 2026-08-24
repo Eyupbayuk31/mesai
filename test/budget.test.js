@@ -591,3 +591,22 @@ test('yearFinance - veri olmayan yılda her şey sıfır, tablo yine 12 ay', () 
   assert.equal(res.spent, 0);
   assert.equal(res.invested, 0);
 });
+
+test('budgetSummary - toplam bütçe dönemin kazancıdır (avans geri eklenmez)', () => {
+  const state = lifetimeState();
+  state.adjustments = [{ id: 'a1', periodKey: '2026-08', kind: 'advance', amount: 10000 }];
+  const s = budgetSummary(state, '2026-08', '2026-08-24');
+  assert.equal(s.expectedTotal, s.earnedTotal, 'bütçenin dayanağı kazanç');
+  assert.equal(s.remaining, s.earnedTotal - s.spent);
+  assert.equal(s.payoutTotal, s.earnedTotal - 10000, 'ödeme günü ayrı gösterilir');
+});
+
+test('yearFinance - avans yılın gelirini küçültmez', () => {
+  const temiz = lifetimeState();
+  const avansli = lifetimeState();
+  avansli.adjustments = [{ id: 'a1', periodKey: '2026-08', kind: 'advance', amount: 10000 }];
+  assert.equal(
+    yearFinance(avansli, 2026, '2026-08-24').income,
+    yearFinance(temiz, 2026, '2026-08-24').income,
+  );
+});

@@ -13,6 +13,7 @@ import { buildHtmlReport } from './htmlReport.js';
 import { profileName } from '../profile.js';
 import { budgetSummary, yearFinance } from '../budget.js';
 import { portfolioSummary } from '../investments.js';
+import { yearsWithData, compareYears, realChange, categoryTrend, overtimeShareByYear } from '../analysis.js';
 
 const TYPE_ROWS = [
   { key: 'normal', label: 'Normal' },
@@ -49,8 +50,8 @@ export function renderReport(container, state, ctx) {
 
     <div class="stat-strip stat-strip--kpi stat-strip--report">
       <div class="stat-strip__item stat-strip__item--lead">
-        <div class="stat-strip__label">Net toplam</div>
-        <div class="stat-strip__value">${formatMoney(summary.netTotal, { decimals: false })}</div>
+        <div class="stat-strip__label">Dönem kazancı</div>
+        <div class="stat-strip__value">${formatMoney(summary.earnedTotal, { decimals: false })}</div>
       </div>
       <div class="stat-strip__divider"></div>
       <div class="stat-strip__item">
@@ -143,6 +144,8 @@ export function renderReport(container, state, ctx) {
     </div>
 
     ${yearTableHTML(finance, ySummary)}
+
+    ${analysisHTML(state, year)}
 
     <div class="section-title">Dışa aktar</div>
     <div class="card export-card">
@@ -356,7 +359,7 @@ function payslipCardHTML(state, summary, settings) {
       <div class="card">
         <p class="field__hint" style="margin:-2px 0 12px;">
           Şirketin bu dönem için yatırdığı tutarı gir; hesapla tutuyor mu bakalım.
-          Hesaba göre <b>${formatMoney(summary.netTotal)}</b> olmalı.
+          Ödeme günü hesaba <b>${formatMoney(summary.payoutTotal)}</b> yatmalı${summary.advances > 0 ? ` (₺${''} kazanç ${formatMoney(summary.earnedTotal, { decimals: false })}, avans düşülmüş)` : ''}.
         </p>
         <div class="field" style="margin-bottom:10px;">
           <label class="field__label">Bordroda yazan / yatan tutar (₺)</label>
@@ -524,5 +527,140 @@ function yearTableHTML(finance, ySummary) {
         `).join('')}
       </div>`}
     </div>
+  `;
+}
+
+// --- Derin analiz ---------------------------------------------------------
+//
+// "Zam aldım ama eridim mi?", "hangi kategori kaçıyor?", "mesai gelirimin
+// ne kadarı?" — tek yıla bakarak cevaplanamayan sorular.
+
+function analysisHTML(state, year) {
+  const years = yearsWithData(state);
+  const trend = categoryTrend(state, `${year}-12`, 12);
+  const prev = years.find((y) => y < year);
+  const comparison = prev ? compareYears(state, prev, year) : null;
+  const real = prev ? realChange(state, prev, year) : null;
+  const shares = overtimeShareByYear(state, years.slice(0, 3));
+
+  if (!comparison && trend.length === 0) return '';
+
+  return `
+    <div class="section-header">
+      <span class="section-title" style="margin:0;">Analiz</span>
+      <span class="section-header__note">${prev ? `${prev} — ${year} karşılaştırması` : 'karşılaştırma için önceki yıl verisi gerekiyor'}</span>
+    </div>
+    <div class="panes">
+      <div class="pane">
+        ${comparison ? `
+        <div class="card">
+          ${realHTML(real, prev, year)}
+          <div class="year-table__scroll" style="margin-top:12px;">
+            <table class="year-table">
+              <thead><tr><th></th><th>${prev}</th><th>${year}</th><th>Değişim</th></tr></thead>
+              <tbody>
+                ${comparison.rows.map((r) => `
+                  <tr>
+                    <td>${r.label}</td>
+                    <td>${r.money ? formatMoney(r.from, { decimals: false }) : formatHours(r.from)}</td>
+                    <td>${r.money ? formatMoney(r.to, { decimals: false }) : formatHours(r.to)}</td>
+                    <td>${changeCell(r)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>` : ''}
+        ${shareHTML(shares)}
+      </div>
+      <div class="pane">
+        ${trendHTML(trend)}
+      </div>
+    </div>
+  `;
+}
+
+function changeCell(row) {
+  if (row.pct === null) return '<span style="color:var(--text-tertiary);">—</span>';
+  const up = row.pct >= 0;
+  // Harcamada artış kötü, gelirde iyi: rengi anlamına göre seç.
+  const good = row.lowerIsBetter ? !up : up;
+  return `<span class="${good ? 'is-positive' : 'is-negative'}">${up ? '+' : '−'}%${Math.abs(row.pct).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}</span>`;
+}
+
+function realHTML(real, prev, year) {
+  if (!real) return `<div class="section-title" style="margin-top:0;">${year} · ${prev} karşılaştırması</div>`;
+  if (!real.reliable) {
+    return `
+      <div class="section-title" style="margin-top:0;">Zam mı, erime mi?</div>
+      <p class="analysis-verdict" style="color:var(--text-tertiary);">
+        ${prev} yılında yalnız <b>${real.baseMonths} ay</b> veri var — yüzdeler yanıltır, yorum yapmıyorum.
+        Aşağıdaki tablodaki tutarlar yine de doğru.
+      </p>
+    `;
+  }
+  const good = real.better;
+  const pts = Math.abs(real.gapPoints).toLocaleString('tr-TR', { maximumFractionDigits: 1 });
+  return `
+    <div class="section-title" style="margin-top:0;">Zam mı, erime mi?</div>
+    <p class="analysis-verdict ${good ? 'is-positive' : 'is-negative'}">
+      Gelirin <b>%${real.incomePct.toLocaleString('tr-TR', { maximumFractionDigits: 1 })}</b>,
+      harcaman <b>%${real.spentPct.toLocaleString('tr-TR', { maximumFractionDigits: 1 })}</b> değişti —
+      ${good ? `${pts} puan öndesin.` : `${pts} puan geridesin.`}
+    </p>
+  `;
+}
+
+function shareHTML(shares) {
+  const rows = shares.filter((s) => s.income > 0);
+  if (rows.length === 0) return '';
+  return `
+    <div class="card">
+      <div class="section-title" style="margin-top:0;">Gelirinin ne kadarı mesai?</div>
+      <div class="rows">
+        ${rows.map((s) => `
+          <div class="row">
+            <span class="row__label">${s.year} <span style="color:var(--text-tertiary);">${formatHours(s.hours)}</span></span>
+            <span class="row__value">%${s.share.toLocaleString('tr-TR', { maximumFractionDigits: 1 })} <span style="color:var(--text-tertiary);font-weight:600;">${formatMoney(s.overtimePay, { decimals: false })}</span></span>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+const DIRECTION_LABEL = { artıyor: '▲ artıyor', azalıyor: '▼ azalıyor', sabit: '● sabit', yeni: '· yeni' };
+
+function trendHTML(rows) {
+  if (rows.length === 0) return '';
+  return `
+    <div class="card">
+      <div class="section-title" style="margin-top:0;">Kategori trendi <span style="font-weight:500;color:var(--text-tertiary);">son 12 ay</span></div>
+      <div class="trend-list">
+        ${rows.slice(0, 8).map((r) => `
+          <div class="trend-row">
+            <span class="trend-row__dot" style="background:${r.color}"></span>
+            <span class="trend-row__label">${r.label}</span>
+            ${sparklineSVG(r.months, r.color)}
+            <span class="trend-row__total">${formatMoney(r.total, { decimals: false })}</span>
+            <span class="trend-row__dir trend-row__dir--${r.direction}">${DIRECTION_LABEL[r.direction] || ''}</span>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// Küçük çizgi grafik — kütüphane yok, tek path.
+function sparklineSVG(months, color) {
+  const w = 72;
+  const h = 22;
+  const max = Math.max(...months, 1);
+  const step = months.length > 1 ? w / (months.length - 1) : w;
+  const points = months.map((m, i) => `${(i * step).toFixed(1)},${(h - (m / max) * (h - 2) - 1).toFixed(1)}`);
+  return `
+    <svg class="trend-row__spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true">
+      <polyline points="${points.join(' ')}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" />
+    </svg>
   `;
 }

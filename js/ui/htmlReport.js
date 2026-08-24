@@ -5,6 +5,7 @@ import { entryAmount, yearSummary as buildYearSummary } from '../payroll.js';
 import { periodLabel, payDateForPeriod } from '../period.js';
 import { budgetSummary, yearFinance } from '../budget.js';
 import { portfolioSummary, investedInPeriod, formatQuantity, unitOf, kindOf } from '../investments.js';
+import { yearsWithData, compareYears, realChange, categoryTrend } from '../analysis.js';
 
 const TYPE_LABEL = { normal: 'Normal', weekend: 'Hafta tatili', holiday: 'Resmi tatil' };
 const TYPE_COLOR = { normal: '#3b6fe0', weekend: '#a24fd6', holiday: '#e2483d' };
@@ -155,7 +156,7 @@ export function buildHtmlReport({ profileName, periodKey, summary, settings, sco
 
   if (scope === 'year' && ySummary) {
     return buildYearReport({
-      profileName, yearSummary: ySummary, settings, portfolio,
+      profileName, yearSummary: ySummary, settings, portfolio, state, year,
       finance: state ? yearFinance(state, year) : null,
     });
   }
@@ -168,7 +169,7 @@ export function buildHtmlReport({ profileName, periodKey, summary, settings, sco
   });
 }
 
-function buildYearReport({ profileName, yearSummary, settings, finance, portfolio }) {
+function buildYearReport({ profileName, yearSummary, settings, finance, portfolio, state, year }) {
   // Yan ödeme girilmişse aylık tabloya ilgili kolonlar da eklenir.
   const withMeal = Number(settings.mealAllowance) > 0;
   const withTransport = Number(settings.transportAllowance) > 0;
@@ -205,6 +206,7 @@ function buildYearReport({ profileName, yearSummary, settings, finance, portfoli
 
       ${financeTable(finance, yearSummary)}
       ${categoryTable(finance ? finance.byCategory : [], finance ? finance.spent : 0, 'Harcama kırılımı')}
+      ${analysisSection(state, year)}
       ${portfolioTable(portfolio)}
     `,
   });
@@ -225,7 +227,8 @@ function buildPeriodReport({ profileName, periodKey, summary, settings, budget, 
         ${statCard('Toplam mesai', formatHours(summary.totalHours))}
         ${statCard('Mesai ücreti', formatMoney(summary.overtimePay), '#12946b')}
         ${statCard('Maaş', formatMoney(summary.baseSalary, { decimals: false }))}
-        ${statCard('Net toplam', formatMoney(summary.netTotal), 'var(--accent-strong)')}
+        ${statCard('Dönem kazancı', formatMoney(summary.earnedTotal), 'var(--accent-strong)')}
+        ${summary.advances > 0 ? statCard('Ödeme günü yatacak', formatMoney(summary.payoutTotal)) : ''}
         ${budget && budget.spent > 0 ? statCard('Bu ay harcama', formatMoney(budget.spent, { decimals: false }), '#c9402f') : ''}
         ${budget && budget.spent > 0 ? statCard('Aydan kalan', formatMoney(budget.remaining, { decimals: false })) : ''}
         ${periodInvested > 0 ? statCard('Bu ay yatırım', formatMoney(periodInvested, { decimals: false })) : ''}
@@ -572,5 +575,59 @@ function expenseListTable(budget) {
         </tr>
       </tbody>
     </table>
+  `;
+}
+
+// Yıllar arası karşılaştırma + kategori trendi. Ekrandaki Analiz bölümüyle
+// aynı hesaplardan gelir; rapor tek dosya kalsın diye tablo olarak basılır.
+function analysisSection(state, year) {
+  if (!state) return '';
+  const prev = yearsWithData(state).find((y) => y < year);
+  if (!prev) return '';
+  const cmp = compareYears(state, prev, year);
+  const real = realChange(state, prev, year);
+  const trend = categoryTrend(state, `${year}-12`, 12);
+
+  const cell = (row) => {
+    if (row.pct === null) return '—';
+    const up = row.pct >= 0;
+    const good = row.lowerIsBetter ? !up : up;
+    return `<span style="color:${good ? '#12946b' : '#c9402f'};">${up ? '+' : '−'}%${Math.abs(row.pct).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}</span>`;
+  };
+
+  return `
+    <h2>${prev} — ${year} karşılaştırması</h2>
+    ${real ? (real.reliable
+    ? `<p style="font-size:13px;color:#5b6472;margin:0 0 10px;">Gelirin <b>%${real.incomePct.toLocaleString('tr-TR', { maximumFractionDigits: 1 })}</b>, harcaman <b>%${real.spentPct.toLocaleString('tr-TR', { maximumFractionDigits: 1 })}</b> değişti — ${real.better ? 'öndesin' : 'geridesin'}.</p>`
+    : `<p style="font-size:13px;color:#9aa2b1;margin:0 0 10px;">${prev} yılında yalnız ${real.baseMonths} ay veri var; yüzdeler yanıltıcı olabilir.</p>`) : ''}
+    <table class="table">
+      <thead><tr><th></th><th class="num">${prev}</th><th class="num">${year}</th><th class="num">Değişim</th></tr></thead>
+      <tbody>
+        ${cmp.rows.map((r) => `
+          <tr>
+            <td>${r.label}</td>
+            <td class="num">${r.money ? formatMoney(r.from, { decimals: false }) : formatHours(r.from)}</td>
+            <td class="num">${r.money ? formatMoney(r.to, { decimals: false }) : formatHours(r.to)}</td>
+            <td class="num">${cell(r)}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+
+    ${trend.length === 0 ? '' : `
+    <h2>Kategori trendi (son 12 ay)</h2>
+    <table class="table">
+      <thead><tr><th>Kategori</th><th class="num">Toplam</th><th class="num">Aylık ort.</th><th>Yön</th></tr></thead>
+      <tbody>
+        ${trend.map((t) => `
+          <tr>
+            <td><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${t.color};margin-right:7px;"></span>${escapeHTML(t.label)}</td>
+            <td class="num">${formatMoney(t.total, { decimals: false })}</td>
+            <td class="num">${formatMoney(t.total / 12, { decimals: false })}</td>
+            <td>${t.direction}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>`}
   `;
 }
