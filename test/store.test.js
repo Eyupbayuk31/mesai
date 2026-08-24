@@ -146,3 +146,34 @@ test('Store - profil sistemi öncesi eski (tek kullanıcılı) veri ilk profile 
   // Eski anahtar da bozulmadan durur
   assert.ok(sharedLS.getItem('mesai.state'));
 });
+
+// --- Mola varsayılanı ---------------------------------------------------
+
+test('Store - mola düşme varsayılan olarak kapalı (18:00-21:00 = 3 saat)', () => {
+  const store = freshStore();
+  assert.equal(store.getState().settings.breakWindow.enabled, false);
+});
+
+test('Store - eski kayıtta açık kalan mola bir kereliğine kapatılır', () => {
+  globalThis.window = { localStorage: makeMemoryLocalStorage() };
+  window.localStorage.setItem('mesai.state', JSON.stringify({
+    schemaVersion: 1,
+    settings: { monthlySalary: 45000, breakWindow: { enabled: true, start: '18:30', end: '19:00' } },
+    entries: [],
+  }));
+  const store = new Store();
+  assert.equal(store.getState().settings.breakWindow.enabled, false);
+  assert.equal(store.getState().settings.monthlySalary, 45000, 'diğer ayarlar korunur');
+  assert.equal(store.getState().settings.breakWindow.start, '18:30', 'saatler korunur');
+});
+
+test('Store - şema 2 olduktan sonra elle açılan mola kapatılmaz', () => {
+  globalThis.window = { localStorage: makeMemoryLocalStorage() };
+  window.localStorage.setItem('mesai.state', JSON.stringify({
+    schemaVersion: 2,
+    settings: { breakWindow: { enabled: true, start: '12:00', end: '12:30' } },
+    entries: [],
+  }));
+  const store = new Store();
+  assert.equal(store.getState().settings.breakWindow.enabled, true);
+});

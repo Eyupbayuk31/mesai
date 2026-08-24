@@ -2,7 +2,7 @@
 // Her kullanıcı profili kendi anahtarında saklanır (mesai.state.<profil>).
 
 const LEGACY_STORAGE_KEY = 'mesai.state'; // profil sistemi öncesi tek kullanıcılı sürüm
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 // Haftalık çalışma programı: JS Date.getDay() sırasına göre (0=Pazar..6=Cumartesi).
 // Hafta içi 08:30-18:00, Cumartesi 08:30-12:45, Pazar kapalı — bu varsayılan
@@ -38,8 +38,10 @@ const DEFAULT_SETTINGS = {
   defaultEntryMode: 'shift',
   theme: 'auto',
   weeklySchedule: DEFAULT_WEEKLY_SCHEDULE,
-  // Mesai sırasındaki yemek molası — bu pencereyle kesişen süre mesaiden düşülür.
-  breakWindow: { enabled: true, start: '18:30', end: '19:00' },
+  // Mesai sırasındaki yemek molası — açıksa bu pencereyle kesişen süre
+  // mesaiden düşülür. Varsayılan KAPALI: 18:00-21:00 çalışıldıysa mesai
+  // 3 saat yazılır. Molası ödenmeyen bir işyeri için Ayarlar'dan açılabilir.
+  breakWindow: { enabled: false, start: '18:30', end: '19:00' },
 };
 
 function defaultState() {
@@ -114,6 +116,12 @@ function mergeSettings(settings) {
 function migrate(raw) {
   const state = { ...defaultState(), ...raw };
   state.settings = mergeSettings(raw?.settings);
+  // v2: mola düşme varsayılan olarak açıktı; 18:00-21:00 mesaisi 2,5 saat
+  // görünüyordu. Beklenen 3 saat olduğu için bir kereliğine kapatılır.
+  // Ayarlar'dan tekrar açılırsa (şema artık 2) bir daha dokunulmaz.
+  if ((Number(raw?.schemaVersion) || 1) < 2) {
+    state.settings.breakWindow = { ...state.settings.breakWindow, enabled: false };
+  }
   state.entries = Array.isArray(raw?.entries) ? raw.entries : [];
   state.expenses = Array.isArray(raw?.expenses) ? raw.expenses : [];
   state.recurring = Array.isArray(raw?.recurring) ? raw.recurring : [];

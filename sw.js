@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mesai-v35';
+const CACHE_NAME = 'mesai-v36';
 const APP_SHELL = [
   './',
   './index.html',
