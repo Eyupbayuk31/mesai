@@ -14,6 +14,12 @@ import { SyncEngine, readStatus, relativeTime } from './sync/engine.js';
 import { APP_VERSION } from './ui/settings/about.js';
 
 const appEl = document.getElementById('app');
+
+// Önbellek onarımı adres çubuğuna ?yenile=... bırakır; işini görünce silinsin.
+if (window.location.search.includes('yenile=')) {
+  history.replaceState(history.state, '', window.location.pathname);
+}
+
 const activeProfile = getActiveProfile();
 
 if (!activeProfile) {
@@ -130,8 +136,18 @@ function boot(profileId) {
           const keys = await caches.keys();
           await Promise.all(keys.filter((k) => k.startsWith('mesai-')).map((k) => caches.delete(k)));
         }
+        // Servis çalışanını silmek yetmiyor: tarayıcının KENDİ disk önbelleği
+        // eski app.js'i tutuyorsa reload yine eskisini açıyor (sert yenileme
+        // dışında hiçbir şey değişmiyordu). Sayfanın yüklediği kod dosyalarını
+        // cache:'reload' ile çekip disk önbelleğinin üstüne yazıyoruz.
+        const urls = performance.getEntriesByType('resource')
+          .map((e) => e.name)
+          .filter((n) => n.startsWith(window.location.origin) && /\.(js|css|webmanifest)(\?|$)/.test(n));
+        urls.push(window.location.href);
+        await Promise.all(urls.map((u) => fetch(u, { cache: 'reload' }).catch(() => {})));
       } catch {}
-      window.location.reload();
+      // Sorgu parametresi belge isteğini de taze yapar; router'ı etkilemez.
+      window.location.replace(`${window.location.pathname}?yenile=${Date.now()}`);
     },
   };
 
