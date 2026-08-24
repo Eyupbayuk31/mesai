@@ -5,7 +5,7 @@ import {
   portfolioSummary, donutSlices, assetPosition, assetLots, lotTotal,
   PRESET_ASSETS, nextAssetColor, DONUT_RADIUS, priceUpdateFromLot, suggestedUnitCost,
 } from '../investments.js';
-import { formatMoney, formatDayMonth, parseLocaleNumber, todayISO } from '../format.js';
+import { formatMoney, formatDayMonth, todayISO } from '../format.js';
 import { openSheet, closeSheet } from './sheet.js';
 import { showToast } from './toast.js';
 
@@ -27,9 +27,15 @@ export function render(container, state, ctx) {
     </div>
   `;
 
-  container.querySelector('#addInvestmentBtn')?.addEventListener('click', () => openLotSheet(ctx, null));
+  container.querySelector('#addAssetBtn')?.addEventListener('click', () => openAssetFormSheet(ctx, null));
 
   container.querySelector('.asset-list')?.addEventListener('click', (e) => {
+    const buyBtn = e.target.closest('[data-buy]');
+    if (buyBtn) {
+      const asset = state.assets.find((a) => a.id === buyBtn.dataset.buy);
+      if (asset) openLotSheet(ctx, asset, null);
+      return;
+    }
     const priceBtn = e.target.closest('[data-price]');
     if (priceBtn) {
       const asset = state.assets.find((a) => a.id === priceBtn.dataset.price);
@@ -109,30 +115,35 @@ function assetCardHTML(p) {
     <div class="card asset" data-asset="${p.assetId}" role="button" tabindex="0">
       <div class="asset__head">
         <span class="asset__name"><span class="asset__dot" style="background:${p.color || 'var(--accent)'}"></span>${escapeHTML(p.label)}</span>
-        <span class="asset__value">${formatMoney(p.value, { decimals: false })}</span>
+        <span class="asset__value">${p.hasLots ? formatMoney(p.value, { decimals: false }) : ''}</span>
       </div>
+      ${p.hasLots ? `
       <div class="asset__meta">
         <span>${formatQty(p.quantity)} ${escapeHTML(p.unit)} · ort. ${formatMoney(p.avgCost)}</span>
         ${p.hasPrice
     ? `<span class="${up ? 'is-positive' : 'is-negative'}">${up ? '+' : '−'}${formatMoney(Math.abs(p.profit), { decimals: false })} (%${formatPct(Math.abs(p.profitPct))})</span>`
     : '<span class="asset__missing">fiyat girilmedi</span>'}
-      </div>
+      </div>` : `
+      <div class="asset__meta"><span>Henüz alım yok — kaç tane aldığını gir</span></div>`}
       <div class="asset__foot">
-        <span>${p.lotCount} alım · maliyet ${formatMoney(p.cost, { decimals: false })}</span>
-        <button class="asset__price" data-price="${p.assetId}" type="button">
-          ${p.hasPrice ? `${formatMoney(p.price)} ${p.stale ? '⚠' : ''}` : 'Fiyat gir'}
-        </button>
+        <span>${p.hasLots ? `${p.lotCount} alım · maliyet ${formatMoney(p.cost, { decimals: false })}` : ''}</span>
+        <span style="display:flex; gap:8px; align-items:center;">
+          <button class="asset__price" data-price="${p.assetId}" type="button">
+            ${p.hasPrice ? `${formatMoney(p.price)} ${p.stale ? '⚠' : ''}` : 'Fiyat gir'}
+          </button>
+          <button class="asset__buy" data-buy="${p.assetId}" type="button">Alım ekle +</button>
+        </span>
       </div>
-      ${p.stale ? `<div class="asset__stale">Fiyat ${p.staleDays} gün önce güncellendi</div>` : ''}
+      ${p.stale && p.hasLots ? `<div class="asset__stale">Fiyat ${p.staleDays} gün önce güncellendi</div>` : ''}
     </div>
   `;
 }
 
 function addButtonHTML() {
   return `
-    <button class="btn btn--primary" id="addInvestmentBtn" type="button" style="margin-top:16px;">
+    <button class="btn btn--primary" id="addAssetBtn" type="button" style="margin-top:16px;">
       <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-      Alım ekle
+      Varlık ekle
     </button>
   `;
 }
@@ -144,69 +155,132 @@ function emptyHTML() {
         <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>
       </div>
       <div class="empty__title">Henüz yatırım yok</div>
-      <div class="empty__sub">Altın, döviz, hisse… ne aldıysan maliyetiyle yaz. Ortalama maliyetini ve kâr/zararını uygulama hesaplasın.</div>
+      <div class="empty__sub">Önce ne biriktirdiğini tanımla — altın, döviz, hisse. Sonra kartına basıp alımlarını girersin; ortalama maliyeti ve kâr/zararı uygulama hesaplar.</div>
     </div>
     ${addButtonHTML()}
   `;
 }
 
-// --- Alım ekle / düzenle -------------------------------------------------
+// --- Varlık ekle / düzenle -----------------------------------------------
+//
+// Adım 1: NE biriktiriyorsun? Adet burada sorulmaz — varlık tanımı ile alım
+// kaydı ayrı şeyler. Kaç tane aldığın kartın "Alım ekle" düğmesinde sorulur.
 
-function openLotSheet(ctx, lot, presetAssetId = null) {
+function openAssetFormSheet(ctx, asset) {
   const store = ctx.store;
-  const state = store.getState();
-  const isNew = !lot;
-  const assets = state.assets || [];
-  let selectedId = lot?.assetId || presetAssetId || assets[0]?.id || null;
-  let newAsset = selectedId ? null : { label: '', unit: 'gram' };
+  const isNew = !asset;
 
   openSheet({
-    title: isNew ? 'Alım ekle' : 'Alımı düzenle',
+    title: isNew ? 'Varlık ekle' : 'Varlığı düzenle',
+    footerHTML: `
+      <button class="btn btn--primary" id="saveAssetBtn" type="button">${isNew ? 'Ekle' : 'Kaydet'}</button>
+      ${isNew ? '' : '<button class="btn btn--danger btn--sm" id="removeAssetFormBtn" type="button" style="margin-top:8px;">Varlığı sil</button>'}
+    `,
+    build(bodyEl, footerEl) {
+      bodyEl.innerHTML = `
+        <div class="field">
+          <label class="field__label">Ne biriktiriyorsun?</label>
+          <input class="input" type="text" id="assetLabel" value="${escapeAttr(asset?.label || '')}" placeholder="ör. Gram altın" autocomplete="off" />
+          ${isNew ? `<div class="quick-chips" id="presetChips">
+            ${PRESET_ASSETS.map((pr) => `<button class="quick-chip" type="button" data-preset="${escapeAttr(pr.label)}" data-unit="${pr.unit}">${pr.label}</button>`).join('')}
+          </div>` : ''}
+        </div>
+        <div class="input-row">
+          <div class="field">
+            <label class="field__label">Birim</label>
+            <input class="input" type="text" id="assetUnit" value="${escapeAttr(asset?.unit || 'gram')}" placeholder="gram / adet / lot" />
+          </div>
+          <div class="field">
+            <label class="field__label">Güncel fiyat (₺)</label>
+            <input class="input input--amount" type="text" inputmode="decimal" id="assetPrice"
+              value="${asset?.currentPrice ? String(asset.currentPrice).replace('.', ',') : ''}" placeholder="7900" autocomplete="off" />
+          </div>
+        </div>
+        <div class="field__hint" style="margin:-10px 0 0;">
+          1 birimin bugünkü değeri. Kâr/zarar buna göre hesaplanır; sonra alım eklersen kendiliğinden tazelenir.
+        </div>
+      `;
+
+      bodyEl.querySelector('#presetChips')?.addEventListener('click', (e) => {
+        const chip = e.target.closest('[data-preset]');
+        if (!chip) return;
+        bodyEl.querySelector('#assetLabel').value = chip.dataset.preset;
+        bodyEl.querySelector('#assetUnit').value = chip.dataset.unit;
+      });
+
+      footerEl.querySelector('#saveAssetBtn').addEventListener('click', () => {
+        const label = bodyEl.querySelector('#assetLabel').value.trim();
+        if (!label) { showToast('Ne biriktirdiğini yaz'); return; }
+        const price = parseAmount(bodyEl.querySelector('#assetPrice').value);
+        const payload = {
+          label,
+          unit: bodyEl.querySelector('#assetUnit').value.trim() || 'adet',
+        };
+        if (price > 0) {
+          payload.currentPrice = price;
+          payload.priceUpdatedAt = new Date().toISOString();
+        }
+
+        if (isNew) {
+          const preset = PRESET_ASSETS.find((pr) => pr.label.toLowerCase() === label.toLowerCase());
+          const created = store.addAsset({ ...payload, color: preset?.color || nextAssetColor(store.getState().assets) });
+          showToast('Varlık eklendi');
+          closeSheet();
+          // Sıradaki adım belli: kaç tane aldığını hemen sor.
+          setTimeout(() => openLotSheet(ctx, { ...created }, null), 300);
+          return;
+        }
+        store.updateAsset(asset.id, payload);
+        showToast('Varlık güncellendi');
+        closeSheet();
+      });
+
+      footerEl.querySelector('#removeAssetFormBtn')?.addEventListener('click', () => {
+        const lots = assetLots(store.getState(), asset.id);
+        if (!window.confirm(`${asset.label}${lots.length ? ` ve ${lots.length} alım kaydı` : ''} silinecek. Emin misin?`)) return;
+        store.removeAsset(asset.id);
+        showToast('Varlık silindi');
+        closeSheet();
+      });
+    },
+  });
+}
+
+// --- Alım ekle / düzenle -------------------------------------------------
+//
+// Adım 2: kaç tane, kaçtan? Varlık bellidir, tekrar sorulmaz. Birim fiyat
+// bilinen son fiyatla dolu gelir — aynıysa elleme.
+
+function openLotSheet(ctx, asset, lot) {
+  const store = ctx.store;
+  const isNew = !lot;
+  const known = suggestedUnitCost(asset);
+
+  openSheet({
+    title: isNew ? `${asset.label} · alım ekle` : 'Alımı düzenle',
     footerHTML: `
       <button class="btn btn--primary" id="saveLotBtn" type="button">${isNew ? 'Ekle' : 'Kaydet'}</button>
       ${isNew ? '' : '<button class="btn btn--danger btn--sm" id="removeLotBtn" type="button" style="margin-top:8px;">Alımı sil</button>'}
     `,
     build(bodyEl, footerEl) {
       bodyEl.innerHTML = `
-        <div class="field">
-          <label class="field__label">Varlık</label>
-          <div class="cat-chips" id="assetChips">
-            ${assets.map((a) => `
-              <button class="cat-chip ${a.id === selectedId ? 'is-active' : ''}" data-asset-id="${a.id}" type="button" style="--cat-color:${a.color || 'var(--accent)'};">
-                <span class="cat-chip__dot"></span>${escapeHTML(a.label)}
-              </button>
-            `).join('')}
-            <button class="cat-chip ${selectedId ? '' : 'is-active'}" data-asset-id="" type="button" style="--cat-color:var(--text-tertiary);">
-              <span class="cat-chip__dot"></span>+ Yeni
-            </button>
-          </div>
-        </div>
-
-        <div id="newAssetFields" ${selectedId ? 'hidden' : ''}>
-          <div class="field">
-            <label class="field__label">Ne aldın?</label>
-            <input class="input" type="text" id="newAssetLabel" value="" placeholder="ör. Gram altın" autocomplete="off" />
-            <div class="quick-chips" id="presetChips">
-              ${PRESET_ASSETS.map((p) => `<button class="quick-chip" type="button" data-preset="${escapeAttr(p.label)}" data-unit="${p.unit}">${p.label}</button>`).join('')}
-            </div>
-          </div>
-          <div class="field">
-            <label class="field__label">Birim</label>
-            <input class="input" type="text" id="newAssetUnit" value="gram" placeholder="gram / adet / lot" />
-          </div>
-        </div>
-
         <div class="input-row">
           <div class="field">
-            <label class="field__label">Miktar</label>
-            <input class="input" type="text" inputmode="decimal" id="lotQuantity" value="${lot ? String(lot.quantity).replace('.', ',') : ''}" placeholder="1" autocomplete="off" />
+            <label class="field__label">Kaç ${escapeHTML(asset.unit || 'adet')} aldın?</label>
+            <input class="input" type="text" inputmode="decimal" id="lotQuantity"
+              value="${lot ? String(lot.quantity).replace('.', ',') : ''}" placeholder="1" autocomplete="off" />
           </div>
           <div class="field">
-            <label class="field__label">Aldığın birim fiyat (₺)</label>
-            <input class="input input--amount" type="text" inputmode="decimal" id="lotUnitCost" value="${initialUnitCost(lot, assets, selectedId)}" placeholder="7100" autocomplete="off" />
+            <label class="field__label">Kaçtan aldın? (₺)</label>
+            <input class="input input--amount" type="text" inputmode="decimal" id="lotUnitCost"
+              value="${lot ? String(lot.unitCost).replace('.', ',') : (known ? String(known).replace('.', ',') : '')}" placeholder="7100" autocomplete="off" />
           </div>
         </div>
-        <div class="field__hint" id="priceHint" style="margin:-10px 0 14px;"></div>
+        <div class="field__hint" style="margin:-10px 0 14px;">
+          ${known && isNew
+    ? `Bilinen fiyat <b>${formatMoney(known)}</b> yazıldı — farklı aldıysan değiştir. Kaydedince güncel fiyat da bu olur.`
+    : 'Bu fiyat aynı zamanda güncel fiyat olarak kaydedilir; ayrıca girmene gerek yok.'}
+        </div>
 
         <div class="preview-strip">
           <span class="preview-strip__label">Ödediğin</span>
@@ -226,74 +300,25 @@ function openLotSheet(ctx, lot, presetAssetId = null) {
       const qtyEl = bodyEl.querySelector('#lotQuantity');
       const costEl = bodyEl.querySelector('#lotUnitCost');
       const previewEl = bodyEl.querySelector('#lotTotalPreview');
-      const newFields = bodyEl.querySelector('#newAssetFields');
 
       const updatePreview = () => {
-        const q = parseLocaleNumber(qtyEl.value);
-        const c = parseLocaleNumber(costEl.value);
+        const q = parseAmount(qtyEl.value);
+        const c = parseAmount(costEl.value);
         previewEl.textContent = (q > 0 && c > 0) ? formatMoney(q * c) : '—';
       };
       qtyEl.addEventListener('input', updatePreview);
       costEl.addEventListener('input', updatePreview);
       updatePreview();
-
-      const hintEl = bodyEl.querySelector('#priceHint');
-      // Aynı fiyatı iki kez yazdırmamak için: bilinen son fiyat forma doldurulur,
-      // kaydedilince de güncel fiyat bu alımdan tazelenir.
-      const updateHint = () => {
-        const asset = assets.find((a) => a.id === selectedId);
-        const known = suggestedUnitCost(asset);
-        hintEl.innerHTML = known
-          ? `Bilinen son fiyat <b>${formatMoney(known)}</b> yazıldı — farklı aldıysan değiştir. Kaydedince güncel fiyat da bu olur.`
-          : 'Bu fiyat aynı zamanda güncel fiyat olarak kaydedilir; ayrıca girmene gerek yok.';
-      };
-      updateHint();
-
-      bodyEl.querySelector('#assetChips').addEventListener('click', (e) => {
-        const chip = e.target.closest('[data-asset-id]');
-        if (!chip) return;
-        selectedId = chip.dataset.assetId || null;
-        newAsset = selectedId ? null : { label: '', unit: 'gram' };
-        bodyEl.querySelectorAll('#assetChips .cat-chip').forEach((c) => c.classList.remove('is-active'));
-        chip.classList.add('is-active');
-        newFields.hidden = !!selectedId;
-        // Yeni seçilen varlığın bilinen fiyatı forma gelsin (düzenlemede dokunma).
-        if (isNew) {
-          const known = suggestedUnitCost(assets.find((a) => a.id === selectedId));
-          costEl.value = known ? String(known).replace('.', ',') : '';
-          updatePreview();
-        }
-        updateHint();
-      });
-
-      bodyEl.querySelector('#presetChips').addEventListener('click', (e) => {
-        const chip = e.target.closest('[data-preset]');
-        if (!chip) return;
-        bodyEl.querySelector('#newAssetLabel').value = chip.dataset.preset;
-        bodyEl.querySelector('#newAssetUnit').value = chip.dataset.unit;
-      });
+      setTimeout(() => qtyEl.focus(), 120);
 
       footerEl.querySelector('#saveLotBtn').addEventListener('click', () => {
-        const quantity = parseLocaleNumber(qtyEl.value);
-        const unitCost = parseLocaleNumber(costEl.value);
-        if (!Number.isFinite(quantity) || quantity <= 0) { showToast('Miktarı gir'); return; }
-        if (!Number.isFinite(unitCost) || unitCost <= 0) { showToast('Birim fiyatı gir'); return; }
-
-        let assetId = selectedId;
-        if (!assetId) {
-          const label = bodyEl.querySelector('#newAssetLabel').value.trim();
-          if (!label) { showToast('Varlık adını yaz'); return; }
-          const preset = PRESET_ASSETS.find((p) => p.label.toLowerCase() === label.toLowerCase());
-          const created = store.addAsset({
-            label,
-            unit: bodyEl.querySelector('#newAssetUnit').value.trim() || 'adet',
-            color: preset?.color || nextAssetColor(store.getState().assets),
-          });
-          assetId = created.id;
-        }
+        const quantity = parseAmount(qtyEl.value);
+        const unitCost = parseAmount(costEl.value);
+        if (quantity <= 0) { showToast(`Kaç ${asset.unit || 'adet'} aldığını gir`); return; }
+        if (unitCost <= 0) { showToast('Kaçtan aldığını gir'); return; }
 
         const payload = {
-          assetId,
+          assetId: asset.id,
           quantity,
           unitCost,
           date: bodyEl.querySelector('#lotDate').value || todayISO(),
@@ -303,9 +328,9 @@ function openLotSheet(ctx, lot, presetAssetId = null) {
         else store.updateInvestment(lot.id, payload);
 
         // Alım bir fiyat gözlemidir: en yeni alım güncel fiyatı da tazeler.
-        const asset = store.getState().assets.find((a) => a.id === assetId);
-        const priceUpdate = priceUpdateFromLot(asset, payload);
-        if (priceUpdate) store.updateAsset(assetId, priceUpdate);
+        const saved = store.getState().assets.find((a) => a.id === asset.id);
+        const priceUpdate = priceUpdateFromLot(saved, payload);
+        if (priceUpdate) store.updateAsset(asset.id, priceUpdate);
 
         showToast(isNew ? 'Alım eklendi' : 'Alım güncellendi');
         closeSheet();
@@ -363,8 +388,8 @@ function openAssetSheet(ctx, asset) {
   openSheet({
     title: asset.label,
     footerHTML: `
-      <button class="btn btn--primary" id="addLotBtn" type="button">Bu varlığa alım ekle</button>
-      <button class="btn btn--danger btn--sm" id="removeAssetBtn" type="button" style="margin-top:8px;">Varlığı sil</button>
+      <button class="btn btn--primary" id="addLotBtn" type="button">Alım ekle</button>
+      <button class="btn btn--secondary btn--sm" id="editAssetBtn" type="button" style="margin-top:8px;">Varlığı düzenle</button>
     `,
     build(bodyEl, footerEl) {
       bodyEl.innerHTML = `
@@ -374,6 +399,7 @@ function openAssetSheet(ctx, asset) {
           <div class="stat-strip__item"><span class="stat-strip__label">Değer</span><span class="stat-strip__value">${formatMoney(p.value, { decimals: false })}</span></div>
         </div>
         <div class="section-title" style="margin-top:14px;">Alımlar (${lots.length})</div>
+        ${lots.length === 0 ? '<div class="field__hint" style="margin-bottom:6px;">Henüz alım yok. Aşağıdaki <b>Alım ekle</b> ile kaç tane aldığını gir.</div>' : ''}
         <div class="lot-list">
           ${lots.map((l) => `
             <button class="lot-row" type="button" data-lot="${l.id}">
@@ -390,35 +416,66 @@ function openAssetSheet(ctx, asset) {
         if (!row) return;
         const lot = lots.find((l) => l.id === row.dataset.lot);
         closeSheet();
-        setTimeout(() => openLotSheet(ctx, lot), 280);
+        setTimeout(() => openLotSheet(ctx, asset, lot), 280);
       });
 
       footerEl.querySelector('#addLotBtn').addEventListener('click', () => {
         closeSheet();
-        setTimeout(() => openLotSheet(ctx, null, asset.id), 280);
+        setTimeout(() => openLotSheet(ctx, asset, null), 280);
       });
 
-      footerEl.querySelector('#removeAssetBtn').addEventListener('click', () => {
-        // Varlıkla birlikte alımları da gider; kullanıcı ne kaybedeceğini bilsin.
-        if (!window.confirm(`${asset.label} ve ${lots.length} alım kaydı silinecek. Emin misin?`)) return;
-        ctx.store.removeAsset(asset.id);
-        showToast('Varlık silindi');
+      footerEl.querySelector('#editAssetBtn').addEventListener('click', () => {
         closeSheet();
+        setTimeout(() => openAssetFormSheet(ctx, asset), 280);
       });
     },
   });
 }
 
-// FAB'dan çağrılır: sekmedeyken + düğmesi alım ekler.
+// FAB'dan çağrılır. Tek varlık varsa doğrudan ona alım ekler; birden fazlaysa
+// hangisine ekleneceğini sorar; hiç yoksa önce varlık tanımlatır.
 export function openAddInvestment(ctx) {
-  openLotSheet(ctx, null);
+  const assets = ctx.store.getState().assets || [];
+  if (assets.length === 0) { openAssetFormSheet(ctx, null); return; }
+  if (assets.length === 1) { openLotSheet(ctx, assets[0], null); return; }
+
+  openSheet({
+    title: 'Hangisine alım ekleyeceksin?',
+    build(bodyEl) {
+      bodyEl.innerHTML = `
+        <div class="lifetime">
+          ${assets.map((a) => `
+            <button class="lifetime__row" type="button" data-pick="${a.id}">
+              <span class="lifetime__dot" style="background:${a.color || 'var(--accent)'}"></span>
+              <span><span class="lifetime__label">${escapeHTML(a.label)}</span></span>
+              <span class="lifetime__total">›</span>
+            </button>
+          `).join('')}
+        </div>
+        <button class="btn btn--secondary btn--sm" id="pickNewAsset" type="button" style="margin-top:14px;">+ Yeni varlık</button>
+      `;
+      bodyEl.addEventListener('click', (e) => {
+        const row = e.target.closest('[data-pick]');
+        if (row) {
+          const asset = assets.find((a) => a.id === row.dataset.pick);
+          closeSheet();
+          setTimeout(() => openLotSheet(ctx, asset, null), 280);
+          return;
+        }
+        if (e.target.closest('#pickNewAsset')) {
+          closeSheet();
+          setTimeout(() => openAssetFormSheet(ctx, null), 280);
+        }
+      });
+    },
+  });
 }
 
-// Yeni alımda bilinen son fiyat hazır gelir; düzenlemede kaydın kendi fiyatı.
-function initialUnitCost(lot, assets, selectedId) {
-  if (lot) return String(lot.unitCost).replace('.', ',');
-  const known = suggestedUnitCost(assets.find((a) => a.id === selectedId));
-  return known ? String(known).replace('.', ',') : '';
+// "7100d", "7 100 TL" gibi girişleri de kabul et: sayı dışındaki her şey atılır.
+function parseAmount(raw) {
+  const cleaned = String(raw ?? '').replace(/[^\d.,]/g, '').replace(',', '.');
+  const value = Number(cleaned);
+  return Number.isFinite(value) ? value : 0;
 }
 
 function formatQty(value) {

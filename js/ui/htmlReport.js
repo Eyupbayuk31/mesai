@@ -1,8 +1,10 @@
 // Dönem için tasarımlı, tek dosya, yazdırılabilir HTML rapor üretimi.
 
 import { formatMoney, formatHours, formatFullDate, formatWeekday } from '../format.js';
-import { entryAmount } from '../payroll.js';
+import { entryAmount, yearSummary as buildYearSummary } from '../payroll.js';
 import { periodLabel, payDateForPeriod } from '../period.js';
+import { budgetSummary, yearFinance } from '../budget.js';
+import { portfolioSummary, investedInPeriod } from '../investments.js';
 
 const TYPE_LABEL = { normal: 'Normal', weekend: 'Hafta tatili', holiday: 'Resmi tatil' };
 const TYPE_COLOR = { normal: '#3b6fe0', weekend: '#a24fd6', holiday: '#e2483d' };
@@ -143,14 +145,27 @@ function yearTableRows(ySummary, withMeal, withTransport) {
 }
 
 // scope: 'period' (varsayılan) veya 'year'. Yıl kapsamı için yearSummary gerekir.
-export function buildHtmlReport({
-  profileName, periodKey, summary, settings, scope = 'period', yearSummary = null,
-  finance = null, budget = null, portfolio = null, periodInvested = 0, lots = [], assets = [],
-}) {
-  if (scope === 'year' && yearSummary) {
-    return buildYearReport({ profileName, yearSummary, settings, finance, portfolio });
+// Raporun içeriği state'ten TÜRETİLİR: çağıranın harcama/yatırım verisini
+// ayrıca geçmesi gerekmez. (Önceden geçiyordu; çağıran eski bir sürümse
+// bölümler sessizce düşüp rapor yalnız mesai gösteriyordu.)
+export function buildHtmlReport({ profileName, periodKey, summary, settings, scope = 'period', state = null, yearSummary = null }) {
+  const year = Number(periodKey.slice(0, 4));
+  const ySummary = yearSummary || (state ? buildYearSummary(state, year) : null);
+  const portfolio = state ? portfolioSummary(state) : null;
+
+  if (scope === 'year' && ySummary) {
+    return buildYearReport({
+      profileName, yearSummary: ySummary, settings, portfolio,
+      finance: state ? yearFinance(state, year) : null,
+    });
   }
-  return buildPeriodReport({ profileName, periodKey, summary, settings, budget, periodInvested, lots, assets });
+  return buildPeriodReport({
+    profileName, periodKey, summary, settings, portfolio,
+    budget: state ? budgetSummary(state, periodKey) : null,
+    periodInvested: state ? investedInPeriod(state, periodKey) : 0,
+    lots: state?.investments || [],
+    assets: state?.assets || [],
+  });
 }
 
 function buildYearReport({ profileName, yearSummary, settings, finance, portfolio }) {
@@ -195,7 +210,7 @@ function buildYearReport({ profileName, yearSummary, settings, finance, portfoli
   });
 }
 
-function buildPeriodReport({ profileName, periodKey, summary, settings, budget, periodInvested, lots, assets }) {
+function buildPeriodReport({ profileName, periodKey, summary, settings, budget, periodInvested, lots, assets, portfolio }) {
   const payDate = payDateForPeriod(periodKey, settings);
   const payDateLabel = formatFullDate(
     `${payDate.getFullYear()}-${String(payDate.getMonth() + 1).padStart(2, '0')}-${String(payDate.getDate()).padStart(2, '0')}`
@@ -211,6 +226,10 @@ function buildPeriodReport({ profileName, periodKey, summary, settings, budget, 
         ${statCard('Mesai ücreti', formatMoney(summary.overtimePay), '#12946b')}
         ${statCard('Maaş', formatMoney(summary.baseSalary, { decimals: false }))}
         ${statCard('Net toplam', formatMoney(summary.netTotal), 'var(--accent-strong)')}
+        ${budget && budget.spent > 0 ? statCard('Bu ay harcama', formatMoney(budget.spent, { decimals: false }), '#c9402f') : ''}
+        ${budget && budget.spent > 0 ? statCard('Aydan kalan', formatMoney(budget.remaining, { decimals: false })) : ''}
+        ${periodInvested > 0 ? statCard('Bu ay yatırım', formatMoney(periodInvested, { decimals: false })) : ''}
+        ${profitCard(portfolio)}
       </div>
 
       <h2>Mesai türü kırılımı</h2>
@@ -229,7 +248,9 @@ function buildPeriodReport({ profileName, periodKey, summary, settings, budget, 
       ${adjustmentRows(summary)}
 
       ${categoryTable(budget ? budget.byCategory : [], budget ? budget.spent : 0, 'Bu ayki harcamalar')}
+      ${expenseListTable(budget)}
       ${periodInvestmentTable(periodKey, periodInvested, lots, assets)}
+      ${portfolioTable(portfolio)}
 
       <h2>Günlük kayıtlar (${summary.entryCount})</h2>
       ${summary.entries.length === 0 ? `<p style="color:var(--text-secondary); font-size:13px;">Bu dönemde kayıt yok.</p>` : `
@@ -459,13 +480,14 @@ function categoryTable(categories, total, heading) {
 
 // Portföyün o anki durumu: varlık başına maliyet, değer ve kâr/zarar.
 function portfolioTable(portfolio) {
-  if (!portfolio || portfolio.positions.length === 0) return '';
+  const rows = (portfolio?.positions || []).filter((p) => p.hasLots);
+  if (rows.length === 0) return '';
   return `
     <h2>Yatırım portföyü</h2>
     <table class="table">
       <thead><tr><th>Varlık</th><th class="num">Miktar</th><th class="num">Ort. maliyet</th><th class="num">Güncel fiyat</th><th class="num">Değer</th><th class="num">Kâr/zarar</th></tr></thead>
       <tbody>
-        ${portfolio.positions.map((p) => {
+        ${rows.map((p) => {
     const up = p.profit >= 0;
     return `
           <tr>
@@ -524,4 +546,33 @@ function periodInvestmentTable(periodKey, periodInvested, lots, assets) {
 function formatQty(value) {
   const n = Number(value) || 0;
   return Number.isInteger(n) ? String(n) : n.toLocaleString('tr-TR', { maximumFractionDigits: 4 });
+}
+
+// Ayın harcama dökümü: tek tek kalemler (sürekli gider ve kredi taksitleri
+// "otomatik" olarak işaretlenir, elle girilmiş gibi görünmesin).
+function expenseListTable(budget) {
+  const rows = (budget?.expenses || []).slice().sort((a, b) => (a.date < b.date ? 1 : -1));
+  if (rows.length === 0) return '';
+  // Kategori etiketleri özet çıktısında hazır: anahtar -> görünen ad.
+  const labels = new Map((budget.byCategory || []).map((c) => [c.key, c.label]));
+  return `
+    <h2>Harcama kayıtları (${rows.length})</h2>
+    <table class="table">
+      <thead><tr><th>Tarih</th><th>Kategori</th><th>Açıklama</th><th class="num">Tutar</th></tr></thead>
+      <tbody>
+        ${rows.map((e) => `
+          <tr>
+            <td>${formatFullDate(e.date)}</td>
+            <td>${escapeHTML(labels.get(e.category) || e.category || '—')}</td>
+            <td>${escapeHTML(e.note || '')}${e.virtual ? ' <span style="color:#9aa2b1;">(otomatik)</span>' : ''}</td>
+            <td class="num">${formatMoney(e.amount, { decimals: false })}</td>
+          </tr>
+        `).join('')}
+        <tr class="total-row">
+          <td colspan="3">Toplam</td>
+          <td class="num">${formatMoney(budget.spent, { decimals: false })}</td>
+        </tr>
+      </tbody>
+    </table>
+  `;
 }

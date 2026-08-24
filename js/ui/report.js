@@ -11,8 +11,8 @@ import { openSheet, closeSheet } from './sheet.js';
 import { downloadFile, csvForEntries } from './exportUtils.js';
 import { buildHtmlReport } from './htmlReport.js';
 import { profileName } from '../profile.js';
-import { budgetSummary, yearFinance } from '../budget.js';
-import { portfolioSummary, investedInPeriod } from '../investments.js';
+import { yearFinance } from '../budget.js';
+import { portfolioSummary } from '../investments.js';
 
 const TYPE_ROWS = [
   { key: 'normal', label: 'Normal' },
@@ -202,17 +202,11 @@ export function renderReport(container, state, ctx) {
       periodKey,
       year,
       onPick(scope) {
+        // Rapor gerekli her şeyi state'ten kendisi türetir.
         const html = buildHtmlReport({
           profileName: profileName(ctx.profileId),
-          periodKey, summary, settings, scope,
+          periodKey, summary, settings, scope, state,
           yearSummary: scope === 'year' ? ySummary : null,
-          // Gelişmiş rapor: harcama, yatırım ve kâr/zarar da aynı dosyada.
-          finance: scope === 'year' ? finance : null,
-          budget: budgetSummary(state, periodKey),
-          portfolio: portfolioSummary(state),
-          periodInvested: investedInPeriod(state, periodKey),
-          lots: state.investments || [],
-          assets: state.assets || [],
         });
         const name = scope === 'year' ? `mesai-raporu-${year}` : `mesai-raporu-${periodKey}`;
         downloadFile(`${name}.html`, html, 'text/html;charset=utf-8');

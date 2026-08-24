@@ -69,6 +69,7 @@ export function assetPosition(asset, lots, nowMs = Date.now()) {
     profit,
     profitPct: cost > 0 ? (profit / cost) * 100 : 0,
     lotCount: (lots || []).length,
+    hasLots: (lots || []).length > 0,
     stale: hasPrice && staleDays(asset?.priceUpdatedAt, nowMs) > STALE_DAYS,
     staleDays: staleDays(asset?.priceUpdatedAt, nowMs),
   };
@@ -83,9 +84,10 @@ function staleDays(iso, nowMs) {
 
 /** Tüm portföy: değere göre büyükten küçüğe pozisyonlar + toplamlar. */
 export function portfolioSummary(state, nowMs = Date.now()) {
+  // Alımı olmayan varlık da listede kalır: kullanıcı önce varlığı tanımlayıp
+  // sonra alım ekliyor; arada kart kaybolursa "nereye gitti?" sorusu doğar.
   const positions = (state?.assets || [])
     .map((a) => assetPosition(a, lotsOf(state, a.id), nowMs))
-    .filter((p) => p.quantity > 0 || p.lotCount > 0)
     .sort((a, b) => b.value - a.value);
 
   let totalCost = 0;
@@ -107,7 +109,8 @@ export function portfolioSummary(state, nowMs = Date.now()) {
     profitPct: totalCost > 0 ? (totalProfit / totalCost) * 100 : 0,
     staleCount,
     missingPrice,
-    assetCount: positions.length,
+    assetCount: positions.filter((p) => p.hasLots).length,
+    emptyCount: positions.filter((p) => !p.hasLots).length,
   };
 }
 

@@ -68,7 +68,9 @@ const state = {
 
 test('portfolioSummary - toplamlar pozisyon toplamlarına eşit', () => {
   const s = portfolioSummary(state, NOW);
-  assert.equal(s.positions.length, 2, 'alımı olmayan varlık listede yok');
+  assert.equal(s.positions.length, 3, 'alımı olmayan varlık da kartını korur');
+  assert.equal(s.assetCount, 2, 'ama portföy sayımına girmez');
+  assert.equal(s.emptyCount, 1);
   assert.equal(s.totalCost, s.positions.reduce((t, p) => t + p.cost, 0));
   assert.equal(s.totalValue, s.positions.reduce((t, p) => t + p.value, 0));
   assert.equal(s.totalCost, 14500 + 28000);
@@ -79,7 +81,7 @@ test('portfolioSummary - toplamlar pozisyon toplamlarına eşit', () => {
 
 test('portfolioSummary - pozisyonlar değere göre büyükten küçüğe', () => {
   const s = portfolioSummary(state, NOW);
-  assert.deepEqual(s.positions.map((p) => p.label), ['THYAO', 'Gram altın']);
+  assert.deepEqual(s.positions.map((p) => p.label), ['THYAO', 'Gram altın', 'Satılmış']);
 });
 
 test('portfolioSummary - boş portföyde sıfıra bölme yok', () => {
