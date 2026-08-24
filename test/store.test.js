@@ -226,3 +226,64 @@ test('Store - alım güncellenir ve silinir', () => {
   assert.equal(store.getState().investments.length, 0);
   assert.ok(store.getState().tombstones.investments[lot.id]);
 });
+
+// --- v3: varlık türleri -------------------------------------------------
+
+test('Store - eski "Dolar / adet" kaydı döviz türüne taşınır', () => {
+  globalThis.window = { localStorage: makeMemoryLocalStorage() };
+  window.localStorage.setItem('mesai.state', JSON.stringify({
+    schemaVersion: 2,
+    settings: {},
+    entries: [],
+    assets: [
+      { id: 'a1', label: 'Dolar', unit: 'adet', currentPrice: 41.5 },
+      { id: 'a2', label: 'Gram altın', unit: 'gram', currentPrice: 7900 },
+      { id: 'a3', label: 'Çeyrek altın', unit: 'adet' },
+      { id: 'a4', label: 'Bitcoin', unit: 'adet' },
+    ],
+    investments: [{ id: 'l1', assetId: 'a1', date: '2026-05-20', quantity: 500, unitCost: 39 }],
+  }));
+  const s = new Store().getState();
+  const by = (label) => s.assets.find((a) => a.label === label);
+
+  assert.equal(by('Dolar').kind, 'doviz');
+  assert.equal(by('Dolar').unit, 'dolar', 'genel "adet" birimi türün birimine çevrilir');
+  assert.equal(by('Gram altın').kind, 'altin');
+  assert.equal(by('Gram altın').unit, 'gram');
+  assert.equal(by('Çeyrek altın').kind, 'altin');
+  assert.equal(by('Çeyrek altın').unit, 'adet', 'çeyrek altın gerçekten adettir, bozulmaz');
+  assert.equal(by('Bitcoin').kind, 'kripto');
+  assert.equal(by('Bitcoin').unit, 'BTC');
+
+  assert.deepEqual(s.investments[0], { id: 'l1', assetId: 'a1', date: '2026-05-20', quantity: 500, unitCost: 39 },
+    'alım kayıtlarına dokunulmaz');
+});
+
+test('Store - elle yazılmış birim korunur', () => {
+  globalThis.window = { localStorage: makeMemoryLocalStorage() };
+  window.localStorage.setItem('mesai.state', JSON.stringify({
+    schemaVersion: 2, settings: {}, entries: [],
+    assets: [{ id: 'a1', label: 'Dolar', unit: 'USD' }],
+  }));
+  const asset = new Store().getState().assets[0];
+  assert.equal(asset.unit, 'USD');
+  assert.equal(asset.kind, 'doviz');
+});
+
+test('Store - kaydında türü olan varlığa dokunulmaz', () => {
+  globalThis.window = { localStorage: makeMemoryLocalStorage() };
+  window.localStorage.setItem('mesai.state', JSON.stringify({
+    schemaVersion: 2, settings: {}, entries: [],
+    assets: [{ id: 'a1', label: 'Dolar', unit: 'adet', kind: 'diger' }],
+  }));
+  const asset = new Store().getState().assets[0];
+  assert.equal(asset.kind, 'diger');
+  assert.equal(asset.unit, 'adet');
+});
+
+test('Store - yeni varlıkta tür kaydedilir', () => {
+  const store = freshStore();
+  const a = store.addAsset({ label: 'Euro', kind: 'doviz', unit: 'euro' });
+  assert.equal(store.getState().assets[0].kind, 'doviz');
+  assert.equal(a.unit, 'euro');
+});

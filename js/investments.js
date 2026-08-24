@@ -6,20 +6,95 @@
 
 import { isDateInPeriod, shiftPeriod } from './period.js';
 
+// Varlık türleri. Tür; birimi, formdaki soruları ve miktarın kaç ondalıkla
+// gösterileceğini belirler. Hesap her türde aynı (miktar × birim fiyat);
+// değişen yalnızca dil ve gösterim — "500 adet dolar" saçmaydı, "500 dolar".
+export const ASSET_KINDS = [
+  { key: 'doviz', label: 'Döviz', defaultUnit: 'dolar', decimals: 2, rate: true },
+  { key: 'altin', label: 'Altın', defaultUnit: 'gram', decimals: 4, rate: false },
+  { key: 'hisse', label: 'Hisse', defaultUnit: 'lot', decimals: 0, rate: false },
+  { key: 'kripto', label: 'Kripto', defaultUnit: 'BTC', decimals: 8, rate: true },
+  { key: 'fon', label: 'Fon', defaultUnit: 'pay', decimals: 3, rate: false },
+  { key: 'diger', label: 'Diğer', defaultUnit: 'adet', decimals: 2, rate: false },
+];
+
+const KIND_BY_KEY = new Map(ASSET_KINDS.map((k) => [k.key, k]));
+const FALLBACK_KIND = KIND_BY_KEY.get('diger');
+
 // Alım eklerken önerilen varlıklar. Saklanmaz, yalnızca formu hızlandırır;
 // kullanıcı kendi varlığını da yazabilir (ör. bir hisse kodu).
 export const PRESET_ASSETS = [
-  { label: 'Gram altın', unit: 'gram', color: '#d4a017' },
-  { label: 'Çeyrek altın', unit: 'adet', color: '#c98b12' },
-  { label: 'Yarım altın', unit: 'adet', color: '#b8770e' },
-  { label: 'Tam altın', unit: 'adet', color: '#a3640c' },
-  { label: 'Gümüş', unit: 'gram', color: '#8c96a3' },
-  { label: 'Dolar', unit: 'adet', color: '#2f8a5c' },
-  { label: 'Euro', unit: 'adet', color: '#2f63c4' },
-  { label: 'Hisse', unit: 'lot', color: '#8447b5' },
-  { label: 'Fon', unit: 'adet', color: '#0e8a8a' },
-  { label: 'Bitcoin', unit: 'adet', color: '#d97d0d' },
+  { label: 'Gram altın', kind: 'altin', unit: 'gram', color: '#d4a017' },
+  { label: 'Çeyrek altın', kind: 'altin', unit: 'adet', color: '#c98b12' },
+  { label: 'Yarım altın', kind: 'altin', unit: 'adet', color: '#b8770e' },
+  { label: 'Tam altın', kind: 'altin', unit: 'adet', color: '#a3640c' },
+  { label: 'Gümüş', kind: 'altin', unit: 'gram', color: '#8c96a3' },
+  { label: 'Dolar', kind: 'doviz', unit: 'dolar', color: '#2f8a5c' },
+  { label: 'Euro', kind: 'doviz', unit: 'euro', color: '#2f63c4' },
+  { label: 'Sterlin', kind: 'doviz', unit: 'sterlin', color: '#5b6472' },
+  { label: 'Hisse', kind: 'hisse', unit: 'lot', color: '#8447b5' },
+  { label: 'Fon', kind: 'fon', unit: 'pay', color: '#0e8a8a' },
+  { label: 'Bitcoin', kind: 'kripto', unit: 'BTC', color: '#d97d0d' },
 ];
+
+// Etiket/birimden tür tahmini — eski kayıtlarda `kind` yok.
+const LABEL_HINTS = [
+  { kind: 'doviz', words: ['dolar', 'usd', '$', 'euro', 'eur', '€', 'sterlin', 'gbp', 'frank', 'chf', 'yen', 'jpy', 'riyal', 'ruble'] },
+  { kind: 'kripto', words: ['bitcoin', 'btc', 'ethereum', 'eth', 'kripto', 'coin', 'usdt', 'solana', 'avax'] },
+  { kind: 'altin', words: ['altın', 'altin', 'gram', 'gümüş', 'gumus', 'çeyrek', 'ceyrek', 'reşat', 'ata lira', 'ons'] },
+  { kind: 'fon', words: ['fon', 'yatırım fonu', 'eurobond', 'tahvil'] },
+  { kind: 'hisse', words: ['hisse', 'lot', 'borsa'] },
+];
+
+export function inferKind(asset) {
+  const label = String(asset?.label || '').toLocaleLowerCase('tr');
+  const unit = String(asset?.unit || '').toLocaleLowerCase('tr');
+  for (const hint of LABEL_HINTS) {
+    if (hint.words.some((w) => label.includes(w) || unit === w)) return hint.kind;
+  }
+  // Birim tek başına da ipucu: "lot" hisse, "gram" altın demektir.
+  if (unit === 'lot') return 'hisse';
+  if (unit === 'gram') return 'altin';
+  if (unit === 'pay') return 'fon';
+  return 'diger';
+}
+
+/** Varlığın tür tanımı; kaydında yoksa etiketinden çıkarılır. */
+export function kindOf(asset) {
+  return KIND_BY_KEY.get(asset?.kind) || KIND_BY_KEY.get(inferKind(asset)) || FALLBACK_KIND;
+}
+
+export function kindByKey(key) {
+  return KIND_BY_KEY.get(key) || FALLBACK_KIND;
+}
+
+/** Varlığın birimi: kaydındaki, yoksa türün varsayılanı. */
+export function unitOf(asset) {
+  return asset?.unit || kindOf(asset).defaultUnit;
+}
+
+/** Miktarı türün hassasiyetiyle yazar: 1.500 dolar, 0,01500000 BTC, 100 lot. */
+export function formatQuantity(value, asset) {
+  const n = Number(value) || 0;
+  const decimals = kindOf(asset).decimals;
+  if (Number.isInteger(n)) return n.toLocaleString('tr-TR');
+  return n.toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: Math.max(decimals, 2) });
+}
+
+/** "Kaç dolar aldın?" / "Kaç gram aldın?" */
+export function quantityLabel(asset) {
+  return `Kaç ${unitOf(asset)} aldın?`;
+}
+
+/** Döviz/kriptoda kur sorulur, diğerlerinde birim fiyat. */
+export function priceLabel(asset) {
+  return `1 ${unitOf(asset)} kaç ₺?`;
+}
+
+/** Kart ve tablolarda ortalama maliyetin adı. */
+export function avgLabel(asset) {
+  return kindOf(asset).rate ? 'ort. kur' : 'ort. maliyet';
+}
 
 // Yeni varlığa sırayla verilecek renkler (preset'i olmayan için).
 const FALLBACK_COLORS = ['#2f8a5c', '#d97d0d', '#2f63c4', '#8447b5', '#0e8a8a', '#c2568e', '#b0431f', '#7d7666'];
@@ -58,7 +133,10 @@ export function assetPosition(asset, lots, nowMs = Date.now()) {
   return {
     assetId: asset?.id,
     label: asset?.label || '',
-    unit: asset?.unit || 'adet',
+    kind: kindOf(asset).key,
+    kindLabel: kindOf(asset).label,
+    unit: unitOf(asset),
+    asset,
     color: asset?.color,
     quantity,
     cost,
@@ -112,6 +190,41 @@ export function portfolioSummary(state, nowMs = Date.now()) {
     assetCount: positions.filter((p) => p.hasLots).length,
     emptyCount: positions.filter((p) => !p.hasLots).length,
   };
+}
+
+/** Türe göre dağılım: altın ne kadar, döviz ne kadar? */
+export function portfolioByKind(summary) {
+  const groups = new Map();
+  for (const p of summary?.positions || []) {
+    if (!p.hasLots) continue;
+    const g = groups.get(p.kind) || { kind: p.kind, label: p.kindLabel, value: 0, cost: 0, count: 0 };
+    g.value += p.value;
+    g.cost += p.cost;
+    g.count += 1;
+    groups.set(p.kind, g);
+  }
+  const total = [...groups.values()].reduce((sum, g) => sum + g.value, 0);
+  return [...groups.values()]
+    .map((g) => ({
+      ...g,
+      profit: g.value - g.cost,
+      profitPct: g.cost > 0 ? ((g.value - g.cost) / g.cost) * 100 : 0,
+      pct: total > 0 ? (g.value / total) * 100 : 0,
+    }))
+    .sort((a, b) => b.value - a.value);
+}
+
+/**
+ * En çok ve en az kazandıran varlık. Yalnızca fiyatı girilmiş ve maliyeti olan
+ * varlıklar yarışır — fiyatsız varlığın kârı 0 görünür, sıralamayı bozardı.
+ * İki adaydan az varsa karşılaştırma anlamsız: null döner.
+ */
+export function bestWorstAsset(summary) {
+  const rank = (summary?.positions || [])
+    .filter((p) => p.hasLots && p.hasPrice && p.cost > 0)
+    .sort((a, b) => b.profitPct - a.profitPct);
+  if (rank.length < 2) return null;
+  return { best: rank[0], worst: rank[rank.length - 1] };
 }
 
 // Donut için dilimler. SVG'de r=RADIUS'lu tek bir daire üstüne
@@ -210,8 +323,9 @@ export function recentLots(state, limit = 8) {
     .map((l) => ({
       ...l,
       label: labels.get(l.assetId).label,
-      unit: labels.get(l.assetId).unit || 'adet',
+      unit: unitOf(labels.get(l.assetId)),
       color: labels.get(l.assetId).color,
+      asset: labels.get(l.assetId),
       total: lotTotal(l),
     }));
 }

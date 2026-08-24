@@ -1,8 +1,10 @@
 // localStorage kalıcılık katmanı: şema sürümü, migration, güvenli fallback.
 // Her kullanıcı profili kendi anahtarında saklanır (mesai.state.<profil>).
 
+import { inferKind, kindByKey, PRESET_ASSETS } from './investments.js';
+
 const LEGACY_STORAGE_KEY = 'mesai.state'; // profil sistemi öncesi tek kullanıcılı sürüm
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 // Haftalık çalışma programı: JS Date.getDay() sırasına göre (0=Pazar..6=Cumartesi).
 // Hafta içi 08:30-18:00, Cumartesi 08:30-12:45, Pazar kapalı — bu varsayılan
@@ -136,12 +138,32 @@ function migrate(raw) {
   state.adjustments = Array.isArray(raw?.adjustments) ? raw.adjustments : [];
   state.loans = Array.isArray(raw?.loans) ? raw.loans : [];
   state.payslips = Array.isArray(raw?.payslips) ? raw.payslips : [];
-  state.assets = Array.isArray(raw?.assets) ? raw.assets : [];
+  state.assets = migrateAssets(Array.isArray(raw?.assets) ? raw.assets : [], Number(raw?.schemaVersion) || 1);
   state.investments = Array.isArray(raw?.investments) ? raw.investments : [];
   state.tombstones = normalizeTombstones(raw?.tombstones);
   state.settingsUpdatedAt = typeof raw?.settingsUpdatedAt === 'string' ? raw.settingsUpdatedAt : null;
   state.schemaVersion = SCHEMA_VERSION;
   return state;
+}
+
+// v3: varlıklara tür (kind) yazıldı. Tür; birimi ve formdaki soruları
+// belirliyor — dövizin birimi "adet" olduğu için kartlarda "500 adet" gibi
+// saçma bir metin çıkıyordu. Tutarlara ve alım kayıtlarına dokunulmaz.
+function migrateAssets(assets, fromVersion) {
+  return assets.map((asset) => {
+    if (asset?.kind) return asset;
+    const kind = inferKind(asset);
+    const next = { ...asset, kind };
+    // Birim yalnızca eski genel varsayılansa düzeltilir; kullanıcının elle
+    // yazdığı birim ("USD", "çeyrek") olduğu gibi korunur.
+    if (fromVersion < 3 && (!asset?.unit || asset.unit === 'adet') && kind !== 'diger') {
+      const preset = PRESET_ASSETS.find((p) => p.label.toLocaleLowerCase('tr') === String(asset?.label || '').toLocaleLowerCase('tr'));
+      const unit = preset?.unit || kindByKey(kind).defaultUnit;
+      // Çeyrek/tam altın gerçekten "adet"tir; altında birim değiştirilmez.
+      if (kind !== 'altin') next.unit = unit;
+    }
+    return next;
+  });
 }
 
 function isStorageAvailable() {

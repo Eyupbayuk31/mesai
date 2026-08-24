@@ -4,7 +4,7 @@ import { formatMoney, formatHours, formatFullDate, formatWeekday } from '../form
 import { entryAmount, yearSummary as buildYearSummary } from '../payroll.js';
 import { periodLabel, payDateForPeriod } from '../period.js';
 import { budgetSummary, yearFinance } from '../budget.js';
-import { portfolioSummary, investedInPeriod } from '../investments.js';
+import { portfolioSummary, investedInPeriod, formatQuantity, unitOf, kindOf } from '../investments.js';
 
 const TYPE_LABEL = { normal: 'Normal', weekend: 'Hafta tatili', holiday: 'Resmi tatil' };
 const TYPE_COLOR = { normal: '#3b6fe0', weekend: '#a24fd6', holiday: '#e2483d' };
@@ -485,14 +485,15 @@ function portfolioTable(portfolio) {
   return `
     <h2>Yatırım portföyü</h2>
     <table class="table">
-      <thead><tr><th>Varlık</th><th class="num">Miktar</th><th class="num">Ort. maliyet</th><th class="num">Güncel fiyat</th><th class="num">Değer</th><th class="num">Kâr/zarar</th></tr></thead>
+      <thead><tr><th>Varlık</th><th>Tür</th><th class="num">Miktar</th><th class="num">Ort. maliyet</th><th class="num">Güncel değer</th><th class="num">Değer</th><th class="num">Kâr/zarar</th></tr></thead>
       <tbody>
         ${rows.map((p) => {
     const up = p.profit >= 0;
     return `
           <tr>
             <td><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${p.color || '#9aa2b1'};margin-right:7px;"></span>${escapeHTML(p.label)}</td>
-            <td class="num">${formatQty(p.quantity)} ${escapeHTML(p.unit)}</td>
+            <td>${escapeHTML(p.kindLabel || '')}</td>
+            <td class="num">${formatQuantity(p.quantity, p.asset)} ${escapeHTML(p.unit)}</td>
             <td class="num">${formatMoney(p.avgCost)}</td>
             <td class="num">${p.hasPrice ? formatMoney(p.price) : '—'}</td>
             <td class="num">${formatMoney(p.value, { decimals: false })}</td>
@@ -502,7 +503,7 @@ function portfolioTable(portfolio) {
           </tr>`;
   }).join('')}
         <tr class="total-row">
-          <td colspan="4">Toplam</td>
+          <td colspan="5">Toplam</td>
           <td class="num">${formatMoney(portfolio.totalValue, { decimals: false })}</td>
           <td class="num" style="color:${portfolio.totalProfit >= 0 ? '#12946b' : '#c9402f'};">
             ${portfolio.totalProfit >= 0 ? '+' : '−'}${formatMoney(Math.abs(portfolio.totalProfit), { decimals: false })}
@@ -519,17 +520,18 @@ function portfolioTable(portfolio) {
 function periodInvestmentTable(periodKey, periodInvested, lots, assets) {
   const rows = (lots || []).filter((l) => typeof l?.date === 'string' && l.date.slice(0, 7) === periodKey);
   if (rows.length === 0) return '';
-  const labelOf = (assetId) => (assets || []).find((a) => a.id === assetId)?.label || 'Varlık';
+  const assetOf = (assetId) => (assets || []).find((a) => a.id === assetId) || null;
+  const labelOf = (assetId) => assetOf(assetId)?.label || 'Varlık';
   return `
     <h2>Bu ayki yatırımlar</h2>
     <table class="table">
-      <thead><tr><th>Tarih</th><th>Varlık</th><th class="num">Miktar</th><th class="num">Birim fiyat</th><th class="num">Tutar</th></tr></thead>
+      <thead><tr><th>Tarih</th><th>Varlık</th><th class="num">Miktar</th><th class="num">Birim değer</th><th class="num">Tutar</th></tr></thead>
       <tbody>
         ${rows.map((l) => `
           <tr>
             <td>${formatFullDate(l.date)}</td>
             <td>${escapeHTML(labelOf(l.assetId))}</td>
-            <td class="num">${formatQty(l.quantity)}</td>
+            <td class="num">${formatQuantity(l.quantity, assetOf(l.assetId))} ${escapeHTML(assetOf(l.assetId) ? unitOf(assetOf(l.assetId)) : '')}</td>
             <td class="num">${formatMoney(l.unitCost)}</td>
             <td class="num">${formatMoney((Number(l.quantity) || 0) * (Number(l.unitCost) || 0), { decimals: false })}</td>
           </tr>
@@ -543,10 +545,6 @@ function periodInvestmentTable(periodKey, periodInvested, lots, assets) {
   `;
 }
 
-function formatQty(value) {
-  const n = Number(value) || 0;
-  return Number.isInteger(n) ? String(n) : n.toLocaleString('tr-TR', { maximumFractionDigits: 4 });
-}
 
 // Ayın harcama dökümü: tek tek kalemler (sürekli gider ve kredi taksitleri
 // "otomatik" olarak işaretlenir, elle girilmiş gibi görünmesin).

@@ -215,3 +215,111 @@ test('recentLots - varlığı silinmiş alım listeye girmez', () => {
   const kirli = { ...state, investments: [...state.investments, { id: 'x', assetId: 'yok', date: '2026-08-20', quantity: 1, unitCost: 100 }] };
   assert.equal(recentLots(kirli, 10).some((r) => r.id === 'x'), false);
 });
+
+// --- Varlık türleri -----------------------------------------------------
+
+import {
+  inferKind, kindOf, unitOf, formatQuantity, quantityLabel, priceLabel, avgLabel,
+  portfolioByKind, bestWorstAsset, ASSET_KINDS,
+} from '../js/investments.js';
+
+test('inferKind - etiketten tür çıkarır', () => {
+  assert.equal(inferKind({ label: 'Dolar', unit: 'adet' }), 'doviz');
+  assert.equal(inferKind({ label: 'Euro' }), 'doviz');
+  assert.equal(inferKind({ label: 'Gram altın', unit: 'gram' }), 'altin');
+  assert.equal(inferKind({ label: 'Çeyrek altın', unit: 'adet' }), 'altin');
+  assert.equal(inferKind({ label: 'Bitcoin' }), 'kripto');
+  assert.equal(inferKind({ label: 'THYAO', unit: 'lot' }), 'hisse');
+  assert.equal(inferKind({ label: 'Zeytinlik', unit: 'adet' }), 'diger');
+});
+
+test('kindOf - kayıtlı tür tahmine tercih edilir', () => {
+  assert.equal(kindOf({ label: 'Dolar', kind: 'diger' }).key, 'diger');
+  assert.equal(kindOf({ label: 'Dolar' }).key, 'doviz');
+});
+
+test('unitOf - birim yoksa türün varsayılanı', () => {
+  assert.equal(unitOf({ label: 'Dolar', kind: 'doviz' }), 'dolar');
+  assert.equal(unitOf({ label: 'Dolar', kind: 'doviz', unit: 'USD' }), 'USD', 'elle yazılan birim korunur');
+});
+
+test('formatQuantity - tam sayı sade, ondalık türün hassasiyetinde', () => {
+  assert.equal(formatQuantity(1500, { kind: 'doviz' }), '1.500');
+  assert.equal(formatQuantity(100, { kind: 'hisse' }), '100');
+  assert.equal(formatQuantity(0.015, { kind: 'kripto' }), '0,015');
+  assert.equal(formatQuantity(2.5, { kind: 'altin' }), '2,5');
+});
+
+test('quantityLabel / priceLabel - dövizde kur sorusu', () => {
+  const dolar = { label: 'Dolar', kind: 'doviz', unit: 'dolar' };
+  assert.equal(quantityLabel(dolar), 'Kaç dolar aldın?');
+  assert.equal(priceLabel(dolar), '1 dolar kaç ₺?');
+  assert.equal(avgLabel(dolar), 'ort. kur');
+
+  const altin = { label: 'Gram altın', kind: 'altin', unit: 'gram' };
+  assert.equal(quantityLabel(altin), 'Kaç gram aldın?');
+  assert.equal(priceLabel(altin), '1 gram kaç ₺?');
+  assert.equal(avgLabel(altin), 'ort. maliyet');
+});
+
+test('ASSET_KINDS - her türün varsayılan birimi ve ondalığı var', () => {
+  for (const k of ASSET_KINDS) {
+    assert.ok(k.key && k.label && k.defaultUnit, `${k.key} eksik`);
+    assert.equal(typeof k.decimals, 'number');
+  }
+});
+
+// --- Türe göre dağılım ve en iyi/en kötü --------------------------------
+
+const kindState = {
+  assets: [
+    { id: 'a1', label: 'Gram altın', kind: 'altin', unit: 'gram', currentPrice: 7900, priceUpdatedAt: daysAgo(1) },
+    { id: 'a2', label: 'THYAO', kind: 'hisse', unit: 'lot', currentPrice: 300, priceUpdatedAt: daysAgo(1) },
+    { id: 'a3', label: 'Dolar', kind: 'doviz', unit: 'dolar', currentPrice: 41.5, priceUpdatedAt: daysAgo(1) },
+    { id: 'a4', label: 'Euro', kind: 'doviz', unit: 'euro', currentPrice: 45, priceUpdatedAt: daysAgo(1) },
+  ],
+  investments: [
+    { id: 'l1', assetId: 'a1', date: '2026-06-10', quantity: 2, unitCost: 7000 },   // 14.000 → 15.800
+    { id: 'l2', assetId: 'a2', date: '2026-08-03', quantity: 100, unitCost: 280 },  // 28.000 → 30.000
+    { id: 'l3', assetId: 'a3', date: '2026-05-20', quantity: 500, unitCost: 39 },   // 19.500 → 20.750
+    { id: 'l4', assetId: 'a4', date: '2026-05-20', quantity: 100, unitCost: 44 },   //  4.400 →  4.500
+  ],
+};
+
+test('portfolioByKind - tür toplamları portföy değerine eşit', () => {
+  const summary = portfolioSummary(kindState, NOW);
+  const groups = portfolioByKind(summary);
+  assert.deepEqual(groups.map((g) => g.kind), ['hisse', 'doviz', 'altin']);
+  assert.equal(groups.reduce((t, g) => t + g.value, 0), summary.totalValue);
+  assert.equal(groups.reduce((t, g) => t + g.cost, 0), summary.totalCost);
+  assert.ok(Math.abs(groups.reduce((t, g) => t + g.pct, 0) - 100) < 1e-9);
+
+  const doviz = groups.find((g) => g.kind === 'doviz');
+  assert.equal(doviz.value, 20750 + 4500, 'dolar + euro tek grupta');
+  assert.equal(doviz.count, 2);
+});
+
+test('portfolioByKind - tek tür varsa tek grup döner', () => {
+  const tek = { assets: [kindState.assets[0]], investments: [kindState.investments[0]] };
+  assert.equal(portfolioByKind(portfolioSummary(tek, NOW)).length, 1);
+});
+
+test('bestWorstAsset - en iyi ve en kötü yüzdeye göre', () => {
+  const res = bestWorstAsset(portfolioSummary(kindState, NOW));
+  assert.equal(res.best.label, 'Gram altın');   // %12,86
+  assert.equal(res.worst.label, 'Euro');        // %2,27
+});
+
+test('bestWorstAsset - fiyatsız varlık yarışmaz, tek adayda null', () => {
+  const eksik = {
+    assets: [
+      { id: 'a1', label: 'Gram altın', kind: 'altin', currentPrice: 7900, priceUpdatedAt: daysAgo(1) },
+      { id: 'a2', label: 'Fon', kind: 'fon' },
+    ],
+    investments: [
+      { id: 'l1', assetId: 'a1', date: '2026-06-10', quantity: 1, unitCost: 7000 },
+      { id: 'l2', assetId: 'a2', date: '2026-06-10', quantity: 10, unitCost: 100 },
+    ],
+  };
+  assert.equal(bestWorstAsset(portfolioSummary(eksik, NOW)), null, 'tek fiyatlı varlık kaldı');
+});

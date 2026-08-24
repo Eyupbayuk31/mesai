@@ -2516,3 +2516,32 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
 @media (min-width: 900px) {
   .bar-chart--mini .bar-chart__track { max-width: 46px; margin-left: auto; margin-right: auto; }
 }
+
+/* Yatırım: türe göre dağılım şeridi */
+.kind-strip {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--divider);
+}
+.kind-strip__item { flex: 1; min-width: 0; text-align: center; }
+.kind-strip__label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.kind-strip__value { font-weight: 700; font-size: 14px; margin-top: 3px; font-variant-numeric: tabular-nums; }
+.kind-strip__pct { font-size: 11.5px; font-weight: 600; color: var(--text-tertiary); margin-top: 1px; }
+
+.bestworst__tag {
+  margin-left: 8px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
