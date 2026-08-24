@@ -202,6 +202,21 @@ function boot(profileId) {
     }
     else if (tab === 'invest') investPage.render(screenEl, state, ctx);
     else if (tab === 'settings') renderSettingsRoute(screenEl, state, ctx, page);
+    else renderUnknownTab(tab);
+  }
+
+  // Bilinmeyen sekme = tarayıcı eski kodu tutuyor (yeni index.html + eski
+  // app.js). Boş sayfa bırakmak yerine ne olduğunu söyle ve tek dokunuşla onar.
+  function renderUnknownTab(tab) {
+    screenEl.innerHTML = `
+      <div class="card empty">
+        <div class="empty__title">Bu sayfa yüklenemedi</div>
+        <div class="empty__sub">Uygulamanın eski bir sürümü açık kalmış olabilir. Güncelleyip tekrar dene.</div>
+        <button class="btn btn--primary" id="repairFromUnknown" type="button" style="margin-top:14px;">Güncelle ve yenile</button>
+      </div>
+    `;
+    screenEl.querySelector('#repairFromUnknown').addEventListener('click', () => ctx.repairCache());
+    console.warn('Bilinmeyen sekme:', tab);
   }
 
   tabbar.addEventListener('click', (e) => {

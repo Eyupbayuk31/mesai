@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mesai-v37';
+const CACHE_NAME = 'mesai-v38';
 const APP_SHELL = [
   './',
   './index.html',
@@ -88,22 +88,48 @@ self.addEventListener('message', (event) => {
   if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
-// Cache-first, arka planda tazeleme (stale-while-revalidate)
+// Kod (HTML/JS/CSS) ağdan önce gelir, varlıklar (font/ikon) önbellekten.
+//
+// Neden: her şey cache-first olunca uygulamanın YARISI eskiyebiliyordu —
+// yeni index.html eski app.js ile açılıp yeni sekme boş sayfa veriyordu.
+// Kod dosyaları birkaç KB; ağdan almak ucuz, tutarlılık ise şart. İnternet
+// yoksa önbellekteki sürüme düşülür, uygulama çevrimdışı çalışmaya devam eder.
+function isCode(url, request) {
+  return request.mode === 'navigate'
+    || url.pathname.endsWith('.html')
+    || url.pathname.endsWith('.js')
+    || url.pathname.endsWith('.css')
+    || url.pathname.endsWith('.webmanifest');
+}
+
+function putInCache(request, response) {
+  if (response && response.ok) {
+    const clone = response.clone();
+    caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+  }
+  return response;
+}
+
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
+  if (isCode(url, event.request)) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => putInCache(event.request, response))
+        .catch(() => caches.match(event.request).then((cached) => cached || caches.match('./index.html')))
+    );
+    return;
+  }
+
+  // Font, ikon, ekran görüntüsü: değişmeyen varlıklar — önbellekten hızlıca,
+  // arka planda tazelenir.
   event.respondWith(
     caches.match(event.request).then((cached) => {
       const networkFetch = fetch(event.request)
-        .then((response) => {
-          if (response && response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          }
-          return response;
-        })
+        .then((response) => putInCache(event.request, response))
         .catch(() => cached);
       return cached || networkFetch;
     })
