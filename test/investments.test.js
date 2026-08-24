@@ -182,3 +182,36 @@ test('suggestedUnitCost - bilinen fiyat forma önerilir', () => {
   assert.equal(suggestedUnitCost({ currentPrice: 7900 }), 7900);
   assert.equal(suggestedUnitCost({}), null);
 });
+
+// --- Aylık yatırım ve son alımlar ---------------------------------------
+
+import { monthlyInvestBuckets, recentLots } from '../js/investments.js';
+
+test('monthlyInvestBuckets - 6 kova, eskiden yeniye, boş ay 0', () => {
+  const buckets = monthlyInvestBuckets(state, '2026-08', 6);
+  assert.equal(buckets.length, 6);
+  assert.deepEqual(buckets.map((b) => b.periodKey), ['2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08']);
+  assert.equal(buckets[0].amount, 0, 'mart boş');
+  assert.equal(buckets[3].amount, 7100, 'haziran');
+  assert.equal(buckets[5].amount, 28000, 'ağustos');
+  assert.equal(buckets[5].isCurrent, true);
+  assert.equal(buckets[0].isCurrent, false);
+});
+
+test('monthlyInvestBuckets - toplam yıllık yatırımı aşmaz', () => {
+  const toplam = monthlyInvestBuckets(state, '2026-08', 12).reduce((t, b) => t + b.amount, 0);
+  assert.ok(toplam <= investedInYear(state, 2026) + investedInYear(state, 2025));
+});
+
+test('recentLots - yeniden eskiye, varlık adıyla', () => {
+  const rows = recentLots(state, 3);
+  assert.deepEqual(rows.map((r) => r.id), ['i3', 'i2', 'i1']);
+  assert.equal(rows[0].label, 'THYAO');
+  assert.equal(rows[0].total, 28000);
+  assert.equal(rows[1].unit, 'gram');
+});
+
+test('recentLots - varlığı silinmiş alım listeye girmez', () => {
+  const kirli = { ...state, investments: [...state.investments, { id: 'x', assetId: 'yok', date: '2026-08-20', quantity: 1, unitCost: 100 }] };
+  assert.equal(recentLots(kirli, 10).some((r) => r.id === 'x'), false);
+});

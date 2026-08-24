@@ -4,8 +4,10 @@
 import {
   portfolioSummary, donutSlices, assetPosition, assetLots, lotTotal,
   PRESET_ASSETS, nextAssetColor, DONUT_RADIUS, priceUpdateFromLot, suggestedUnitCost,
+  monthlyInvestBuckets, recentLots,
 } from '../investments.js';
-import { formatMoney, formatDayMonth, todayISO } from '../format.js';
+import { currentPeriodKey, periodLabel } from '../period.js';
+import { formatMoney, formatDayMonth, formatMonthYear, todayISO } from '../format.js';
 import { openSheet, closeSheet } from './sheet.js';
 import { showToast } from './toast.js';
 
@@ -14,10 +16,13 @@ export const title = 'Yatırım';
 export function render(container, state, ctx) {
   const summary = portfolioSummary(state);
 
-  container.innerHTML = summary.assetCount === 0 ? emptyHTML() : `
+  const hasAnything = summary.positions.length > 0;
+  container.innerHTML = !hasAnything ? emptyHTML() : `
+    ${kpiStripHTML(summary)}
     <div class="panes">
       <div class="pane">
         ${dashboardHTML(summary)}
+        ${investChartHTML(state)}
       </div>
       <div class="pane">
         <div class="section-title">Varlıklar</div>
@@ -25,9 +30,18 @@ export function render(container, state, ctx) {
         ${addButtonHTML()}
       </div>
     </div>
+    ${recentLotsHTML(state)}
   `;
 
   container.querySelector('#addAssetBtn')?.addEventListener('click', () => openAssetFormSheet(ctx, null));
+
+  container.querySelector('#recentLotList')?.addEventListener('click', (e) => {
+    const row = e.target.closest('[data-lot]');
+    if (!row) return;
+    const lot = (state.investments || []).find((l) => l.id === row.dataset.lot);
+    const asset = state.assets.find((a) => a.id === lot?.assetId);
+    if (lot && asset) openLotSheet(ctx, asset, lot);
+  });
 
   container.querySelector('.asset-list')?.addEventListener('click', (e) => {
     const buyBtn = e.target.closest('[data-buy]');
@@ -493,4 +507,90 @@ function escapeHTML(str) {
 
 function escapeAttr(str) {
   return escapeHTML(str);
+}
+
+// --- Üst KPI şeridi ------------------------------------------------------
+
+function kpiStripHTML(summary) {
+  const up = summary.totalProfit >= 0;
+  return `
+    <div class="stat-strip stat-strip--kpi stat-strip--report">
+      <div class="stat-strip__item stat-strip__item--lead">
+        <div class="stat-strip__label">Portföy</div>
+        <div class="stat-strip__value">${formatMoney(summary.totalValue, { decimals: false })}</div>
+      </div>
+      <div class="stat-strip__divider"></div>
+      <div class="stat-strip__item">
+        <div class="stat-strip__label">Maliyet</div>
+        <div class="stat-strip__value">${formatMoney(summary.totalCost, { decimals: false })}</div>
+      </div>
+      <div class="stat-strip__divider"></div>
+      <div class="stat-strip__item">
+        <div class="stat-strip__label">Kâr/zarar</div>
+        <div class="stat-strip__value ${up ? 'is-positive' : 'is-negative'}">${up ? '+' : '−'}${formatMoney(Math.abs(summary.totalProfit), { decimals: false })}</div>
+      </div>
+      <div class="stat-strip__divider stat-strip__divider--wide"></div>
+      <div class="stat-strip__item stat-strip__item--desktop">
+        <div class="stat-strip__label">Varlık</div>
+        <div class="stat-strip__value">${summary.assetCount}</div>
+      </div>
+    </div>
+  `;
+}
+
+// --- Aylık yatırım grafiği ------------------------------------------------
+
+const CHART_MONTHS = 6;
+
+function investChartHTML(state) {
+  const buckets = monthlyInvestBuckets(state, currentPeriodKey(), CHART_MONTHS);
+  const max = Math.max(...buckets.map((b) => b.amount), 0);
+  const total = buckets.reduce((sum, b) => sum + b.amount, 0);
+  if (total <= 0) return '';
+
+  return `
+    <div class="card">
+      <div class="section-header" style="margin-bottom:10px;">
+        <span class="section-title" style="margin:0;">Son ${CHART_MONTHS} ay yatırım</span>
+        <span class="section-header__meta">${formatMoney(total, { decimals: false })}</span>
+      </div>
+      <div class="bar-chart bar-chart--mini">
+        ${buckets.map((b) => {
+    const pct = max > 0 ? Math.max(3, Math.round((b.amount / max) * 100)) : 3;
+    return `
+          <div class="bar-chart__col" title="${periodLabel(b.periodKey)} · ${formatMoney(b.amount, { decimals: false })}">
+            <div class="bar-chart__track">
+              <div class="bar-chart__bar ${b.amount > 0 ? 'has-value' : ''} ${b.isCurrent ? 'is-current' : ''}" style="height:${pct}%"></div>
+            </div>
+            <div class="bar-chart__label">${formatMonthYear(b.periodKey).slice(0, 3)}</div>
+          </div>`;
+  }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// --- Son alımlar ----------------------------------------------------------
+
+function recentLotsHTML(state) {
+  const rows = recentLots(state, 8);
+  if (rows.length === 0) return '';
+  return `
+    <div class="section-header">
+      <span class="section-title" style="margin:0;">Son alımlar</span>
+      <span class="section-header__note">satıra dokun, düzenle</span>
+    </div>
+    <div class="card">
+      <div class="lot-list" id="recentLotList">
+        ${rows.map((l) => `
+          <button class="lot-row lot-row--wide" type="button" data-lot="${l.id}">
+            <span class="lot-row__date">${formatDayMonth(l.date)}</span>
+            <span class="lot-row__asset"><span class="asset__dot" style="background:${l.color || 'var(--accent)'}"></span>${escapeHTML(l.label)}</span>
+            <span class="lot-row__qty">${formatQty(l.quantity)} ${escapeHTML(l.unit)} × ${formatMoney(l.unitCost)}</span>
+            <span class="lot-row__total">${formatMoney(l.total, { decimals: false })}</span>
+          </button>
+        `).join('')}
+      </div>
+    </div>
+  `;
 }

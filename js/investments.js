@@ -4,7 +4,7 @@
 //
 // Bütçeden bağımsızdır: yatırım harcama sayılmaz, ayrı defterdir.
 
-import { isDateInPeriod } from './period.js';
+import { isDateInPeriod, shiftPeriod } from './period.js';
 
 // Alım eklerken önerilen varlıklar. Saklanmaz, yalnızca formu hızlandırır;
 // kullanıcı kendi varlığını da yazabilir (ör. bir hisse kodu).
@@ -187,6 +187,33 @@ export function investedInYear(state, year) {
   return (state?.investments || [])
     .filter((i) => typeof i?.date === 'string' && i.date.slice(0, 4) === prefix)
     .reduce((sum, i) => sum + (Number(i.quantity) || 0) * (Number(i.unitCost) || 0), 0);
+}
+
+/** Son N ayın yatırım tutarı (eskiden yeniye) — "ayda ne biriktiriyorum". */
+export function monthlyInvestBuckets(state, periodKey, months = 6) {
+  const buckets = [];
+  for (let i = months - 1; i >= 0; i -= 1) {
+    const key = shiftPeriod(periodKey, -i);
+    buckets.push({ periodKey: key, amount: investedInPeriod(state, key), isCurrent: i === 0 });
+  }
+  return buckets;
+}
+
+/** Tüm varlıkların son alımları, yeniden eskiye (varlık adıyla birlikte). */
+export function recentLots(state, limit = 8) {
+  const labels = new Map((state?.assets || []).map((a) => [a.id, a]));
+  return (state?.investments || [])
+    .filter((l) => l && labels.has(l.assetId))
+    .slice()
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+    .slice(0, limit)
+    .map((l) => ({
+      ...l,
+      label: labels.get(l.assetId).label,
+      unit: labels.get(l.assetId).unit || 'adet',
+      color: labels.get(l.assetId).color,
+      total: lotTotal(l),
+    }));
 }
 
 /** Bir varlığın alımları, yeniden eskiye. */

@@ -11,7 +11,7 @@ import { openSheet, closeSheet } from './sheet.js';
 import { downloadFile, csvForEntries } from './exportUtils.js';
 import { buildHtmlReport } from './htmlReport.js';
 import { profileName } from '../profile.js';
-import { yearFinance } from '../budget.js';
+import { budgetSummary, yearFinance } from '../budget.js';
 import { portfolioSummary } from '../investments.js';
 
 const TYPE_ROWS = [
@@ -30,6 +30,7 @@ export function renderReport(container, state, ctx) {
   const year = Number(periodKey.slice(0, 4));
   const ySummary = yearSummary(state, year);
   const finance = yearFinance(state, year);
+  const periodBudget = budgetSummary(state, periodKey);
 
   container.innerHTML = `
     <div class="period-card">
@@ -44,6 +45,28 @@ export function renderReport(container, state, ctx) {
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
       </button>
       ${periodKey < currentPeriodKey() ? '<div class="stamp" aria-hidden="true">Tamamlandı</div>' : ''}
+    </div>
+
+    <div class="stat-strip stat-strip--kpi stat-strip--report">
+      <div class="stat-strip__item stat-strip__item--lead">
+        <div class="stat-strip__label">Net toplam</div>
+        <div class="stat-strip__value">${formatMoney(summary.netTotal, { decimals: false })}</div>
+      </div>
+      <div class="stat-strip__divider"></div>
+      <div class="stat-strip__item">
+        <div class="stat-strip__label">Mesai</div>
+        <div class="stat-strip__value">${formatHours(summary.totalHours)}</div>
+      </div>
+      <div class="stat-strip__divider"></div>
+      <div class="stat-strip__item">
+        <div class="stat-strip__label">Harcama</div>
+        <div class="stat-strip__value">${formatMoney(periodBudget.spent, { decimals: false })}</div>
+      </div>
+      <div class="stat-strip__divider stat-strip__divider--wide"></div>
+      <div class="stat-strip__item stat-strip__item--desktop">
+        <div class="stat-strip__label">Aydan kalan</div>
+        <div class="stat-strip__value">${formatMoney(periodBudget.remaining, { decimals: false })}</div>
+      </div>
     </div>
 
     <div class="panes">
@@ -115,17 +138,22 @@ export function renderReport(container, state, ctx) {
       </div>
     </div>
 
-    ${yearFinanceHTML(finance, ySummary, state)}
+    ${yearTotalsCardHTML(finance, state)}
+    </div>
+    </div>
+
+    ${yearTableHTML(finance, ySummary)}
 
     <div class="section-title">Dışa aktar</div>
-    <div class="card">
-      <button class="btn btn--primary btn--sm" id="exportHtml" type="button" style="margin-bottom:10px;">HTML rapor indir</button>
-      <div style="display:flex; gap:10px;">
+    <div class="card export-card">
+      <p class="field__hint" style="margin:0 0 12px;">
+        HTML rapor mesai, harcama ve yatırımı tek dosyada toplar — telefonda da açılır, yazdırılabilir.
+      </p>
+      <div class="export-card__actions">
+        <button class="btn btn--primary btn--sm" id="exportHtml" type="button">HTML rapor indir</button>
         <button class="btn btn--secondary btn--sm" id="exportCsv" type="button">CSV indir</button>
         <button class="btn btn--secondary btn--sm" id="exportJson" type="button">JSON indir</button>
       </div>
-    </div>
-    </div>
     </div>
   `;
 
@@ -419,35 +447,45 @@ function escapeHTML(str) {
   return div.innerHTML;
 }
 
-// --- Yıllık finans tablosu -----------------------------------------------
+// --- Yıllık finans ---------------------------------------------------------
+//
+// İki parça: sağ sütunda özet kartı, altında TAM GENİŞLİKTE tablo. Beş sütunlu
+// tabloyu dar sütuna sıkıştırmak rakamları okunmaz yapıyordu.
 
-// Yılın ay ay gelir / harcama / yatırım dökümü ve kategori kırılımı.
-// "12 ayda maaşa ne girdi, kiraya ne gitti, ne birikti" tek yerde.
-function yearFinanceHTML(finance, ySummary, state) {
+function yearTotalsCardHTML(finance, state) {
   if (finance.income <= 0 && finance.spent <= 0 && finance.invested <= 0) return '';
   const portfolio = portfolioSummary(state);
   const up = portfolio.totalProfit >= 0;
-  const hoursOf = (periodKey) => ySummary.months.find((m) => m.periodKey === periodKey)?.hours || 0;
-  // Verisi olmayan aylar tabloyu şişirmesin.
-  const rows = finance.months.filter((m) => m.income > 0 || m.spent > 0 || m.invested > 0);
-
   return `
     <div class="section-title">${finance.year} finans özeti</div>
     <div class="card">
-      <div class="rows">
+      <div class="rows rows--receipt">
         <div class="row"><span class="row__label">Toplam gelir</span><span class="row__value is-positive">${formatMoney(finance.income, { decimals: false })}</span></div>
         <div class="row"><span class="row__label">Toplam harcama</span><span class="row__value is-negative">− ${formatMoney(finance.spent, { decimals: false })}</span></div>
-        <div class="row"><span class="row__label">Yatırıma ayrılan</span><span class="row__value">${formatMoney(finance.invested, { decimals: false })}</span></div>
         <div class="row row--total"><span class="row__label">Gelir − harcama</span><span class="row__value">${formatMoney(finance.remaining, { decimals: false })}</span></div>
+        ${finance.invested > 0 ? `<div class="row"><span class="row__label">Yatırıma ayrılan</span><span class="row__value">${formatMoney(finance.invested, { decimals: false })}</span></div>` : ''}
         ${portfolio.totalCost > 0 ? `
         <div class="row"><span class="row__label">Portföy kâr/zarar</span><span class="row__value ${up ? 'is-positive' : 'is-negative'}">${up ? '+' : '−'}${formatMoney(Math.abs(portfolio.totalProfit), { decimals: false })} (%${Math.abs(portfolio.profitPct).toLocaleString('tr-TR', { maximumFractionDigits: 1 })})</span></div>` : ''}
       </div>
+    </div>
+  `;
+}
 
-      ${rows.length === 0 ? '' : `
-      <div class="year-table__scroll" style="margin-top:14px;">
+function yearTableHTML(finance, ySummary) {
+  const rows = finance.months.filter((m) => m.income > 0 || m.spent > 0 || m.invested > 0);
+  if (rows.length === 0) return '';
+  const hoursOf = (periodKey) => ySummary.months.find((m) => m.periodKey === periodKey)?.hours || 0;
+
+  return `
+    <div class="section-header">
+      <span class="section-title" style="margin:0;">${finance.year} ay ay döküm</span>
+      <span class="section-header__note">${rows.length} ay · satıra dokun, o döneme git</span>
+    </div>
+    <div class="card">
+      <div class="year-table__scroll">
         <table class="year-table">
           <thead>
-            <tr><th>Ay</th><th>Mesai</th><th>Gelir</th><th>Harcama</th><th>Yatırım</th></tr>
+            <tr><th>Ay</th><th>Mesai</th><th>Gelir</th><th>Harcama</th><th>Yatırım</th><th>Kalan</th></tr>
           </thead>
           <tbody>
             ${rows.map((m) => `
@@ -457,6 +495,7 @@ function yearFinanceHTML(finance, ySummary, state) {
                 <td>${formatMoney(m.income, { decimals: false })}</td>
                 <td>${formatMoney(m.spent, { decimals: false })}</td>
                 <td>${m.invested > 0 ? formatMoney(m.invested, { decimals: false }) : '—'}</td>
+                <td>${formatMoney(m.remaining, { decimals: false })}</td>
               </tr>
             `).join('')}
             <tr class="is-total">
@@ -465,19 +504,20 @@ function yearFinanceHTML(finance, ySummary, state) {
               <td>${formatMoney(finance.income, { decimals: false })}</td>
               <td>${formatMoney(finance.spent, { decimals: false })}</td>
               <td>${formatMoney(finance.invested, { decimals: false })}</td>
+              <td>${formatMoney(finance.remaining, { decimals: false })}</td>
             </tr>
           </tbody>
         </table>
-      </div>`}
+      </div>
 
       ${finance.byCategory.length === 0 ? '' : `
-      <div class="section-title" style="font-size:12px;margin-top:16px;">Harcama kırılımı</div>
-      <div class="lifetime">
+      <div class="section-title" style="font-size:12px;margin-top:18px;">Yıl boyunca harcama kırılımı</div>
+      <div class="lifetime lifetime--grid">
         ${finance.byCategory.map((c) => `
           <div class="lifetime__row">
             <span class="lifetime__dot" style="background:${c.color}"></span>
             <span><span class="lifetime__label">${c.label}</span>
-              <span class="lifetime__avg">%${((c.amount / finance.spent) * 100).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}</span>
+              <span class="lifetime__avg">%${((c.amount / finance.spent) * 100).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} · ayda ${formatMoney(c.amount / 12, { decimals: false })}</span>
             </span>
             <span class="lifetime__total">${formatMoney(c.amount, { decimals: false })}</span>
           </div>

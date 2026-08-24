@@ -2316,12 +2316,15 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 6px 10px;
   margin-top: 7px;
   font-size: 12.5px;
   color: var(--text-tertiary);
   font-weight: 600;
 }
+/* Dar kartta metin kırpılmasın: düğmeler alt satıra insin. */
+.asset__foot { flex-wrap: wrap; }
+.asset__foot > span:first-child { flex: 1 1 auto; }
 
 .asset__missing { color: var(--warning, var(--text-tertiary)); }
 
@@ -2427,4 +2430,89 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
 @media (min-width: 900px) {
   .screen--invest .panes { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .donut-legend__row { font-size: 13px; }
+}
+
+/* ===== Rapor: tam genişlik yıl tablosu ve dışa aktarma ===== */
+.section-header__note {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
+
+.year-table tbody tr[data-year-month] { cursor: pointer; }
+.year-table tbody tr[data-year-month]:active { background: var(--divider); }
+
+.export-card__actions { display: flex; flex-wrap: wrap; gap: 10px; }
+/* Bu satırdaki düğmeler yan yana dursun: .btn varsayılan olarak tam genişlik. */
+.export-card__actions .btn { flex: 1 1 140px; width: auto; margin: 0; }
+
+.lifetime--grid { display: flex; flex-direction: column; }
+
+@media (min-width: 900px) {
+  .year-table { font-size: 13.5px; }
+  .year-table th { font-size: 11.5px; padding: 9px 10px; }
+  .year-table td { padding: 11px 10px; }
+  .year-table tbody tr[data-year-month]:hover { background: var(--divider); }
+  .year-table tr.is-total td { font-size: 14px; }
+
+  /* Kategori kırılımı geniş ekranda üç sütuna yayılsın */
+  .lifetime--grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0 26px;
+  }
+  .export-card__actions .btn { flex: 0 1 200px; }
+}
+
+/* Rapor KPI şeridi: mobilde 3 sütun (net toplam mutlaka görünür),
+   masaüstünde 4. sütun da açılır. */
+.stat-strip--report .stat-strip__item--lead .stat-strip__value { color: var(--accent); }
+.stat-strip--report .stat-strip__item--desktop,
+.stat-strip--report .stat-strip__divider--wide { display: none; }
+
+/* Dar telefonlarda üç sayı sığsın diye bir tık küçülür. */
+@media (max-width: 380px) {
+  .stat-strip--report .stat-strip__value { font-size: 14px; }
+  .stat-strip--report .stat-strip__label { font-size: 9.5px; letter-spacing: 0.03em; }
+}
+
+@media (min-width: 900px) {
+  .stat-strip--report .stat-strip__item--desktop { display: block; }
+  .stat-strip--report .stat-strip__divider--wide { display: block; }
+}
+
+/* Yıl tablosu: dar ekranda sütunlar ezilmesin, kutu içinde kaysın. */
+.year-table { min-width: 520px; }
+@media (min-width: 900px) { .year-table { min-width: 0; } }
+
+/* Son alımlar: tarih · varlık · miktar × fiyat · tutar */
+.lot-row--wide {
+  grid-template-columns: minmax(58px, auto) minmax(0, 1fr) minmax(0, auto) auto;
+}
+.lot-row__asset {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 650;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lot-row--wide .lot-row__qty { text-align: right; color: var(--text-tertiary); }
+.lot-row--wide:active { background: var(--divider); }
+
+@media (max-width: 480px) {
+  /* Dar ekranda miktar satırı alta iner, sıkışıp kırpılmasın */
+  .lot-row--wide { grid-template-columns: minmax(52px, auto) minmax(0, 1fr) auto; }
+  .lot-row--wide .lot-row__qty { display: none; }
+}
+
+@media (min-width: 900px) {
+  .lot-row--wide:hover { background: var(--divider); }
+}
+
+/* Geniş ekranda çubuklar tıknazlaşmasın: sütun genişliyor ama çubuk sabit. */
+@media (min-width: 900px) {
+  .bar-chart--mini .bar-chart__track { max-width: 46px; margin-left: auto; margin-right: auto; }
 }
