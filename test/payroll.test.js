@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { hourlyRate, entryAmount, hoursBetween, crossesMidnight, periodSummary, yearSummary, shiftOvertime, addMinutesToTime, workdaysForPeriod, scheduledWeeklyHours } from '../js/payroll.js';
+import { hourlyRate, entryAmount, hoursBetween, crossesMidnight, periodSummary, yearSummary, shiftOvertime, rangeOvertime, addMinutesToTime, workdaysForPeriod, scheduledWeeklyHours } from '../js/payroll.js';
 
 const baseSettings = {
   monthlySalary: 30000,
@@ -304,4 +304,52 @@ test('addMinutesToTime - normal ekleme', () => {
 
 test('addMinutesToTime - gün sınırını aşarsa sarar', () => {
   assert.equal(addMinutesToTime('23:30', 45), '00:15');
+});
+
+// --- Aralık modunda mola ------------------------------------------------
+
+test('rangeOvertime - mola penceresiyle kesişen süre düşülür (18:00-21:00 = 2,5 sa)', () => {
+  const result = rangeOvertime('18:00', '21:00', weeklySettingsWithBreak);
+  assert.equal(result.totalHours, 3);
+  assert.equal(result.breakHours, 0.5);
+  assert.equal(result.overtimeHours, 2.5);
+});
+
+test('rangeOvertime - molayla kesişmeyen aralıkta süre aynen kalır', () => {
+  const result = rangeOvertime('19:00', '22:00', weeklySettingsWithBreak);
+  assert.equal(result.overtimeHours, 3);
+  assert.equal(result.breakHours, 0);
+});
+
+test('rangeOvertime - mola kapalıysa düşülmez', () => {
+  const kapali = { ...weeklySettingsWithBreak, breakWindow: { enabled: false, start: '18:30', end: '19:00' } };
+  assert.equal(rangeOvertime('18:00', '21:00', kapali).overtimeHours, 3);
+});
+
+test('rangeOvertime - kısmi kesişimde yalnız kesişen kısım düşülür', () => {
+  const result = rangeOvertime('18:45', '21:00', weeklySettingsWithBreak);
+  assert.equal(result.breakHours, 0.25);
+  assert.equal(result.overtimeHours, 2);
+});
+
+test('rangeOvertime - gece yarısını geçen mesaide ertesi güne düşen mola da düşülür', () => {
+  const gece = { ...weeklySettingsWithBreak, breakWindow: { enabled: true, start: '00:30', end: '01:00' } };
+  const result = rangeOvertime('22:00', '02:00', gece);
+  assert.equal(result.totalHours, 4);
+  assert.equal(result.breakHours, 0.5);
+  assert.equal(result.overtimeHours, 3.5);
+});
+
+test('rangeOvertime - mola aralıktan uzunsa mesai eksiye düşmez', () => {
+  const uzun = { ...weeklySettingsWithBreak, breakWindow: { enabled: true, start: '18:00', end: '20:00' } };
+  const result = rangeOvertime('18:30', '19:00', uzun);
+  assert.equal(result.overtimeHours, 0);
+});
+
+test('rangeOvertime - Giriş-Çıkış modu ile aynı süre için aynı sonucu verir', () => {
+  // Cuma: normal mesai 18:00'de bitiyor, 21:00'e kadar çalışılmış.
+  const cuma = new Date(2026, 7, 21);
+  const shift = shiftOvertime(cuma, '09:00', '21:00', weeklySettingsWithBreak);
+  const range = rangeOvertime('18:00', '21:00', weeklySettingsWithBreak);
+  assert.equal(range.overtimeHours, shift.overtimeHours);
 });

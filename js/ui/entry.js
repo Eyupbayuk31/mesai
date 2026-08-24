@@ -1,7 +1,7 @@
 import { openSheet, closeSheet } from './sheet.js';
 import { showToast } from './toast.js';
 import { todayISO, toISODate, parseLocaleNumber, formatMoney, formatHours, parseISODate } from '../format.js';
-import { hoursBetween, crossesMidnight, entryAmount, shiftOvertime, addMinutesToTime } from '../payroll.js';
+import { crossesMidnight, entryAmount, shiftOvertime, rangeOvertime, addMinutesToTime } from '../payroll.js';
 import { suggestType } from '../holidays.js';
 import { timeSelectHTML } from './timeSelect.js';
 import { nowHM, defaultEndTime } from '../timeDefaults.js';
@@ -70,7 +70,7 @@ export function openEntrySheet(store, existingEntry, options = {}) {
 }
 
 function computedHoursFor(formState, settings) {
-  if (formState.mode === 'range') return hoursBetween(formState.start, formState.end);
+  if (formState.mode === 'range') return rangeOvertime(formState.start, formState.end, settings).overtimeHours;
   if (formState.mode === 'shift') return shiftOvertime(parseISODate(formState.date), formState.shiftStart, formState.shiftEnd, settings).overtimeHours;
   return parseLocaleNumber(formState.hours) || 0;
 }
@@ -174,8 +174,19 @@ function renderModeBody(formState, settings) {
       <button class="quick-chip quick-chip--now" type="button" data-now="start">Başlangıç: şimdi</button>
       <button class="quick-chip quick-chip--now" type="button" data-now="end">Bitiş: şimdi</button>
     </div>
-    <div class="field__hint" id="rangeComputed" style="margin-top:-8px;margin-bottom:16px;">= ${formatHours(hoursBetween(formState.start, formState.end))}</div>
+    <div class="field__hint" id="rangeComputed" style="margin-top:-8px;margin-bottom:16px;">${rangeHintHTML(formState, settings)}</div>
   `;
+}
+
+// Aralık modunun altındaki "= 2,5 sa" satırı. Mola düşüldüyse kullanıcı
+// nereden geldiğini görsün diye ham süre de yazılır.
+function rangeHintHTML(formState, settings) {
+  const result = rangeOvertime(formState.start, formState.end, settings);
+  if (result.breakHours > 0) {
+    return `= <b style="color:var(--accent);">${formatHours(result.overtimeHours)}</b>`
+      + ` &middot; ${formatHours(result.totalHours)} süreden ${formatHours(result.breakHours)} mola düşüldü`;
+  }
+  return `= ${formatHours(result.overtimeHours)}`;
 }
 
 const QUICK_OFFSETS = [
@@ -334,8 +345,7 @@ function wireEvents(bodyEl, footerEl, formState, settings, store, existingEntry)
       function updateRange() {
         formState.start = `${startHour.value}:${startMinute.value}`;
         formState.end = `${endHour.value}:${endMinute.value}`;
-        const h = hoursBetween(formState.start, formState.end);
-        computedEl.textContent = `= ${formatHours(h)}`;
+        computedEl.innerHTML = rangeHintHTML(formState, settings);
         const noteTarget = bodyEl.querySelector('#midnightNote');
         if (noteTarget) noteTarget.innerHTML = crossesMidnight(formState.start, formState.end) ? '<div class="field__hint">Ertesi güne sarkıyor</div>' : '';
         updatePreview();

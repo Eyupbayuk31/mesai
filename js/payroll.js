@@ -112,11 +112,19 @@ export function addMinutesToTime(time, minutes) {
   return `${h}:${m}`;
 }
 
-// [aStart,aEnd) ile [bStart,bEnd) aralıklarının kesişim süresi (saat).
-function overlapHours(aStart, aEnd, bStart, bEnd) {
-  const start = Math.max(timeToMinutes(aStart), timeToMinutes(bStart));
-  const end = Math.min(timeToMinutes(aEnd), timeToMinutes(bEnd));
-  return Math.max(0, end - start) / 60;
+// Bir zaman aralığıyla mola penceresinin kesişim süresi (saat). Aralık gece
+// yarısını geçebildiği için pencere hem aynı güne hem ertesi güne düşebilir
+// (örn. 22:00-02:00 mesaide 00:30-01:00 molası).
+function breakOverlapHours(start, end, breakStart, breakEnd) {
+  let s = timeToMinutes(start);
+  let e = timeToMinutes(end);
+  if (e <= s) e += 24 * 60;
+  let bs = timeToMinutes(breakStart);
+  let be = timeToMinutes(breakEnd);
+  if (be <= bs) be += 24 * 60;
+  const overlap = (a1, a2, b1, b2) => Math.max(0, Math.min(a2, b2) - Math.max(a1, b1));
+  const minutes = overlap(s, e, bs, be) + overlap(s, e, bs + 24 * 60, be + 24 * 60);
+  return minutes / 60;
 }
 
 // Bir zaman aralığından, ayarlarda tanımlı mola penceresiyle kesişen kısmı
@@ -125,10 +133,20 @@ function overlapHours(aStart, aEnd, bStart, bEnd) {
 function subtractBreak(windowStart, windowEnd, rawHours, settings) {
   const bw = settings.breakWindow;
   if (!bw || !bw.enabled) return { hours: rawHours, breakHours: 0 };
-  const overlap = overlapHours(windowStart, windowEnd, bw.start, bw.end);
+  const overlap = breakOverlapHours(windowStart, windowEnd, bw.start, bw.end);
   const breakHours = Math.min(overlap, rawHours);
   const hours = Math.max(0, Math.round((rawHours - breakHours) * 4) / 4);
   return { hours, breakHours };
+}
+
+// "Aralık" modunda girilen saatler doğrudan mesai sayılır, ama mola penceresi
+// burada da düşülür: 18:00-21:00 arası çalışıp arada yemeğe çıkıldıysa mesai
+// 3 saat değil 2,5 saattir. Giriş-Çıkış modunda zaten böyle hesaplanıyordu;
+// aralık modu molayı görmezden geliyordu.
+export function rangeOvertime(start, end, settings) {
+  const totalHours = hoursBetween(start, end);
+  const { hours, breakHours } = subtractBreak(start, end, totalHours, settings || {});
+  return { totalHours, overtimeHours: hours, breakHours, windowStart: start, windowEnd: end };
 }
 
 // Girilen "bugün kaçta girdim / kaçta çıktım" saatlerinden, haftalık çalışma
