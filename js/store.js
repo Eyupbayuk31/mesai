@@ -44,6 +44,9 @@ const DEFAULT_SETTINGS = {
   // mesaiden düşülür. Varsayılan KAPALI: 18:00-21:00 çalışıldıysa mesai
   // 3 saat yazılır. Molası ödenmeyen bir işyeri için Ayarlar'dan açılabilir.
   breakWindow: { enabled: false, start: '18:30', end: '19:00' },
+  // Haftalık programa hiç dokunulmadıysa ilk açılış ekranı o adımı bekliyor
+  // gösterir; kullanıcı ayarladığı anda true olur.
+  scheduleTouched: false,
 };
 
 function defaultState() {

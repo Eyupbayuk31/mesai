@@ -63,6 +63,8 @@ export function render(container, state, ctx) {
     const current = settings.weeklySchedule[dayNum];
     ctx.store.updateSettings({
       weeklySchedule: { ...settings.weeklySchedule, [dayNum]: { ...current, works: !current.works } },
+      // Kurulum ekranı "programı ayarladın mı" sorusunu bu bayraktan bilir.
+      scheduleTouched: true,
     });
   });
 
@@ -79,6 +81,7 @@ export function render(container, state, ctx) {
     const key = part === 'Start' ? 'start' : 'end';
     ctx.store.updateSettings({
       weeklySchedule: { ...settings.weeklySchedule, [dayNum]: { ...current, [key]: timeValue } },
+      scheduleTouched: true,
     });
   });
 

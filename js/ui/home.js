@@ -48,6 +48,13 @@ export function renderHome(container, state, ctx) {
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : (a.createdAt < b.createdAt ? 1 : -1)))
     .slice(0, RECENT_COUNT);
 
+  // İlk açılış: maaş yok, tek bir kayıt da yok. Sıfırlarla dolu bir özet
+  // yerine ne yapılacağını söyleyen kurulum ekranı basılır.
+  if (!hasSalary && (state.entries || []).length === 0) {
+    renderOnboarding(container, state, ctx);
+    return;
+  }
+
   const progress = periodProgress(periodKey, todayISO());
   const projection = hasSalary ? projectPeriod(summary, progress) : null;
   const share = hasSalary ? overtimeShare(summary) : null;
@@ -130,7 +137,7 @@ export function renderHome(container, state, ctx) {
     <div class="panes">
     <div class="pane">
     ${netWorthHTML(state)}
-    ${weeklyChartHTML(state.entries)}
+    ${state.entries.length > 0 ? weeklyChartHTML(state.entries) : ''}
     ${hasSalary ? statusCardHTML(state, periodKey) : ''}
     </div>
 
@@ -217,6 +224,84 @@ export function renderHome(container, state, ctx) {
   }
 }
 
+
+// --- İlk açılış -----------------------------------------------------------
+// Uygulama boşken özet ekranı sıfırlarla dolu kartlardan ibaretti: boş grafik,
+// "kayıt yok" kutusu ve sayfayı ortadan ikiye bölen dev bir düğme. Bunun
+// yerine ne yapılacağını sırayla söyleyen tek bir ekran.
+
+const ONBOARD_STEPS = [
+  {
+    key: 'salary',
+    title: 'Maaşını gir',
+    desc: 'Saat ücretin ve mesai tutarların bu rakamdan hesaplanır.',
+    done: (state) => Number(state.settings.monthlySalary) > 0,
+    route: { tab: 'settings', page: 'salary' },
+  },
+  {
+    key: 'schedule',
+    title: 'Çalışma programını ayarla',
+    desc: 'Hangi gün kaça kadar çalışıyorsun — mesai buradan sonrasıdır.',
+    done: (state) => state.settings.scheduleTouched === true,
+    route: { tab: 'settings', page: 'schedule' },
+    optional: true,
+  },
+  {
+    key: 'entry',
+    title: 'İlk mesaini ekle',
+    desc: 'Kaldığın saati yaz, tutarını uygulama hesaplasın.',
+    done: (state) => (state.entries || []).length > 0,
+    action: 'entry',
+  },
+];
+
+function renderOnboarding(container, state, ctx) {
+  const steps = ONBOARD_STEPS.map((step) => ({ ...step, isDone: !!step.done(state) }));
+  const nextIndex = steps.findIndex((s) => !s.isDone);
+
+  container.innerHTML = `
+    <div class="onboard">
+      <div class="onboard__mark">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+      </div>
+      <h1 class="onboard__title">Hoş geldin</h1>
+      <p class="onboard__sub">
+        Yaptığın mesaiyi saydır, ay sonunda bordroda doğru yatmış mı kontrol et.
+        Üç adımda kuruluyor.
+      </p>
+
+      <ol class="onboard__steps">
+        ${steps.map((step, i) => `
+          <li class="onboard-step ${step.isDone ? 'is-done' : ''} ${i === nextIndex ? 'is-next' : ''}"
+              data-step="${step.key}" role="button" tabindex="0">
+            <span class="onboard-step__num">${step.isDone ? '✓' : i + 1}</span>
+            <span class="onboard-step__body">
+              <span class="onboard-step__title">${step.title}${step.optional ? '<span class="onboard-step__tag">isteğe bağlı</span>' : ''}</span>
+              <span class="onboard-step__desc">${step.desc}</span>
+            </span>
+            <svg class="onboard-step__go" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+          </li>`).join('')}
+      </ol>
+
+      <p class="onboard__foot">
+        Kayıtların yalnızca bu cihazda durur. Telefon ve bilgisayarı eşitlemek istersen
+        <button class="onboard__link" id="onboardBackup" type="button">Ayarlar → Yedekleme</button>.
+      </p>
+    </div>
+  `;
+
+  container.querySelector('.onboard__steps').addEventListener('click', (e) => {
+    const li = e.target.closest('[data-step]');
+    if (!li) return;
+    const step = ONBOARD_STEPS.find((s) => s.key === li.dataset.step);
+    if (!step) return;
+    if (step.action === 'entry') ctx.openEntryForDate(todayISO());
+    else ctx.navigate(step.route);
+  });
+  container.querySelector('#onboardBackup').addEventListener('click', () => {
+    ctx.navigate({ tab: 'settings', page: 'backup' });
+  });
+}
 
 // --- Senkron rozeti -------------------------------------------------------
 // Ayarlar'a girmeden telefonla PC'nin aynı veriyi gördüğü anlaşılsın diye.
