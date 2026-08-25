@@ -149,7 +149,7 @@ export function renderHome(container, state, ctx) {
 
   container.querySelector('#netWorthCard')?.addEventListener('click', () => ctx.setTab('invest'));
   container.querySelector('.lifetime')?.addEventListener('click', (e) => {
-    if (e.target.closest('[data-lifetime]')) ctx.setTab('budget');
+    if (e.target.closest('[data-lifetime]')) ctx.setTab('expense');
   });
 
   mountPeriodInfo(ctx, {
@@ -168,7 +168,7 @@ export function renderHome(container, state, ctx) {
   container.querySelector('#holidayRow')?.addEventListener('click', openHolidaySheet);
 
   container.querySelector('#debtRow')?.addEventListener('click', () => {
-    ctx.navigate({ tab: 'budget', page: 'loans' });
+    ctx.navigate({ tab: 'expense', page: 'loans' });
   });
 
   // Senkron rozeti → Yedekleme sayfası (durum ve tanılama orada).
@@ -196,12 +196,12 @@ export function renderHome(container, state, ctx) {
       page: 1,
       mode: 'list',
     });
-    ctx.setTab('entries');
+    ctx.navigate({ tab: 'income', page: 'entries' });
   });
 
   container.querySelector('#seeAll')?.addEventListener('click', () => {
     ctx.setEntriesView({ periodKey, allTime: false, type: 'all', page: 1, mode: 'list' });
-    ctx.setTab('entries');
+    ctx.navigate({ tab: 'income', page: 'entries' });
   });
 
   const listEl = container.querySelector('#recentList');

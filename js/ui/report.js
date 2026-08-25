@@ -1,11 +1,8 @@
 import { periodLabel, shiftPeriod, currentPeriodKey } from '../period.js';
 import { mountPeriodNav } from './periodNav.js';
-import { comparePayslip, explainPayslipDiff, payslipFor, payslipRows, payslipStats } from '../payslip.js';
-import { parseLocaleNumber } from '../format.js';
+import { payslipRows, payslipStats, payslipLineTotals } from '../payslip.js';
 import { periodSummary, yearSummary, entryAmount } from '../payroll.js';
 import { formatMoney, formatHours, formatMonthYear } from '../format.js';
-import { entryRowHTML } from './entryRow.js';
-import { enableSwipeToDelete } from './swipe.js';
 import { showToast } from './toast.js';
 import { openSheet, closeSheet } from './sheet.js';
 import { downloadFile, csvForEntries } from './exportUtils.js';
@@ -14,12 +11,6 @@ import { profileName } from '../profile.js';
 import { budgetSummary, yearFinance } from '../budget.js';
 import { portfolioSummary } from '../investments.js';
 import { yearsWithData, compareYears, realChange, categoryTrend, overtimeShareByYear } from '../analysis.js';
-
-const TYPE_ROWS = [
-  { key: 'normal', label: 'Normal' },
-  { key: 'weekend', label: 'Hafta tatili' },
-  { key: 'holiday', label: 'Resmi tatil' },
-];
 
 const MONTH_SHORT = ['O', 'Ş', 'M', 'N', 'M', 'H', 'T', 'A', 'E', 'E', 'K', 'A'];
 
@@ -72,62 +63,6 @@ export function renderReport(container, state, ctx) {
 
     <div class="panes">
     <div class="pane">
-    ${payslipCardHTML(state, summary, settings)}
-
-    ${payslipHistoryHTML(state)}
-
-    <div class="section-title">Dönem özeti</div>
-    <div class="card">
-      <div class="rows">
-        ${TYPE_ROWS.map((t) => `
-          <div class="row">
-            <span class="row__label"><span class="dot dot--${t.key}"></span>${t.label} <span style="color:var(--text-tertiary);">×${settings.multipliers[t.key]}</span></span>
-            <span class="row__value">${formatHours(summary.byType[t.key].hours)} · ${formatMoney(summary.byType[t.key].amount, { decimals: false })}</span>
-          </div>
-        `).join('')}
-        <div class="row row--total"><span class="row__label">Toplam mesai</span><span class="row__value">${formatMoney(summary.overtimePay)}</span></div>
-        ${summary.mealPay > 0 ? `
-        <div class="row"><span class="row__label">Yemek parası <span style="color:var(--text-tertiary);">${summary.allowanceDays} gün × ${formatMoney(summary.mealAllowance, { decimals: false })}</span></span><span class="row__value">${formatMoney(summary.mealPay, { decimals: false })}</span></div>` : ''}
-        ${summary.transportPay > 0 ? `
-        <div class="row"><span class="row__label">Yol parası <span style="color:var(--text-tertiary);">${summary.allowanceDays} gün × ${formatMoney(summary.transportAllowance, { decimals: false })}</span></span><span class="row__value">${formatMoney(summary.transportPay, { decimals: false })}</span></div>` : ''}
-      </div>
-    </div>
-
-    <div class="section-title">Ek kalemler</div>
-    <div class="card">
-      <div class="chips" style="margin-bottom:${summary.adjustments.length ? '14px' : '0'};">
-        <button class="quick-chip" id="addIncome" type="button">+ Para girişi</button>
-        <button class="quick-chip" id="addAdvance" type="button">− Avans</button>
-        <button class="quick-chip" id="addDeduction" type="button">− Kesinti</button>
-      </div>
-      ${summary.adjustments.length === 0 ? '' : `
-        <div class="rows" id="adjustmentRows">
-          ${summary.adjustments.map((a) => `
-            <div class="row" data-adj-id="${a.id}">
-              <span class="row__label">${escapeHTML(a.label || adjustmentLabel(a.kind))}</span>
-              <span class="row__value ${a.kind === 'bonus' || a.kind === 'income' ? 'is-positive' : 'is-negative'}" style="display:flex; align-items:center; gap:10px;">
-                ${a.kind === 'bonus' || a.kind === 'income' ? '+' : '−'} ${formatMoney(a.amount, { decimals: false })}
-                <button class="link-row__chevron" data-remove-adj="${a.id}" type="button" aria-label="Sil" style="line-height:0;">
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
-                </button>
-              </span>
-            </div>
-          `).join('')}
-        </div>
-      `}
-    </div>
-
-    <div class="section-header">
-      <span class="section-title" style="margin:0;">Kayıtlar</span>
-      ${summary.entryCount > 0
-        ? `<button class="section-header__link" id="seeAllEntries" type="button">Kayıtlarda gör (${summary.entryCount}) ›</button>`
-        : ''}
-    </div>
-    ${summary.entries.length === 0 ? emptyState(isFuture) : `<ul class="list" id="entryList">${previewEntries(summary.entries).map((e) => entryRowHTML(e, settings)).join('')}</ul>`}
-
-    </div>
-
-    <div class="pane">
     <div class="section-title">${year} yılı</div>
     <div class="card">
       <div class="bar-chart">
@@ -145,6 +80,8 @@ export function renderReport(container, state, ctx) {
 
     ${yearTableHTML(finance, ySummary)}
 
+    ${payslipSectionHTML(state, year, ctx)}
+
     ${analysisHTML(state, year)}
 
     <div class="section-title">Dışa aktar</div>
@@ -160,26 +97,6 @@ export function renderReport(container, state, ctx) {
     </div>
   `;
 
-  container.querySelector('#payslipSaveBtn')?.addEventListener('click', () => {
-    const input = container.querySelector('#payslipAmount');
-    const amount = parseLocaleNumber(input.value);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      showToast('Bordrodaki tutarı gir');
-      input.focus();
-      return;
-    }
-    ctx.store.setPayslip(periodKey, { amount });
-  });
-
-  container.querySelector('#payslipHistory')?.addEventListener('click', (e) => {
-    const row = e.target.closest('[data-period]');
-    if (row) ctx.setReportPeriod(row.dataset.period);
-  });
-
-  container.querySelector('#payslipClearBtn')?.addEventListener('click', () => {
-    ctx.store.removePayslip(periodKey);
-    showToast('Bordro kaydı silindi');
-  });
 
   mountPeriodNav(ctx, {
     label: periodLabel(periodKey),
@@ -190,9 +107,10 @@ export function renderReport(container, state, ctx) {
   container.querySelector('#prevPeriod').addEventListener('click', () => ctx.setReportPeriod(shiftPeriod(periodKey, -1)));
   container.querySelector('#nextPeriod').addEventListener('click', () => ctx.setReportPeriod(shiftPeriod(periodKey, 1)));
 
-  container.querySelector('#seeAllEntries')?.addEventListener('click', () => {
-    ctx.setEntriesView({ periodKey, allTime: false, type: 'all', page: 1, mode: 'list' });
-    ctx.setTab('entries');
+  container.querySelector('#payslipPageLink')?.addEventListener('click', () => ctx.navigate({ tab: 'income', page: 'payslip' }));
+  container.querySelector('[data-payslip-period]')?.closest('table')?.addEventListener('click', (e) => {
+    const row = e.target.closest('[data-payslip-period]');
+    if (row) { ctx.setReportPeriod(row.dataset.payslipPeriod); ctx.navigate({ tab: 'income', page: null }); }
   });
 
   container.querySelector('.year-table')?.addEventListener('click', (e) => {
@@ -200,9 +118,6 @@ export function renderReport(container, state, ctx) {
     if (row) ctx.setReportPeriod(row.dataset.yearMonth);
   });
 
-  container.querySelector('#addIncome').addEventListener('click', () => openAdjustmentSheet(ctx.store, periodKey, 'income'));
-  container.querySelector('#addAdvance').addEventListener('click', () => openAdjustmentSheet(ctx.store, periodKey, 'advance'));
-  container.querySelector('#addDeduction').addEventListener('click', () => openAdjustmentSheet(ctx.store, periodKey, 'deduction'));
 
   container.querySelectorAll('[data-remove-adj]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
@@ -212,21 +127,6 @@ export function renderReport(container, state, ctx) {
     });
   });
 
-  const listEl = container.querySelector('#entryList');
-  if (listEl) {
-    enableSwipeToDelete(listEl, {
-      onDelete: (id) => {
-        const entry = state.entries.find((e) => e.id === id);
-        ctx.store.removeEntry(id);
-        showToast('Mesai kaydı silindi', { actionLabel: 'Geri al', onAction: () => ctx.store.addEntry(entry) });
-      },
-      onTap: async (id) => {
-        const entry = state.entries.find((e) => e.id === id);
-        const { openEntrySheet } = await import('./entry.js');
-        openEntrySheet(ctx.store, entry);
-      },
-    });
-  }
 
   container.querySelector('#exportHtml').addEventListener('click', () => {
     openReportScopeSheet({
@@ -294,9 +194,6 @@ function openReportScopeSheet({ periodKey, year, onPick }) {
 
 // Rapor para/özet odaklı; tam liste Kayıtlar sekmesinin işi.
 const PREVIEW_COUNT = 3;
-function previewEntries(entries) {
-  return [...entries].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, PREVIEW_COUNT);
-}
 
 function renderBar(monthData, ySummary) {
   const maxHours = Math.max(1, ...ySummary.months.map((m) => m.hours));
@@ -319,137 +216,13 @@ function renderBar(monthData, ySummary) {
 // dönemler yan yana görülünce çıkar.
 const HISTORY_MONTHS = 12;
 
-function payslipHistoryHTML(state) {
-  const current = currentPeriodKey();
-  const summaries = [];
-  for (let i = 0; i < HISTORY_MONTHS; i += 1) {
-    summaries.push(periodSummary(state, shiftPeriod(current, -i)));
-  }
-
-  const rows = payslipRows(state, summaries);
-  if (rows.length === 0) return '';
-
-  const stats = payslipStats(state, summaries);
-  const diffCls = stats.totalDiff < -1 ? 'is-negative' : stats.totalDiff > 1 ? 'is-positive' : '';
-
-  return `
-    <div class="section-title">Bordro geçmişi</div>
-    <div class="card" id="payslipHistory">
-      <p class="field__hint" style="margin:-2px 0 12px;">
-        Kontrol edilen <b>${stats.checked} ay</b> · ${stats.match} tuttu${stats.short > 0 ? ` · <b style="color:var(--negative);">${stats.short} eksik</b>` : ''}${stats.over > 0 ? ` · ${stats.over} fazla` : ''}
-        ${Math.abs(stats.totalDiff) > 1 ? ` · toplam <b class="${diffCls}">${stats.totalDiff > 0 ? '+' : '−'}${formatMoney(Math.abs(stats.totalDiff), { decimals: false })}</b>` : ''}
-      </p>
-      <div class="rows">
-        ${rows.map((r) => `
-          <div class="row payslip-row" data-period="${r.periodKey}" role="button" tabindex="0">
-            <span class="row__label">${formatMonthYear(r.periodKey)}</span>
-            <span class="row__value">
-              <span class="payslip-row__nums">${formatMoney(r.expected, { decimals: false })} → ${formatMoney(r.paid, { decimals: false })}</span>
-              <span class="${r.status === 'short' ? 'is-negative' : r.status === 'over' ? 'is-positive' : 'is-positive'}">
-                ${r.status === 'match' ? 'tuttu ✓' : `${r.diff > 0 ? '+' : '−'}${formatMoney(Math.abs(r.diff), { decimals: false })}`}
-              </span>
-            </span>
-          </div>`).join('')}
-      </div>
-    </div>
-  `;
-}
 
 // --- Bordro karşılaştırma -------------------------------------------------
 // Şirketin ödediğiyle hesabın tutup tutmadığı. Mesai takip etmenin asıl
 // karşılığı burada görünür.
-function payslipCardHTML(state, summary, settings) {
-  const slip = payslipFor(state, summary.periodKey);
-  if (!slip) {
-    return `
-      <div class="section-title">Bordro karşılaştırma</div>
-      <div class="card">
-        <p class="field__hint" style="margin:-2px 0 12px;">
-          Şirketin bu dönem için yatırdığı tutarı gir; hesapla tutuyor mu bakalım.
-          Ödeme günü hesaba <b>${formatMoney(summary.payoutTotal)}</b> yatmalı${summary.advances > 0 ? ` (₺${''} kazanç ${formatMoney(summary.earnedTotal, { decimals: false })}, avans düşülmüş)` : ''}.
-        </p>
-        <div class="field" style="margin-bottom:10px;">
-          <label class="field__label">Bordroda yazan / yatan tutar (₺)</label>
-          <input class="input input--amount" type="text" inputmode="decimal" id="payslipAmount" placeholder="0" autocomplete="off" />
-        </div>
-        <button class="btn btn--primary btn--sm" id="payslipSaveBtn" type="button">Karşılaştır</button>
-      </div>
-    `;
-  }
 
-  const cmp = comparePayslip(summary, slip.amount);
-  const explanation = explainPayslipDiff(summary, cmp, settings);
-  const durum = {
-    match: { cls: 'is-positive', baslik: 'Tutuyor ✓', not: 'Ödenen tutar hesapla aynı.' },
-    short: { cls: 'is-negative', baslik: `${formatMoney(Math.abs(cmp.diff))} eksik`, not: 'Ödenen tutar hesabın altında.' },
-    over: { cls: 'is-positive', baslik: `${formatMoney(cmp.diff)} fazla`, not: 'Ödenen tutar hesabın üstünde.' },
-  }[cmp.status];
 
-  return `
-    <div class="section-title">Bordro karşılaştırma</div>
-    <div class="card payslip payslip--${cmp.status}">
-      <div class="payslip__head">
-        <span class="payslip__title ${durum.cls}">${durum.baslik}</span>
-        <button class="payslip__clear" id="payslipClearBtn" type="button">Sıfırla</button>
-      </div>
-      <div class="rows rows--receipt">
-        <div class="row"><span class="row__label">Hesaba göre</span><span class="row__leader"></span><span class="row__value">${formatMoney(cmp.expected)}</span></div>
-        <div class="row"><span class="row__label">Şirketin ödediği</span><span class="row__leader"></span><span class="row__value">${formatMoney(cmp.paid)}</span></div>
-        <div class="row row--total"><span class="row__label">Fark</span><span class="row__leader"></span><span class="row__value ${durum.cls}">${cmp.diff === 0 ? '—' : (cmp.diff > 0 ? '+' : '−') + formatMoney(Math.abs(cmp.diff))}</span></div>
-      </div>
-      <p class="field__hint" style="margin:12px 0 0;">
-        ${durum.not}${explanation ? ` <b style="color:var(--text-secondary);">${explanation}</b>` : ''}
-      </p>
-    </div>
-  `;
-}
 
-function adjustmentLabel(kind) {
-  return kind === 'bonus' ? 'Prim' : kind === 'income' ? 'Para girişi' : kind === 'advance' ? 'Avans' : 'Kesinti';
-}
-
-function openAdjustmentSheet(store, periodKey, kind) {
-  openSheet({
-    title: kind === 'bonus' ? 'Prim ekle' : kind === 'income' ? 'Para girişi ekle' : kind === 'advance' ? 'Avans ekle' : 'Kesinti ekle',
-    footerHTML: `<button class="btn btn--primary" id="saveAdjBtn" type="button">Ekle</button>`,
-    build(bodyEl, footerEl) {
-      bodyEl.innerHTML = `
-        <div class="field">
-          <label class="field__label">Tutar (₺)</label>
-          <input class="input" type="text" inputmode="decimal" id="adjAmount" placeholder="ör. 1500" />
-        </div>
-        <div class="field">
-          <label class="field__label">Etiket <span style="font-weight:500;color:var(--text-tertiary);">(opsiyonel)</span></label>
-          <input class="input" type="text" id="adjLabel" placeholder="${adjustmentLabel(kind)}" />
-        </div>
-      `;
-      footerEl.querySelector('#saveAdjBtn').addEventListener('click', () => {
-        const amountRaw = bodyEl.querySelector('#adjAmount').value;
-        const amount = Number(amountRaw.replace(',', '.'));
-        if (!amount || amount <= 0) {
-          showToast('Geçerli bir tutar girmelisin');
-          return;
-        }
-        const label = bodyEl.querySelector('#adjLabel').value.trim();
-        store.addAdjustment({ periodKey, kind, amount, label: label || adjustmentLabel(kind) });
-        showToast(`${adjustmentLabel(kind)} eklendi`);
-        closeSheet();
-      });
-    },
-  });
-}
-
-function emptyState(isFuture) {
-  return `
-    <div class="card empty">
-      <div class="empty__icon">
-        <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="17" rx="2"/><path d="M8 13v4M12 10v7M16 15v2"/></svg>
-      </div>
-      <div class="empty__title">${isFuture ? 'Bu dönem henüz gelmedi' : 'Bu dönemde kayıt yok'}</div>
-      <div class="empty__sub">${isFuture ? 'Mesai eklemek için döneme geldiğinde tekrar bak' : 'Mesai eklemek için Özet sekmesindeki + butonunu kullan'}</div>
-    </div>
-  `;
-}
 
 function escapeHTML(str) {
   const div = document.createElement('div');
@@ -669,5 +442,76 @@ function sparklineSVG(months, color) {
     <svg class="trend-row__spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true">
       <polyline points="${points.join(' ')}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" />
     </svg>
+  `;
+}
+
+// --- Bordro karşılaştırma (yıl) -------------------------------------------
+//
+// Tek döneme bakmak bir kalemin HER AY eksik yattığını göstermez; kalıp ancak
+// aylar yan yana görülünce çıkar.
+
+function payslipSectionHTML(state, year) {
+  const periodKeys = [];
+  for (let m = 1; m <= 12; m += 1) periodKeys.push(`${year}-${String(m).padStart(2, '0')}`);
+  const summaries = periodKeys.map((k) => periodSummary(state, k));
+  const rows = payslipRows(state, summaries);
+  if (rows.length === 0) return '';
+
+  const stats = payslipStats(state, summaries);
+  const totals = payslipLineTotals(state, summaries);
+  const diffCls = stats.totalDiff < -1 ? 'is-negative' : stats.totalDiff > 1 ? 'is-positive' : '';
+  const lineOf = (row, key) => row.lines.find((l) => l.key === key);
+
+  return `
+    <div class="section-header">
+      <span class="section-title" style="margin:0;">Bordro karşılaştırma · ${year}</span>
+      <button class="section-header__link" id="payslipPageLink" type="button">Yıllık giriş ›</button>
+    </div>
+    <div class="card">
+      <p class="field__hint" style="margin:-2px 0 12px;">
+        Kontrol edilen <b>${stats.checked} ay</b> · ${stats.match} tuttu${stats.short > 0 ? ` · <b style="color:var(--negative);">${stats.short} eksik</b>` : ''}${stats.over > 0 ? ` · ${stats.over} fazla` : ''}
+        ${Math.abs(stats.totalDiff) > 1 ? ` · toplam <b class="${diffCls}">${stats.totalDiff > 0 ? '+' : '−'}${formatMoney(Math.abs(stats.totalDiff), { decimals: false })}</b>` : ''}
+      </p>
+
+      <div class="year-table__scroll">
+        <table class="year-table">
+          <thead>
+            <tr><th>Ay</th><th>Beklenen</th><th>Net maaş</th><th>Yol</th><th>Toplam</th><th>Fark</th></tr>
+          </thead>
+          <tbody>
+            ${rows.map((r) => {
+    const maas = lineOf(r, 'amount');
+    const yol = lineOf(r, 'transport');
+    return `
+              <tr data-payslip-period="${r.periodKey}">
+                <td>${formatMonthYear(r.periodKey).replace(` ${year}`, '')}</td>
+                <td>${formatMoney(r.expected, { decimals: false })}</td>
+                <td>${maas ? formatMoney(maas.paid, { decimals: false }) : '—'}</td>
+                <td>${yol ? formatMoney(yol.paid, { decimals: false }) : '—'}</td>
+                <td>${formatMoney(r.paid, { decimals: false })}</td>
+                <td>${Math.abs(r.diff) <= 1
+      ? '<span class="is-positive">tuttu ✓</span>'
+      : `<span class="${r.diff < 0 ? 'is-negative' : 'is-positive'}">${r.diff > 0 ? '+' : '−'}${formatMoney(Math.abs(r.diff), { decimals: false })}</span>`}</td>
+              </tr>`;
+  }).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="section-title" style="font-size:12px;margin-top:18px;">Kalem bazında yıl toplamı</div>
+      <div class="rows rows--receipt">
+        ${totals.map((t) => `
+          <div class="row">
+            <span class="row__label">${t.label} <span style="color:var(--text-tertiary);">${t.months} ay · beklenen ${formatMoney(t.expected, { decimals: false })}</span></span>
+            <span class="row__leader"></span>
+            <span class="row__value">
+              ${formatMoney(t.paid, { decimals: false })}
+              <span class="payslip-line__diff ${Math.abs(t.diff) <= 1 ? '' : t.diff < 0 ? 'is-negative' : 'is-positive'}">
+                ${Math.abs(t.diff) <= 1 ? '✓' : `${t.diff > 0 ? '+' : '−'}${formatMoney(Math.abs(t.diff), { decimals: false })}`}
+              </span>
+            </span>
+          </div>`).join('')}
+      </div>
+    </div>
   `;
 }

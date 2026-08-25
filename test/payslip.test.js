@@ -244,3 +244,110 @@ test('payslipRows - satırlar comparePayslip ile birebir tutarlı', () => {
     (({ expected, paid, diff, status }) => ({ expected, paid, diff, status }))(comparePayslip(summary, 45300)),
   );
 });
+
+// --- Kalem bazlı bordro -------------------------------------------------
+
+import { PAYSLIP_LINES, payslipLineTotals, hasPayslipData } from '../js/payslip.js';
+
+const detay = (over = {}) => ({
+  periodKey: '2026-08',
+  payoutTotal: 38510, netTotal: 38510,
+  overtimePay: 3650, mealPay: 6500, transportPay: 1430,
+  bonuses: 0, advances: 0, deductions: 0,
+  ...over,
+});
+
+test('comparePayslip - maaş + yol girildiğinde maaşın beklentisi KALAN olur', () => {
+  const s = detay();
+  const res = comparePayslip(s, { amount: 37080, transport: 1430 });
+  assert.equal(res.paid, 38510);
+  assert.equal(res.diff, 0);
+  assert.equal(res.status, 'match');
+
+  const maas = res.lines.find((l) => l.key === 'amount');
+  assert.equal(maas.expected, 38510 - 1430, 'toplam eksi yol beklentisi');
+  assert.equal(maas.diff, 0);
+});
+
+test('comparePayslip - yol eksik yatınca o satır yakalanır', () => {
+  const s = detay();
+  const res = comparePayslip(s, { amount: 37080, transport: 1250 });
+  assert.equal(res.diff, -180);
+  const yol = res.lines.find((l) => l.key === 'transport');
+  assert.equal(yol.expected, 1430);
+  assert.equal(yol.paid, 1250);
+  assert.equal(yol.diff, -180);
+});
+
+test('comparePayslip - girilmeyen kalem için satır üretilmez', () => {
+  const res = comparePayslip(detay(), { amount: 37080 });
+  assert.deepEqual(res.lines.map((l) => l.key), ['amount']);
+  assert.equal(res.lines[0].expected, 38510, 'başka kalem yoksa beklenti tam toplam');
+});
+
+test('comparePayslip - kalem farklarının toplamı genel farka eşit', () => {
+  const s = detay({ bonuses: 2000, deductions: 500, payoutTotal: 40010, netTotal: 40010 });
+  const res = comparePayslip(s, {
+    amount: 28000, transport: 1400, meal: 6400, overtime: 3600, bonus: 1900, deduction: 600,
+  });
+  const satirToplami = res.lines.reduce((t, l) => t + l.diff, 0);
+  assert.ok(Math.abs(satirToplami - res.diff) < 0.001, `${satirToplami} ≠ ${res.diff}`);
+});
+
+test('comparePayslip - kesinti ödemeden DÜŞÜLÜR', () => {
+  const s = detay({ deductions: 500, payoutTotal: 38010, netTotal: 38010 });
+  const res = comparePayslip(s, { amount: 37080, transport: 1430, deduction: 500 });
+  assert.equal(res.paid, 37080 + 1430 - 500);
+  assert.equal(res.diff, 0);
+});
+
+test('comparePayslip - sıfır girilen kalem "hiç yatmamış" demektir', () => {
+  const res = comparePayslip(detay(), { amount: 37080, transport: 0 });
+  const yol = res.lines.find((l) => l.key === 'transport');
+  assert.equal(yol.paid, 0);
+  assert.equal(yol.diff, -1430);
+  assert.equal(res.status, 'short');
+});
+
+test('comparePayslip - eski kullanım (sayı) çalışmaya devam eder', () => {
+  const res = comparePayslip(detay(), 38510);
+  assert.equal(res.status, 'match');
+  assert.equal(res.paid, 38510);
+});
+
+test('explainPayslipDiff - kalem girilmişse tahmin değil ölçüm söylenir', () => {
+  const s = detay();
+  const cmp = comparePayslip(s, { amount: 37080, transport: 1250 });
+  const aciklama = explainPayslipDiff(s, cmp, settings);
+  assert.match(aciklama, /Yol parası/);
+  assert.match(aciklama, /eksik/);
+});
+
+test('hasPayslipData - boş kayıt veri sayılmaz', () => {
+  assert.equal(hasPayslipData(null), false);
+  assert.equal(hasPayslipData({ periodKey: '2026-08' }), false);
+  assert.equal(hasPayslipData({ amount: 0 }), true, 'sıfır da bir cevaptır');
+  assert.equal(hasPayslipData({ transport: 1430 }), true);
+});
+
+test('payslipLineTotals - kalem bazında yıl toplamı', () => {
+  const state = {
+    payslips: [
+      { id: 'p1', periodKey: '2026-07', amount: 37080, transport: 1430 },
+      { id: 'p2', periodKey: '2026-08', amount: 37080, transport: 1250 },
+    ],
+  };
+  const totals = payslipLineTotals(state, [detay({ periodKey: '2026-07' }), detay({ periodKey: '2026-08' })]);
+  const yol = totals.find((t) => t.key === 'transport');
+  assert.equal(yol.months, 2);
+  assert.equal(yol.expected, 2860);
+  assert.equal(yol.paid, 2680);
+  assert.equal(yol.diff, -180);
+  assert.deepEqual(totals.map((t) => t.key), ['amount', 'transport'], 'kalem sırası sabit');
+});
+
+test('PAYSLIP_LINES - net maaş kalan, kesinti negatif', () => {
+  assert.equal(PAYSLIP_LINES[0].key, 'amount');
+  assert.equal(PAYSLIP_LINES[0].remainder, true);
+  assert.equal(PAYSLIP_LINES.find((l) => l.key === 'deduction').negative, true);
+});

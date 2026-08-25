@@ -1,8 +1,9 @@
 // Bordro karşılaştırma: şirketin ödediği ile uygulamanın hesabı tutuyor mu?
 //
-// Mesai takip etmenin asıl sebebi bu. Fark varsa körü körüne "eksik" demek
-// yerine, farkın hangi kalemden gelebileceğini de söyler — böylece muhasebeye
-// somut bir şey sorulabilir.
+// Mesai takip etmenin asıl sebebi bu. Kullanıcı bordroda gördüğü kalemleri
+// girer (en azından cebine geçen net maaşı ve yol parasını), uygulama her
+// kalemi kendi hesabıyla karşılaştırır. Girilmeyen kalem için satır
+// üretilmez — olmayan veriye "eksik" denmez.
 
 import { hourlyRate } from './payroll.js';
 
@@ -10,32 +11,115 @@ import { hourlyRate } from './payroll.js';
 const TOLERANCE = 1;
 
 /**
- * @param {object} summary periodSummary() çıktısı
- * @param {number} paid şirketin ödediği tutar
+ * Bordro kalemleri. `amount` (net maaş) özeldir: beklentisi sabit bir hesap
+ * değil, KALAN'dır — toplam beklenen ödemeden, ayrıca girilen kalemlerin
+ * beklentileri düşülür. Böylece yalnız maaş+yol giren de, hepsini giren de
+ * doğru fark görür.
  */
-export function comparePayslip(summary, paid) {
-  const expected = Number(summary?.netTotal) || 0;
-  const amount = Number(paid) || 0;
-  const diff = amount - expected;
+export const PAYSLIP_LINES = [
+  { key: 'amount', label: 'Net maaş', remainder: true },
+  { key: 'transport', label: 'Yol parası', expectedOf: (s) => s.transportPay },
+  { key: 'meal', label: 'Yemek parası', expectedOf: (s) => s.mealPay },
+  { key: 'overtime', label: 'Mesai ücreti', expectedOf: (s) => s.overtimePay },
+  { key: 'bonus', label: 'Prim', expectedOf: (s) => s.bonuses },
+  // Kesinti ödemeyi azaltır: girilirse toplamdan düşülür.
+  { key: 'deduction', label: 'Kesinti', expectedOf: (s) => s.deductions, negative: true },
+];
+
+const EXTRA_LINES = PAYSLIP_LINES.filter((l) => !l.remainder);
+
+function num(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Kalem girilmiş mi? 0 da geçerli bir cevaptır ("hiç yatmamış"). */
+function entered(slip, key) {
+  const v = slip?.[key];
+  return v !== undefined && v !== null && v !== '' && Number.isFinite(Number(v));
+}
+
+/** Eski çağrılar sayı geçiyordu: comparePayslip(summary, 49722) */
+function normalizeSlip(slip) {
+  if (typeof slip === 'number') return { amount: slip };
+  return slip || {};
+}
+
+/**
+ * @param {object} summary periodSummary() çıktısı
+ * @param {object|number} slip bordro kaydı (veya eski kullanım: yatan tutar)
+ */
+export function comparePayslip(summary, slip) {
+  const record = normalizeSlip(slip);
+  const expectedTotal = num(summary?.payoutTotal ?? summary?.netTotal);
+
+  // Ayrıca girilen kalemler: hem ödenene hem "kalan"ın hesabına girer.
+  const lines = [];
+  let extrasPaid = 0;
+  let extrasExpected = 0;
+
+  for (const line of EXTRA_LINES) {
+    if (!entered(record, line.key)) continue;
+    const paid = num(record[line.key]);
+    const expected = num(line.expectedOf(summary));
+    const sign = line.negative ? -1 : 1;
+    extrasPaid += sign * paid;
+    extrasExpected += sign * expected;
+    lines.push({
+      key: line.key,
+      label: line.label,
+      expected,
+      paid,
+      diff: sign * (paid - expected),
+      negative: !!line.negative,
+    });
+  }
+
+  const salaryExpected = expectedTotal - extrasExpected;
+  const salaryPaid = num(record.amount);
+  if (entered(record, 'amount')) {
+    lines.unshift({
+      key: 'amount',
+      label: 'Net maaş',
+      expected: salaryExpected,
+      paid: salaryPaid,
+      diff: salaryPaid - salaryExpected,
+    });
+  }
+
+  const paid = salaryPaid + extrasPaid;
+  const diff = paid - expectedTotal;
 
   let status = 'match';
   if (diff < -TOLERANCE) status = 'short';
   else if (diff > TOLERANCE) status = 'over';
 
-  return { expected, paid: amount, diff, status, tolerance: TOLERANCE };
+  return { expected: expectedTotal, paid, diff, status, lines, tolerance: TOLERANCE };
 }
 
 /**
- * Farkı açıklamaya çalışır. Tek bir kalemin tamamı eksikse onu söyler;
- * değilse kaç saatlik mesaiye denk geldiğini verir. Emin olamıyorsa null
- * döner — uydurma açıklama yapmaz.
+ * Farkı açıklamaya çalışır. Kalem girilmişse tahmine gerek yok — hangi
+ * satırın tuttuğu zaten ölçülüyor; en büyük sapan kalem söylenir. Hiç kalem
+ * girilmemişse eski davranış: tek kalemin tamamı eksik mi, kaç saatlik mesai
+ * eder? Emin olunamıyorsa null döner, uydurma açıklama yapılmaz.
  */
 export function explainPayslipDiff(summary, comparison, settings) {
   if (!comparison || comparison.status === 'match') return null;
-  const diff = comparison.diff;
-  const missing = -diff; // eksik ödemede pozitif
 
-  // 1) Bir kalemin tamamı hiç ödenmemiş olabilir mi?
+  // Ölçülen kalem varsa (net maaş dışında), en çok sapanı söyle.
+  const measured = (comparison.lines || []).filter((l) => l.key !== 'amount');
+  if (measured.length > 0) {
+    const worst = [...measured, ...(comparison.lines || []).filter((l) => l.key === 'amount')]
+      .filter((l) => Math.abs(l.diff) > TOLERANCE)
+      .sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff))[0];
+    if (!worst) return null;
+    const yon = worst.diff < 0 ? 'eksik' : 'fazla';
+    return `${worst.label}: beklenen ${fmt(worst.expected)}, yatan ${fmt(worst.paid)} — ${fmt(Math.abs(worst.diff))} ${yon}.`;
+  }
+
+  const diff = comparison.diff;
+  const missing = -diff;
+
   const items = [
     { label: 'Yemek parası', value: summary.mealPay },
     { label: 'Yol parası', value: summary.transportPay },
@@ -48,7 +132,6 @@ export function explainPayslipDiff(summary, comparison, settings) {
     }
   }
 
-  // 2) Kesinti/avans iki kez düşülmüş olabilir mi?
   if (summary.advances > 0 && Math.abs(missing - summary.advances) <= TOLERANCE) {
     return 'Avans iki kez düşülmüş olabilir.';
   }
@@ -56,16 +139,13 @@ export function explainPayslipDiff(summary, comparison, settings) {
     return 'Kesinti iki kez düşülmüş olabilir.';
   }
 
-  // 3) Fark kaç saatlik mesaiye denk geliyor? (normal mesai çarpanıyla)
   const rate = hourlyRate(settings, summary.periodKey);
   const multiplier = settings?.multipliers?.normal ?? 1.5;
   const perHour = rate * multiplier;
   if (perHour > 0) {
     const hours = Math.abs(diff) / perHour;
     const rounded = Math.round(hours * 4) / 4;
-    // Fark, tam bir çeyrek saatin karşılığına kuruş kuruş oturmalı. Yaklaşık
-    // tutturmak yanıltır: yarım saat 150 TL iken 137 TL'lik farka "0,5 saat"
-    // demek muhasebeye yanlış bir şey sordurur.
+    // Fark, tam bir çeyrek saatin karşılığına kuruş kuruş oturmalı.
     if (rounded >= 0.25 && Math.abs(Math.abs(diff) - rounded * perHour) <= TOLERANCE) {
       const yon = diff < 0 ? 'eksik' : 'fazla';
       return `Yaklaşık ${formatQuarter(rounded)} saat mesai ${yon} ödenmiş olabilir.`;
@@ -73,6 +153,10 @@ export function explainPayslipDiff(summary, comparison, settings) {
   }
 
   return null;
+}
+
+function fmt(value) {
+  return `₺${Math.round(num(value)).toLocaleString('tr-TR')}`;
 }
 
 function formatQuarter(value) {
@@ -84,6 +168,12 @@ export function payslipFor(state, periodKey) {
   return (state?.payslips || []).find((p) => p && p.periodKey === periodKey) || null;
 }
 
+/** Bordroda herhangi bir kalem girilmiş mi? */
+export function hasPayslipData(slip) {
+  if (!slip) return false;
+  return PAYSLIP_LINES.some((l) => entered(slip, l.key));
+}
+
 /**
  * Bordro girilmiş dönemlerin karşılaştırma satırları, yeniden eskiye.
  * Girilmemiş dönemler listeye hiç girmez — boş ay listeyi kirletmesin.
@@ -92,9 +182,9 @@ export function payslipRows(state, summaries) {
   const rows = [];
   for (const summary of summaries) {
     const slip = payslipFor(state, summary.periodKey);
-    if (!slip) continue;
-    const cmp = comparePayslip(summary, slip.amount);
-    rows.push({ periodKey: summary.periodKey, ...cmp });
+    if (!slip || !hasPayslipData(slip)) continue;
+    const cmp = comparePayslip(summary, slip);
+    rows.push({ periodKey: summary.periodKey, slip, ...cmp });
   }
   return rows.sort((a, b) => (a.periodKey < b.periodKey ? 1 : -1));
 }
@@ -102,15 +192,33 @@ export function payslipRows(state, summaries) {
 /** Kaç dönem tuttu, kaç dönem eksik ödendi? Rapor özeti için. */
 export function payslipStats(state, summaries) {
   const stats = { checked: 0, match: 0, short: 0, over: 0, totalDiff: 0 };
-  for (const summary of summaries) {
-    const slip = payslipFor(state, summary.periodKey);
-    if (!slip) continue;
-    const cmp = comparePayslip(summary, slip.amount);
+  for (const row of payslipRows(state, summaries)) {
     stats.checked += 1;
-    stats[cmp.status] += 1;
-    stats.totalDiff += cmp.diff;
+    stats[row.status] += 1;
+    stats.totalDiff += row.diff;
   }
   return stats;
+}
+
+/**
+ * Kalem bazında yıl toplamı: hangi kalem sistematik eksik yatıyor?
+ * Yalnız girilmiş kalemler sayılır.
+ */
+export function payslipLineTotals(state, summaries) {
+  const totals = new Map();
+  for (const row of payslipRows(state, summaries)) {
+    for (const line of row.lines) {
+      const t = totals.get(line.key) || { key: line.key, label: line.label, expected: 0, paid: 0, months: 0 };
+      t.expected += line.expected;
+      t.paid += line.paid;
+      t.months += 1;
+      totals.set(line.key, t);
+    }
+  }
+  const order = PAYSLIP_LINES.map((l) => l.key);
+  return [...totals.values()]
+    .map((t) => ({ ...t, diff: t.paid - t.expected }))
+    .sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
 }
 
 export { TOLERANCE };

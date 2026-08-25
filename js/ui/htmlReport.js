@@ -1,11 +1,12 @@
 // Dönem için tasarımlı, tek dosya, yazdırılabilir HTML rapor üretimi.
 
 import { formatMoney, formatHours, formatFullDate, formatWeekday } from '../format.js';
-import { entryAmount, yearSummary as buildYearSummary } from '../payroll.js';
+import { entryAmount, yearSummary as buildYearSummary, periodSummary as periodSummaryOf } from '../payroll.js';
 import { periodLabel, payDateForPeriod } from '../period.js';
 import { budgetSummary, yearFinance, rangeFinance } from '../budget.js';
 import { portfolioSummary, investedInPeriod, formatQuantity, unitOf, kindOf } from '../investments.js';
 import { yearsWithData, compareYears, realChange, categoryTrend } from '../analysis.js';
+import { payslipRows, payslipStats, payslipLineTotals } from '../payslip.js';
 
 const TYPE_LABEL = { normal: 'Normal', weekend: 'Hafta tatili', holiday: 'Resmi tatil' };
 const TYPE_COLOR = { normal: '#3b6fe0', weekend: '#a24fd6', holiday: '#e2483d' };
@@ -211,6 +212,7 @@ function buildYearReport({ profileName, yearSummary, settings, finance, portfoli
       </table>
 
       ${financeTable(finance, yearSummary)}
+      ${payslipSection(state, finance ? finance.months.map((m) => m.periodKey) : [], `${year} bordro karşılaştırması`)}
       ${categoryTable(finance ? finance.byCategory : [], finance ? finance.spent : 0, 'Harcama kırılımı')}
       ${analysisSection(state, year)}
       ${portfolioTable(portfolio)}
@@ -699,7 +701,64 @@ function buildRangeReport({ profileName, settings, finance, portfolio, state }) 
       </table>
 
       ${categoryTable(finance.byCategory, finance.spent, 'Harcama kırılımı')}
+      ${payslipSection(state, finance.months.map((m) => m.periodKey), 'Bordro karşılaştırması')}
       ${portfolioTable(portfolio)}
     `,
   });
+}
+
+// Bordro karşılaştırma: ay ay ödenen ile hesabın farkı, altında kalem bazında
+// toplam. Bordro hiç girilmemişse bölüm basılmaz.
+function payslipSection(state, periodKeys, heading) {
+  if (!state || !periodKeys || periodKeys.length === 0) return '';
+  const summaries = periodKeys.map((k) => periodSummaryOf(state, k));
+  const rows = payslipRows(state, summaries);
+  if (rows.length === 0) return '';
+
+  const stats = payslipStats(state, summaries);
+  const totals = payslipLineTotals(state, summaries);
+  const lineOf = (row, key) => row.lines.find((l) => l.key === key);
+  const diffCell = (diff) => (Math.abs(diff) <= 1
+    ? '<span style="color:#12946b;">tuttu</span>'
+    : `<span style="color:${diff < 0 ? '#c9402f' : '#12946b'};">${diff > 0 ? '+' : '−'}${formatMoney(Math.abs(diff), { decimals: false })}</span>`);
+
+  return `
+    <h2>${escapeHTML(heading)}</h2>
+    <p style="font-size:13px;color:#5b6472;margin:0 0 10px;">
+      Kontrol edilen <b>${stats.checked} ay</b> · ${stats.match} tuttu${stats.short > 0 ? ` · ${stats.short} eksik` : ''}${stats.over > 0 ? ` · ${stats.over} fazla` : ''}${Math.abs(stats.totalDiff) > 1 ? ` · toplam ${stats.totalDiff > 0 ? '+' : '−'}${formatMoney(Math.abs(stats.totalDiff), { decimals: false })}` : ''}
+    </p>
+    <table class="table">
+      <thead><tr><th>Ay</th><th class="num">Beklenen</th><th class="num">Net maaş</th><th class="num">Yol</th><th class="num">Toplam</th><th class="num">Fark</th></tr></thead>
+      <tbody>
+        ${rows.map((r) => {
+    const maas = lineOf(r, 'amount');
+    const yol = lineOf(r, 'transport');
+    return `
+          <tr>
+            <td>${periodLabel(r.periodKey)}</td>
+            <td class="num">${formatMoney(r.expected, { decimals: false })}</td>
+            <td class="num">${maas ? formatMoney(maas.paid, { decimals: false }) : '—'}</td>
+            <td class="num">${yol ? formatMoney(yol.paid, { decimals: false }) : '—'}</td>
+            <td class="num">${formatMoney(r.paid, { decimals: false })}</td>
+            <td class="num">${diffCell(r.diff)}</td>
+          </tr>`;
+  }).join('')}
+      </tbody>
+    </table>
+
+    <h2>Kalem bazında toplam</h2>
+    <table class="table">
+      <thead><tr><th>Kalem</th><th class="num">Ay</th><th class="num">Beklenen</th><th class="num">Yatan</th><th class="num">Fark</th></tr></thead>
+      <tbody>
+        ${totals.map((t) => `
+          <tr>
+            <td>${escapeHTML(t.label)}</td>
+            <td class="num">${t.months}</td>
+            <td class="num">${formatMoney(t.expected, { decimals: false })}</td>
+            <td class="num">${formatMoney(t.paid, { decimals: false })}</td>
+            <td class="num">${diffCell(t.diff)}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+  `;
 }

@@ -3,6 +3,10 @@ import { currentPeriodKey } from './period.js';
 import { Router } from './router.js';
 import { renderHome } from './ui/home.js';
 import { renderEntries } from './ui/entries.js';
+import { renderIncome } from './ui/income.js';
+import * as payslipPage from './ui/payslipPage.js';
+import { NAV_TREE, QUICK_TABS, navLabel, navListHTML } from './ui/nav.js';
+import { wireDrawer, toggleDrawer, closeDrawer } from './ui/drawer.js';
 import { renderReport } from './ui/report.js';
 import { renderBudget } from './ui/budget.js';
 import * as loansPage from './ui/loans.js';
@@ -42,9 +46,19 @@ function boot(profileId) {
   const topbarContext = document.getElementById('topbarContext');
   const fab = document.getElementById('fab');
 
-  const TAB_TITLES = { home: 'Özet', entries: 'Kayıtlar', report: 'Rapor', budget: 'Bütçe', invest: 'Yatırım', settings: 'Ayarlar' };
   // FAB yalnızca hızlı ekleme anlamı olan sekme köklerinde görünür.
-  const FAB_TABS = new Set(['home', 'entries', 'report', 'budget', 'invest']);
+  const FAB_TABS = new Set(['home', 'income', 'report', 'expense', 'invest']);
+
+  // Eski rotalar (v4 ve öncesi): geçmişte kalmış kayıtlar yeni ağaca çevrilir.
+  const LEGACY_ROUTES = {
+    budget: { tab: 'expense', page: null },
+    entries: { tab: 'income', page: 'entries' },
+  };
+  function normalizeRoute(route) {
+    const legacy = LEGACY_ROUTES[route.tab];
+    if (!legacy) return route;
+    return { tab: legacy.tab, page: route.page || legacy.page };
+  }
 
   const ctx = {
     store,
@@ -152,11 +166,10 @@ function boot(profileId) {
     },
   };
 
-  // Alt sayfa başlığı: Ayarlar'ın kendi sayfaları + Bütçe → Borçlar.
+  // Alt sayfa başlığı: menü ağacındaki ad, ayarlarınki kendi modülünden.
   function subPageTitle(tab, page) {
-    if (tab === 'budget' && page === 'loans') return loansPage.title;
-    if (tab === 'invest' && page === 'lots') return investPage.lotsPageTitle;
-    return settingsPageTitle(page);
+    if (tab === 'settings') return settingsPageTitle(page);
+    return navLabel(tab, page);
   }
 
   // Kenar çubuğunun boş orta/alt kısmı: profil, senkron durumu, sürüm.
@@ -166,6 +179,8 @@ function boot(profileId) {
     document.getElementById('sidebarAvatar').textContent = name.charAt(0);
     document.getElementById('sidebarName').textContent = name;
     document.getElementById('sidebarVersion').textContent = `v${APP_VERSION}`;
+    document.getElementById('drawerProfile').textContent = name;
+    document.getElementById('drawerFoot').textContent = `v${APP_VERSION}`;
 
     const syncEl = document.getElementById('sidebarSync');
     const status = readStatus();
@@ -190,19 +205,20 @@ function boot(profileId) {
 
   function render() {
     applyTheme();
-    const { tab, page } = router.getRoute();
+    const { tab, page } = normalizeRoute(router.getRoute());
     const state = store.getState();
 
-    for (const item of tabbar.querySelectorAll('.tabbar__item')) {
-      item.classList.toggle('is-active', item.dataset.tab === tab);
-    }
+    // Alt bar ve çekmece aynı ağaçtan basılır (js/ui/nav.js).
+    const navHTML = navListHTML({ tab, page });
+    document.getElementById('tabbarItems').innerHTML = navHTML;
+    document.getElementById('drawerList').innerHTML = navHTML;
 
     // Alt sayfada geri butonu ve alt sayfanın kendi başlığı gösterilir.
     topbarBack.hidden = !page;
-    topbarTitle.textContent = page ? (subPageTitle(tab, page) || TAB_TITLES[tab]) : TAB_TITLES[tab];
+    topbarTitle.textContent = page ? (subPageTitle(tab, page) || navLabel(tab)) : navLabel(tab);
     fab.hidden = !!page || !FAB_TABS.has(tab);
     // Bütçe sekmesinde aynı düğme harcama ekler; etiketi buna göre değişir.
-    const fabAction = tab === 'budget' ? 'Harcama ekle' : tab === 'invest' ? 'Alım ekle' : 'Mesai ekle';
+    const fabAction = tab === 'expense' ? 'Harcama ekle' : tab === 'invest' ? 'Alım ekle' : 'Mesai ekle';
     fab.querySelector('.fab__label').textContent = fabAction;
     fab.setAttribute('aria-label', fabAction);
     ctx.setTopbarAction(null);
@@ -212,9 +228,13 @@ function boot(profileId) {
     renderSidebar(state);
 
     if (tab === 'home') renderHome(screenEl, state, ctx);
-    else if (tab === 'entries') renderEntries(screenEl, state, ctx);
+    else if (tab === 'income') {
+      if (page === 'entries') renderEntries(screenEl, state, ctx);
+      else if (page === 'payslip') payslipPage.render(screenEl, state, ctx);
+      else renderIncome(screenEl, state, ctx);
+    }
     else if (tab === 'report') renderReport(screenEl, state, ctx);
-    else if (tab === 'budget') {
+    else if (tab === 'expense') {
       if (page === 'loans') loansPage.render(screenEl, state, ctx);
       else renderBudget(screenEl, state, ctx);
     }
@@ -241,9 +261,15 @@ function boot(profileId) {
   }
 
   tabbar.addEventListener('click', (e) => {
-    const btn = e.target.closest('.tabbar__item');
+    const btn = e.target.closest('[data-nav-tab]');
     if (!btn) return;
-    router.navigate({ tab: btn.dataset.tab, page: null });
+    router.navigate({ tab: btn.dataset.navTab, page: btn.dataset.navPage || null });
+  });
+
+  document.getElementById('topbarMenu').addEventListener('click', () => toggleDrawer());
+  wireDrawer({
+    listEl: document.getElementById('drawerList'),
+    onNavigate: (route) => router.navigate(route),
   });
 
   topbarBack.addEventListener('click', () => router.back());
@@ -255,8 +281,8 @@ function boot(profileId) {
 
   fab.addEventListener('click', async () => {
     // Bütçe sekmesinde + düğmesi harcama ekler, diğerlerinde mesai.
-    const activeTab = router.getRoute().tab;
-    if (activeTab === 'budget') {
+    const activeTab = normalizeRoute(router.getRoute()).tab;
+    if (activeTab === 'expense') {
       ctx.openExpense();
       return;
     }

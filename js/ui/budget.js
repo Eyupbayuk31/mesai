@@ -117,7 +117,7 @@ export function renderBudget(container, state, ctx) {
 
   container.querySelector('#addExpense').addEventListener('click', () => ctx.openExpense());
 
-  container.querySelector('#loansRow').addEventListener('click', () => ctx.navigate({ tab: 'budget', page: 'loans' }));
+  container.querySelector('#loansRow').addEventListener('click', () => ctx.navigate({ tab: 'expense', page: 'loans' }));
 
   container.querySelector('#monthChart')?.addEventListener('click', (e) => {
     const col = e.target.closest('[data-period]');
