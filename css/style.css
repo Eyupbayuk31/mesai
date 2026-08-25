@@ -1207,48 +1207,91 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 32px 24px;
+  padding: 32px 24px calc(32px + var(--safe-bottom));
   text-align: center;
 }
-.profile-picker__icon {
-  width: 60px; height: 60px;
-  border-radius: var(--radius-pill);
-  background: var(--accent-soft);
-  color: var(--accent);
-  display: flex; align-items: center; justify-content: center;
-  margin-bottom: 18px;
+
+/* Marka: kenar çubuğundakiyle aynı dil */
+.profile-picker__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 44px;
 }
-.profile-picker__title { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; }
-.profile-picker__sub { font-size: 14px; color: var(--text-secondary); margin-top: 8px; max-width: 280px; }
+.profile-picker__mark {
+  width: 46px; height: 46px;
+  border-radius: 14px;
+  background: linear-gradient(155deg, var(--accent) 0%, var(--accent-strong) 100%);
+  color: var(--accent-contrast);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: var(--shadow-sm);
+}
+.profile-picker__wordmark { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.2; }
+.profile-picker__name { font-size: 19px; font-weight: 800; letter-spacing: -0.02em; }
+.profile-picker__tag {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  letter-spacing: -0.01em;
+}
+
+.profile-picker__label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  margin-bottom: 14px;
+}
+
 .profile-picker__list {
   display: flex;
   gap: 14px;
-  margin-top: 32px;
   width: 100%;
-  max-width: 340px;
+  max-width: 360px;
 }
+
+.profile-picker__foot {
+  margin-top: 40px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
 .profile-card {
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 24px 12px;
+  gap: 12px;
+  padding: 26px 12px 22px;
   border-radius: var(--radius-lg);
   background: var(--card);
   border: 1.5px solid var(--card-border);
   box-shadow: var(--shadow-sm);
-  transition: transform 0.14s ease, border-color 0.14s ease;
+  transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
 }
 .profile-card:active { transform: scale(0.96); border-color: var(--accent); }
+.profile-card:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.profile-card__key {
+  position: absolute;
+  top: 10px; right: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  opacity: 0;
+}
 .profile-card__avatar {
-  width: 52px; height: 52px;
+  width: 56px; height: 56px;
   border-radius: var(--radius-pill);
   background: linear-gradient(155deg, var(--accent) 0%, var(--accent-strong) 100%);
   color: var(--accent-contrast);
   display: flex; align-items: center; justify-content: center;
-  font-size: 20px;
-  font-weight: 800;
+  font-size: 22px;
 }
 .profile-card__name { font-size: 15px; font-weight: 700; }
 
@@ -2759,4 +2802,10 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
   font-size: 13px;
   font-weight: 700;
   color: var(--accent);
+}
+
+/* Klavye ipucu yalnız fare/klavye olan cihazlarda görünür */
+@media (hover: hover) and (pointer: fine) {
+  .profile-card__key { opacity: 1; }
+  .profile-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: var(--shadow-md, var(--shadow-sm)); }
 }
