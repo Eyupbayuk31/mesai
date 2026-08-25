@@ -462,7 +462,7 @@ function openPriceSheet(ctx, asset) {
       const input = bodyEl.querySelector('#priceInput');
       setTimeout(() => input.focus(), 120);
       const save = () => {
-        const price = parseLocaleNumber(input.value);
+        const price = parseAmount(input.value);
         if (!Number.isFinite(price) || price <= 0) { showToast('Geçerli bir fiyat gir'); return; }
         ctx.store.setAssetPrice(asset.id, price);
         showToast('Fiyat güncellendi');

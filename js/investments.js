@@ -5,6 +5,7 @@
 // Bütçeden bağımsızdır: yatırım harcama sayılmaz, ayrı defterdir.
 
 import { isDateInPeriod, shiftPeriod } from './period.js';
+import { toISODate } from './format.js';
 
 // Varlık türleri. Tür; birimi, formdaki soruları ve miktarın kaç ondalıkla
 // gösterileceğini belirler. Hesap her türde aynı (miktar × birim fiyat);
@@ -279,21 +280,31 @@ export function donutSlices(positions) {
  * aldıysan piyasa fiyatı 7.900'dür. Kullanıcı aynı sayıyı bir de "güncel
  * fiyat" diye girmek zorunda kalmasın diye alımdan otomatik güncellenir.
  *
- * Yalnızca alım, elimizdeki fiyat bilgisinden DAHA YENİYSE güncellenir —
- * geçmişe dönük girilen eski bir alım güncel fiyatı bozmaz.
+ * Karşılaştırma yalnız GÜNE bakar. Saatle kıyaslanınca şu oluyordu: varlığı
+ * öğleden sonra 7.100 fiyatla oluşturuyorsun (damga: o an), sonra aynı güne
+ * 7.900'lük alım giriyorsun (damga: o günün 12:00'ı) — alım "daha eski"
+ * sayılıp fiyat 7.100'de kalıyordu. Aynı güne düşen alım yeni bilgidir.
  *
- * @returns {{currentPrice:number, priceUpdatedAt:string}|null} güncelleme gerekmiyorsa null
+ * Yalnızca alımın tarihi bilinen fiyattan ESKİYSE güncelleme yapılmaz;
+ * geçmişe dönük girilen kayıt güncel fiyatı bozmaz.
+ *
+ * @returns {{currentPrice:number, priceUpdatedAt:string}|null} gerekmiyorsa null
  */
-export function priceUpdateFromLot(asset, lot) {
+export function priceUpdateFromLot(asset, lot, nowMs = Date.now()) {
   const unitCost = Number(lot?.unitCost) || 0;
   if (unitCost <= 0 || !lot?.date) return null;
 
-  const lotAt = `${lot.date}T12:00:00.000Z`;
-  const knownAt = asset?.priceUpdatedAt;
-  if (knownAt && Date.parse(knownAt) > Date.parse(lotAt)) return null;
-
+  const knownDate = typeof asset?.priceUpdatedAt === 'string' ? asset.priceUpdatedAt.slice(0, 10) : null;
+  if (knownDate && lot.date < knownDate) return null;
   if (Number(asset?.currentPrice) === unitCost) return null;
-  return { currentPrice: unitCost, priceUpdatedAt: lotAt };
+
+  // Bugüne (veya ileri tarihe) girilen alımda damga "şu an"dır; geçmiş
+  // tarihli alımda o günün ortası. Böylece "fiyat N gün önce güncellendi"
+  // uyarısı da doğru kalır.
+  const now = new Date(nowMs);
+  const todayStr = toISODate(now);
+  const priceUpdatedAt = lot.date >= todayStr ? now.toISOString() : `${lot.date}T12:00:00.000Z`;
+  return { currentPrice: unitCost, priceUpdatedAt };
 }
 
 /** Bir varlığın alım formunda önerilecek birim fiyat: bilinen son fiyat. */

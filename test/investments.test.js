@@ -410,3 +410,55 @@ test('quantityPresets - tür başına anlamlı miktar kısayolları', () => {
   assert.deepEqual(quantityPresets({ kind: 'altin' }), [1, 2, 5, 10]);
   assert.deepEqual(quantityPresets({ label: 'Dolar' }), [100, 250, 500, 1000], 'tür yoksa etiketten çıkarılır');
 });
+
+// --- Aynı güne düşen alımlar (kullanıcı senaryosu) ----------------------
+// Varlık öğleden sonra 7.100 fiyatla oluşturuldu, ardından aynı gün
+// 10 gram × 7.900 alındı. Fiyat 7.900 olmalı, zarar görünmemeli.
+
+test('priceUpdateFromLot - aynı gün elle girilen fiyatın üstüne yeni alım yazar', () => {
+  const bugun = '2026-08-25';
+  const nowMs = Date.parse('2026-08-25T14:30:00.000Z');
+  const asset = { id: 'a1', label: 'Gram altın', kind: 'altin', currentPrice: 7100, priceUpdatedAt: '2026-08-25T14:30:00.000Z' };
+
+  const update = priceUpdateFromLot(asset, { date: bugun, quantity: 10, unitCost: 7900 }, nowMs);
+  assert.ok(update, 'aynı güne düşen alım fiyatı güncellemeli');
+  assert.equal(update.currentPrice, 7900);
+});
+
+test('senaryo - 1×7.100 sonra 10×7.900 aynı gün: kâr çıkar, zarar değil', () => {
+  const bugun = '2026-08-25';
+  const nowMs = Date.parse('2026-08-25T15:00:00.000Z');
+  let asset = { id: 'a1', label: 'Gram altın', kind: 'altin', unit: 'gram', currentPrice: 7100, priceUpdatedAt: '2026-08-25T14:30:00.000Z' };
+  const lots = [
+    { id: 'l1', assetId: 'a1', date: bugun, quantity: 1, unitCost: 7100 },
+    { id: 'l2', assetId: 'a1', date: bugun, quantity: 10, unitCost: 7900 },
+  ];
+  const update = priceUpdateFromLot(asset, lots[1], nowMs);
+  asset = { ...asset, ...update };
+
+  const p = assetPosition(asset, lots, nowMs);
+  assert.equal(p.quantity, 11);
+  assert.equal(p.cost, 86100, '7.100 + 79.000');
+  assert.equal(p.price, 7900);
+  assert.equal(p.value, 86900, '11 × 7.900');
+  assert.equal(p.profit, 800);
+  assert.ok(p.profit > 0, 'zarar göstermemeli');
+});
+
+test('priceUpdateFromLot - bugüne girilen alımın damgası "şu an"', () => {
+  const nowMs = Date.parse('2026-08-25T15:00:00.000Z');
+  const update = priceUpdateFromLot({ id: 'a1' }, { date: '2026-08-25', quantity: 1, unitCost: 7900 }, nowMs);
+  assert.equal(update.priceUpdatedAt, new Date(nowMs).toISOString());
+  // Böylece kart "0 gün önce güncellendi" der, bayat uyarısı çıkmaz.
+  const p = assetPosition({ id: 'a1', currentPrice: 7900, priceUpdatedAt: update.priceUpdatedAt }, [], nowMs);
+  assert.equal(p.stale, false);
+});
+
+test('priceUpdateFromLot - geçmiş tarihli alımın damgası o gün, güncel fiyata dokunmaz', () => {
+  const nowMs = Date.parse('2026-08-25T15:00:00.000Z');
+  const asset = { id: 'a1', currentPrice: 7900, priceUpdatedAt: '2026-08-25T14:00:00.000Z' };
+  assert.equal(priceUpdateFromLot(asset, { date: '2026-06-10', quantity: 1, unitCost: 7100 }, nowMs), null);
+
+  const fiyatsiz = priceUpdateFromLot({ id: 'a2' }, { date: '2026-06-10', quantity: 1, unitCost: 7100 }, nowMs);
+  assert.equal(fiyatsiz.priceUpdatedAt, '2026-06-10T12:00:00.000Z');
+});
