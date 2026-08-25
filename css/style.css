@@ -2501,6 +2501,11 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
   .screen--home .panes,
   .screen--budget .panes { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 
+  /* Fiş katlama çizgisi yalnız mobilde anlamlı (hero'nun altında). İki
+     sütuna açılınca sütunları zaten dikey çizgi ayırıyor; yatay kesik çizgi
+     sağ sütunun tepesinde havada kalıyordu. */
+  .card--split .rows--receipt { border-top: 0; margin-top: 0; padding-top: 0; }
+
   /* --- Bölünmüş kart: solda özet, sağda döküm --- */
   .card--split {
     display: grid;

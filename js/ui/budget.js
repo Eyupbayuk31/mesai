@@ -79,10 +79,9 @@ export function renderBudget(container, state, ctx) {
     <div class="panes">
     <div class="pane">
     ${monthlyChartHTML(state, periodKey)}
+    ${loansSectionHTML(summary)}
 
-    ${loansRowHTML(summary)}
-
-    <div class="section-title">Öneriler</div>
+    <div class="section-header"><span class="section-title" style="margin:0;">Öneriler</span></div>
     <div class="card tips-card">
       ${budgetTips(summary).map((t) => `
       <div class="tip-row">
@@ -150,14 +149,20 @@ export function renderBudget(container, state, ctx) {
 // Geçen dönemle kıyas — ayın aynı gününe kadarki harcamalar karşılaştırılır.
 // Borç özeti + Borçlar sayfasına giriş. Hiç kredi yoksa da görünür ki
 // kullanıcı özelliğin varlığını fark etsin.
-function loansRowHTML(summary) {
+function loansSectionHTML(summary) {
   const loans = summary.loans;
   const has = loans && loans.count > 0;
   return `
-    <div class="card card--menu" style="margin-top:14px;">
-      <div class="link-row" id="loansRow">
-        <span>Borçlar${has ? `<span class="link-row__sub">${loans.openCount} açık kredi · bu ay ${formatMoney(loans.monthlyTotal, { decimals: false })}</span>` : ''}</span>
-        <span class="link-row__value">${has ? formatMoney(loans.totalRemaining, { decimals: false }) : 'Kredi ekle'}</span>
+    <div class="section-header">
+      <span class="section-title" style="margin:0;">Borçlar</span>
+      ${has ? `<span class="section-header__meta">${loans.openCount} açık kredi</span>` : ''}
+    </div>
+    <div class="card">
+      <div class="link-row" id="loansRow" role="button" tabindex="0">
+        <span>${has ? 'Kalan borç' : 'Kredi ekle'}
+          ${has ? `<span class="link-row__sub">bu ay ödenecek ${formatMoney(loans.monthlyTotal, { decimals: false })}</span>`
+    : '<span class="link-row__sub">Taksitli borcun varsa ekle, bütçeden otomatik düşsün.</span>'}</span>
+        <span class="link-row__value ${has ? 'is-negative' : ''}">${has ? formatMoney(loans.totalRemaining, { decimals: false }) : ''}</span>
         <span class="link-row__chevron">›</span>
       </div>
     </div>
@@ -194,12 +199,15 @@ function monthlyChartHTML(state, periodKey) {
   const max = Math.max(...buckets.map((b) => b.spent), 0);
   const average = buckets.reduce((sum, b) => sum + b.spent, 0) / MONTH_COUNT;
 
+  // Hepsi sıfır olan çubuklar bilgi değil gürültü: hiç harcama yoksa basma.
+  if (max <= 0) return '';
+
   return `
+    <div class="section-header">
+      <span class="section-title" style="margin:0;">Son ${MONTH_COUNT} ay</span>
+      <span class="section-header__meta">ortalama ${formatMoney(average, { decimals: false })}</span>
+    </div>
     <div class="card">
-      <div class="section-header" style="margin-bottom:10px;">
-        <span class="section-title" style="margin:0;">Son ${MONTH_COUNT} ay</span>
-        <span class="section-header__meta">ortalama ${formatMoney(average, { decimals: false })}</span>
-      </div>
       <div class="bar-chart bar-chart--mini" id="monthChart">
         ${buckets.map((b) => {
     const pct = max > 0 ? Math.max(3, Math.round((b.spent / max) * 100)) : 3;
@@ -232,7 +240,8 @@ function comparisonHTML(comparison) {
 
 // "Bu hızla ay sonunda ne kadar, bütçe ne zaman biter?"
 function paceHTML(pace, summary) {
-  if (!pace) return '';
+  // Harcama yokken "ay sonunda ₺0 harcarsın" bilgi değil, sıfır gürültüsü.
+  if (!pace || summary.spent <= 0) return '';
   const short = pace.runsOutOn !== null;
   const prefix = pace.reliable ? 'Bu hızla ay sonunda' : 'Kaba tahmin — ay sonunda';
   return `
