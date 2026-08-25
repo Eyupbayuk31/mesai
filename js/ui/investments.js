@@ -4,11 +4,11 @@
 import {
   portfolioSummary, donutSlices, assetPosition, assetLots, lotTotal,
   PRESET_ASSETS, nextAssetColor, DONUT_RADIUS, priceUpdateFromLot, suggestedUnitCost,
-  monthlyInvestBuckets, recentLots, ASSET_KINDS, kindOf, kindByKey, unitOf,
+  monthlyInvestBuckets, recentLots, ASSET_KINDS, kindOf, kindByKey, unitOf, quantityPresets,
   formatQuantity, quantityLabel, priceLabel, avgLabel, portfolioByKind, bestWorstAsset,
 } from '../investments.js';
 import { currentPeriodKey, periodLabel } from '../period.js';
-import { formatMoney, formatDayMonth, formatMonthYear, todayISO } from '../format.js';
+import { formatMoney, formatDayMonth, formatMonthYear, todayISO, toISODate } from '../format.js';
 import { openSheet, closeSheet } from './sheet.js';
 import { showToast } from './toast.js';
 
@@ -323,34 +323,40 @@ function openLotSheet(ctx, asset, lot) {
     build(bodyEl, footerEl) {
       bodyEl.innerHTML = `
         <div class="input-row">
-          <div class="field">
+          <div class="field" style="margin-bottom:8px;">
             <label class="field__label">${escapeHTML(quantityLabel(asset))}</label>
             <input class="input" type="text" inputmode="decimal" id="lotQuantity"
               value="${lot ? String(lot.quantity).replace('.', ',') : ''}" placeholder="1" autocomplete="off" />
           </div>
-          <div class="field">
+          <div class="field" style="margin-bottom:8px;">
             <label class="field__label">${escapeHTML(priceLabel(asset))}</label>
             <input class="input input--amount" type="text" inputmode="decimal" id="lotUnitCost"
               value="${lot ? String(lot.unitCost).replace('.', ',') : (known ? String(known).replace('.', ',') : '')}" placeholder="7100" autocomplete="off" />
           </div>
         </div>
-        <div class="field__hint" style="margin:-10px 0 14px;">
-          ${known && isNew
-    ? `Bilinen ${kindOf(asset).rate ? 'kur' : 'fiyat'} <b>${formatMoney(known)}</b> yazıldı — farklı aldıysan değiştir. Kaydedince güncel ${kindOf(asset).rate ? 'kur' : 'fiyat'} da bu olur.`
-    : `Bu ${kindOf(asset).rate ? 'kur' : 'fiyat'} aynı zamanda güncel olarak kaydedilir; ayrıca girmene gerek yok.`}
+
+        <div class="quick-chips" id="qtyChips" style="margin-bottom:14px;">
+          ${quantityPresets(asset).map((q) => `<button class="quick-chip" type="button" data-qty="${q}">${String(q).replace('.', ',')} ${escapeHTML(unitOf(asset))}</button>`).join('')}
         </div>
 
-        <div class="preview-strip">
-          <span class="preview-strip__label">Ödediğin</span>
-          <span class="preview-strip__value" id="lotTotalPreview">—</span>
+        <div class="lot-total" id="lotTotalBox">
+          <span class="lot-total__label">Ödediğin</span>
+          <span class="lot-total__value" id="lotTotalPreview">—</span>
+          <span class="lot-total__calc" id="lotTotalCalc"></span>
         </div>
 
-        <div class="field">
+        <div class="field" style="margin-top:14px;">
           <label class="field__label">Tarih</label>
           <input class="input" type="date" id="lotDate" value="${lot?.date || todayISO()}" />
+          <div class="quick-chips" id="lotDateChips">
+            <button class="quick-chip" type="button" data-day="0">Bugün</button>
+            <button class="quick-chip" type="button" data-day="-1">Dün</button>
+          </div>
         </div>
-        <div class="field" style="margin-bottom:0;">
-          <label class="field__label">Not <span style="font-weight:500;color:var(--text-tertiary);">(opsiyonel)</span></label>
+
+        <button class="lot-note-toggle" id="lotNoteToggle" type="button" ${lot?.note ? 'hidden' : ''}>+ Not ekle</button>
+        <div class="field" id="lotNoteField" style="margin-bottom:0;" ${lot?.note ? '' : 'hidden'}>
+          <label class="field__label">Not</label>
           <input class="input" type="text" id="lotNote" value="${escapeAttr(lot?.note || '')}" placeholder="ör. kuyumcudan" />
         </div>
       `;
@@ -358,16 +364,48 @@ function openLotSheet(ctx, asset, lot) {
       const qtyEl = bodyEl.querySelector('#lotQuantity');
       const costEl = bodyEl.querySelector('#lotUnitCost');
       const previewEl = bodyEl.querySelector('#lotTotalPreview');
+      const calcEl = bodyEl.querySelector('#lotTotalCalc');
+      const boxEl = bodyEl.querySelector('#lotTotalBox');
+      const dateEl = bodyEl.querySelector('#lotDate');
 
+      // Tutar iki alan da doluyken görünür; eksikken boş kutu yerine ne
+      // beklendiğini söyler.
       const updatePreview = () => {
         const q = parseAmount(qtyEl.value);
         const c = parseAmount(costEl.value);
-        previewEl.textContent = (q > 0 && c > 0) ? formatMoney(q * c) : '—';
+        const ready = q > 0 && c > 0;
+        boxEl.classList.toggle('is-ready', ready);
+        previewEl.textContent = ready ? formatMoney(q * c) : '—';
+        calcEl.textContent = ready
+          ? `${formatQuantity(q, asset)} ${unitOf(asset)} × ${formatMoney(c)}`
+          : 'Miktar ve fiyatı gir, tutarı hesaplayayım';
       };
       qtyEl.addEventListener('input', updatePreview);
       costEl.addEventListener('input', updatePreview);
       updatePreview();
       setTimeout(() => qtyEl.focus(), 120);
+
+      bodyEl.querySelector('#qtyChips').addEventListener('click', (e) => {
+        const chip = e.target.closest('[data-qty]');
+        if (!chip) return;
+        qtyEl.value = chip.dataset.qty.replace('.', ',');
+        updatePreview();
+      });
+
+      bodyEl.querySelector('#lotDateChips').addEventListener('click', (e) => {
+        const chip = e.target.closest('[data-day]');
+        if (!chip) return;
+        const d = new Date();
+        d.setDate(d.getDate() + Number(chip.dataset.day));
+        dateEl.value = toISODate(d);
+      });
+
+      bodyEl.querySelector('#lotNoteToggle')?.addEventListener('click', (e) => {
+        e.target.hidden = true;
+        const field = bodyEl.querySelector('#lotNoteField');
+        field.hidden = false;
+        field.querySelector('input').focus();
+      });
 
       footerEl.querySelector('#saveLotBtn').addEventListener('click', () => {
         const quantity = parseAmount(qtyEl.value);

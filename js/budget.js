@@ -328,45 +328,70 @@ export function lifetimeByCategory(state, todayStr = todayISO()) {
 }
 
 /**
- * Yılın finansal tablosu: ay ay gelir / harcama / yatırım + kategori kırılımı.
- * Hepsi mevcut hesaplardan gelir, yeni bir para mantığı yazılmaz.
+ * Verilen dönemlerin finansal tablosu: ay ay gelir / harcama / yatırım,
+ * mesai saati ve kategori kırılımı. Yıl ve "son N ay" raporları bunu kullanır;
+ * para mantığı tek yerde durur.
  */
-export function yearFinance(state, year, todayStr = todayISO()) {
+export function periodsFinance(state, periodKeys, todayStr = todayISO()) {
   const months = [];
   const byCategory = new Map();
   let income = 0;
   let spent = 0;
   let invested = 0;
+  let hours = 0;
+  let overtimePay = 0;
 
-  for (let m = 1; m <= 12; m += 1) {
-    const periodKey = `${year}-${String(m).padStart(2, '0')}`;
+  for (const periodKey of periodKeys) {
     const budget = budgetSummary(state, periodKey, todayStr);
+    const pay = periodSummary(state, periodKey);
     const monthInvested = investedInPeriod(state, periodKey);
     months.push({
       periodKey,
-      month: m,
+      month: Number(periodKey.slice(5, 7)),
+      year: Number(periodKey.slice(0, 4)),
       income: budget.earnedTotal,
       spent: budget.spent,
       invested: monthInvested,
       remaining: budget.earnedTotal - budget.spent,
+      hours: pay.totalHours,
+      overtimePay: pay.overtimePay,
     });
     income += budget.earnedTotal;
     spent += budget.spent;
     invested += monthInvested;
+    hours += pay.totalHours;
+    overtimePay += pay.overtimePay;
     for (const cat of budget.byCategory) {
       byCategory.set(cat.key, (byCategory.get(cat.key) || 0) + cat.amount);
     }
   }
 
   return {
-    year,
     months,
+    from: periodKeys[0],
+    to: periodKeys[periodKeys.length - 1],
     income,
     spent,
     invested,
     remaining: income - spent,
+    hours,
+    overtimePay,
     byCategory: [...byCategory.entries()]
       .map(([key, amount]) => ({ ...categoryOf(key, state.settings), amount }))
       .sort((a, b) => b.amount - a.amount),
   };
+}
+
+/** Yılın 12 ayı. */
+export function yearFinance(state, year, todayStr = todayISO()) {
+  const keys = [];
+  for (let m = 1; m <= 12; m += 1) keys.push(`${year}-${String(m).padStart(2, '0')}`);
+  return { year, ...periodsFinance(state, keys, todayStr) };
+}
+
+/** Seçili dönemle biten son N ay. */
+export function rangeFinance(state, endPeriodKey, months = 6, todayStr = todayISO()) {
+  const keys = [];
+  for (let i = months - 1; i >= 0; i -= 1) keys.push(shiftPeriod(endPeriodKey, -i));
+  return { months: undefined, ...periodsFinance(state, keys, todayStr), monthCount: months };
 }

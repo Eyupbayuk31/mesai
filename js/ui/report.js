@@ -239,7 +239,9 @@ export function renderReport(container, state, ctx) {
           periodKey, summary, settings, scope, state,
           yearSummary: scope === 'year' ? ySummary : null,
         });
-        const name = scope === 'year' ? `mesai-raporu-${year}` : `mesai-raporu-${periodKey}`;
+        const name = scope === 'year' ? `mesai-raporu-${year}`
+          : scope === 'range' ? `mesai-raporu-son6ay-${periodKey}`
+            : `mesai-raporu-${periodKey}`;
         downloadFile(`${name}.html`, html, 'text/html;charset=utf-8');
         showToast('HTML rapor indirildi');
       },
@@ -266,6 +268,11 @@ function openReportScopeSheet({ periodKey, year, onPick }) {
           <button class="menu-row" type="button" data-scope="period">
             <span class="menu-row__label">${periodLabel(periodKey)}</span>
             <span class="menu-row__value">Bu dönem</span>
+            <span class="menu-row__chevron">›</span>
+          </button>
+          <button class="menu-row" type="button" data-scope="range">
+            <span class="menu-row__label">Son 6 ay</span>
+            <span class="menu-row__value">${periodLabel(shiftPeriod(periodKey, -5))} – ${periodLabel(periodKey)}</span>
             <span class="menu-row__chevron">›</span>
           </button>
           <button class="menu-row" type="button" data-scope="year">

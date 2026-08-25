@@ -220,7 +220,7 @@ test('recentLots - varlığı silinmiş alım listeye girmez', () => {
 
 import {
   inferKind, kindOf, unitOf, formatQuantity, quantityLabel, priceLabel, avgLabel,
-  portfolioByKind, bestWorstAsset, ASSET_KINDS,
+  portfolioByKind, bestWorstAsset, ASSET_KINDS, quantityPresets,
 } from '../js/investments.js';
 
 test('inferKind - etiketten tür çıkarır', () => {
@@ -401,4 +401,12 @@ test('senaryo - portföy toplamı varlık kârlarının toplamına eşit', () =>
   assert.equal(s.totalProfit, 4000 + 2000);
   assert.equal(s.totalValue, 42000 + 41000);
   assert.equal(s.totalCost, 38000 + 39000);
+});
+
+test('quantityPresets - tür başına anlamlı miktar kısayolları', () => {
+  assert.deepEqual(quantityPresets({ kind: 'doviz' }), [100, 250, 500, 1000]);
+  assert.deepEqual(quantityPresets({ kind: 'kripto' }), [0.01, 0.05, 0.1, 0.5]);
+  assert.deepEqual(quantityPresets({ kind: 'hisse' }), [10, 50, 100, 500]);
+  assert.deepEqual(quantityPresets({ kind: 'altin' }), [1, 2, 5, 10]);
+  assert.deepEqual(quantityPresets({ label: 'Dolar' }), [100, 250, 500, 1000], 'tür yoksa etiketten çıkarılır');
 });

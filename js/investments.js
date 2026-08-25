@@ -91,6 +91,20 @@ export function priceLabel(asset) {
   return `1 ${unitOf(asset)} kaç ₺?`;
 }
 
+/**
+ * Alım formunda gösterilecek miktar kısayolları. Tür başına anlamlı sayılar:
+ * dövizde 100'lük, kriptoda küsurat, hissede lot.
+ */
+export function quantityPresets(asset) {
+  switch (kindOf(asset).key) {
+    case 'doviz': return [100, 250, 500, 1000];
+    case 'kripto': return [0.01, 0.05, 0.1, 0.5];
+    case 'hisse': return [10, 50, 100, 500];
+    case 'fon': return [10, 50, 100, 250];
+    default: return [1, 2, 5, 10];
+  }
+}
+
 /** Kart ve tablolarda ortalama maliyetin adı. */
 export function avgLabel(asset) {
   return kindOf(asset).rate ? 'ort. kur' : 'ort. maliyet';

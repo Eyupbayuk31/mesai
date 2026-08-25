@@ -507,7 +507,7 @@ test('monthlySpendBuckets - yıl sınırını geçer', () => {
 
 // --- Kümülatif kategori toplamları + yıllık finans ----------------------
 
-import { lifetimeByCategory, yearFinance } from '../js/budget.js';
+import { lifetimeByCategory, yearFinance, rangeFinance } from '../js/budget.js';
 
 const lifetimeState = () => ({
   settings: {
@@ -609,4 +609,36 @@ test('yearFinance - avans yılın gelirini küçültmez', () => {
     yearFinance(avansli, 2026, '2026-08-24').income,
     yearFinance(temiz, 2026, '2026-08-24').income,
   );
+});
+
+test('rangeFinance - seçili dönemle biten son 6 ay', () => {
+  const state = lifetimeState();
+  state.investments = [{ id: 'i1', assetId: 'a1', date: '2026-07-12', quantity: 1, unitCost: 7400 }];
+  const r = rangeFinance(state, '2026-08', 6, '2026-08-24');
+  assert.equal(r.months.length, 6);
+  assert.equal(r.from, '2026-03');
+  assert.equal(r.to, '2026-08');
+  assert.equal(r.monthCount, 6);
+  assert.equal(r.months.reduce((t, m) => t + m.spent, 0), r.spent);
+  assert.equal(r.months.reduce((t, m) => t + m.income, 0), r.income);
+  assert.equal(r.invested, 7400);
+  assert.equal(r.remaining, r.income - r.spent);
+});
+
+test('rangeFinance - kategori toplamı dönem harcamasına eşit', () => {
+  const r = rangeFinance(lifetimeState(), '2026-08', 6, '2026-08-24');
+  assert.equal(r.byCategory.reduce((t, c) => t + c.amount, 0), r.spent);
+});
+
+test('rangeFinance - yıl sınırını aşan pencere de çalışır', () => {
+  const r = rangeFinance(lifetimeState(), '2026-02', 6, '2026-08-24');
+  assert.deepEqual(r.months.map((m) => m.periodKey), ['2025-09', '2025-10', '2025-11', '2025-12', '2026-01', '2026-02']);
+});
+
+test('yearFinance ile rangeFinance aynı dönemde aynı sonucu verir', () => {
+  const state = lifetimeState();
+  const yil = yearFinance(state, 2026, '2026-08-24');
+  const araliksiz = rangeFinance(state, '2026-12', 12, '2026-08-24');
+  assert.equal(araliksiz.income, yil.income);
+  assert.equal(araliksiz.spent, yil.spent);
 });

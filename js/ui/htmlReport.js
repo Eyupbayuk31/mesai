@@ -3,7 +3,7 @@
 import { formatMoney, formatHours, formatFullDate, formatWeekday } from '../format.js';
 import { entryAmount, yearSummary as buildYearSummary } from '../payroll.js';
 import { periodLabel, payDateForPeriod } from '../period.js';
-import { budgetSummary, yearFinance } from '../budget.js';
+import { budgetSummary, yearFinance, rangeFinance } from '../budget.js';
 import { portfolioSummary, investedInPeriod, formatQuantity, unitOf, kindOf } from '../investments.js';
 import { yearsWithData, compareYears, realChange, categoryTrend } from '../analysis.js';
 
@@ -154,6 +154,12 @@ export function buildHtmlReport({ profileName, periodKey, summary, settings, sco
   const ySummary = yearSummary || (state ? buildYearSummary(state, year) : null);
   const portfolio = state ? portfolioSummary(state) : null;
 
+  if (scope === 'range' && state) {
+    return buildRangeReport({
+      profileName, settings, portfolio, state,
+      finance: rangeFinance(state, periodKey, RANGE_MONTHS),
+    });
+  }
   if (scope === 'year' && ySummary) {
     return buildYearReport({
       profileName, yearSummary: ySummary, settings, portfolio, state, year,
@@ -633,4 +639,67 @@ function analysisSection(state, year) {
       </tbody>
     </table>`}
   `;
+}
+
+// --- Son 6 ay raporu ------------------------------------------------------
+//
+// Yıl raporu takvim yılına bağlı; ağustostayken "son 6 ay" (mart-ağustos)
+// çoğu zaman daha işe yarar. Aynı hesaplar, farklı pencere.
+
+const RANGE_MONTHS = 6;
+
+function rangeLabel(periodKey) {
+  const [y, m] = periodKey.split('-').map(Number);
+  return `${MONTH_NAMES[m - 1]} ${y}`;
+}
+
+function buildRangeReport({ profileName, settings, finance, portfolio, state }) {
+  const up = portfolio && portfolio.totalProfit >= 0;
+  const baslik = `${rangeLabel(finance.from)} – ${rangeLabel(finance.to)}`;
+
+  return htmlShell({
+    title: `Mesai Raporu — ${escapeHTML(profileName)} — ${baslik}`,
+    headerTitle: `${escapeHTML(profileName)} — son ${finance.monthCount} ay`,
+    metaRight: `Oluşturulma: <b>${todayLabel()}</b><br />Kapsam: <b>${baslik}</b>`,
+    body: `
+      <div class="stats">
+        ${statCard('Toplam mesai', formatHours(finance.hours))}
+        ${statCard('Mesai ücreti', formatMoney(finance.overtimePay), '#12946b')}
+        ${statCard('Toplam gelir', formatMoney(finance.income, { decimals: false }), '#12946b')}
+        ${statCard('Toplam harcama', formatMoney(finance.spent, { decimals: false }), '#c9402f')}
+        ${statCard('Gelir − harcama', formatMoney(finance.remaining, { decimals: false }))}
+        ${finance.invested > 0 ? statCard('Yatırıma ayrılan', formatMoney(finance.invested, { decimals: false })) : ''}
+        ${statCard('Aylık ort. harcama', formatMoney(finance.spent / finance.monthCount, { decimals: false }))}
+        ${profitCard(portfolio)}
+      </div>
+
+      <h2>Ay ay döküm</h2>
+      <table class="table">
+        <thead><tr><th>Ay</th><th class="num">Mesai</th><th class="num">Gelir</th><th class="num">Harcama</th><th class="num">Yatırım</th><th class="num">Kalan</th></tr></thead>
+        <tbody>
+          ${finance.months.map((m) => `
+            <tr>
+              <td>${MONTH_NAMES[m.month - 1]} ${m.year}</td>
+              <td class="num">${formatHours(m.hours)}</td>
+              <td class="num">${formatMoney(m.income, { decimals: false })}</td>
+              <td class="num">${formatMoney(m.spent, { decimals: false })}</td>
+              <td class="num">${m.invested > 0 ? formatMoney(m.invested, { decimals: false }) : '—'}</td>
+              <td class="num">${formatMoney(m.remaining, { decimals: false })}</td>
+            </tr>
+          `).join('')}
+          <tr class="total-row">
+            <td>Toplam</td>
+            <td class="num">${formatHours(finance.hours)}</td>
+            <td class="num">${formatMoney(finance.income, { decimals: false })}</td>
+            <td class="num">${formatMoney(finance.spent, { decimals: false })}</td>
+            <td class="num">${formatMoney(finance.invested, { decimals: false })}</td>
+            <td class="num">${formatMoney(finance.remaining, { decimals: false })}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      ${categoryTable(finance.byCategory, finance.spent, 'Harcama kırılımı')}
+      ${portfolioTable(portfolio)}
+    `,
+  });
 }

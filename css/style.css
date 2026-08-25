@@ -2717,3 +2717,46 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
   .lot-table__row[data-lot]:hover { background: var(--divider); }
 }
 .lot-table__pl--flat { color: var(--text-tertiary); font-weight: 600; }
+
+/* ===== Alım formu: tutar kutusu ve not aç/kapa ===== */
+.lot-total {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 14px 12px;
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--divider);
+  background: transparent;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+.lot-total.is-ready {
+  border-style: solid;
+  border-color: transparent;
+  background: var(--positive-soft);
+}
+.lot-total__label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.lot-total__value {
+  font-family: var(--font-mono);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-tertiary);
+}
+.lot-total.is-ready .lot-total__value { color: var(--positive); }
+.lot-total__calc { font-size: 12px; font-weight: 600; color: var(--text-tertiary); }
+
+.lot-note-toggle {
+  display: block;
+  margin-top: 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+}
