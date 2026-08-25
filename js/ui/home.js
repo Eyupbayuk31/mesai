@@ -56,8 +56,10 @@ export function renderHome(container, state, ctx) {
   }
 
   const progress = periodProgress(periodKey, todayISO());
-  const projection = hasSalary ? projectPeriod(summary, progress) : null;
-  const share = hasSalary ? overtimeShare(summary) : null;
+  // Kayıt yokken "%0 kadar ek" ve "bu hızla ~0 sa" satırları bilgi değil
+  // gürültü: ekranı sıfırlarla dolduruyorlardı.
+  const projection = hasSalary && summary.entryCount > 0 ? projectPeriod(summary, progress) : null;
+  const share = hasSalary && summary.totalHours > 0 ? overtimeShare(summary) : null;
   const nudge = nudgeState(state);
 
   container.innerHTML = `
@@ -106,6 +108,7 @@ export function renderHome(container, state, ctx) {
             ${comparisonHTML(summary, prevSummary, periodKey)}
             ${shareHTML(share)}
           </div>
+          ${summary.entryCount === 0 ? '<p class="hero__note">Bu ay henüz mesai kaydın yok. Kaldığın saati girdiğinde tutarı burada görünecek.</p>' : ''}
           ${goalBarHTML(summary, settings.monthlyGoalHours)}
           ${projectionHTML(projection, settings.monthlyGoalHours)}
         </div>
@@ -138,7 +141,11 @@ export function renderHome(container, state, ctx) {
     <div class="pane">
     ${netWorthHTML(state)}
     ${state.entries.length > 0 ? weeklyChartHTML(state.entries) : ''}
-    ${hasSalary ? statusCardHTML(state, periodKey) : ''}
+    ${hasSalary ? `
+      <div class="section-header">
+        <span class="section-title" style="margin:0;">Durum</span>
+      </div>
+      ${statusCardHTML(state, periodKey)}` : ''}
     </div>
 
     <div class="pane">
@@ -382,11 +389,11 @@ function weeklyChartHTML(entries) {
   const total = buckets.reduce((sum, b) => sum + b.hours, 0);
 
   return `
+    <div class="section-header">
+      <span class="section-title" style="margin:0;">Son ${WEEK_COUNT} hafta</span>
+      <span class="section-header__meta">${formatHours(total)}</span>
+    </div>
     <div class="card">
-      <div class="section-header" style="margin-bottom:10px;">
-        <span class="section-title" style="margin:0;">Son ${WEEK_COUNT} hafta</span>
-        <span class="section-header__meta">${formatHours(total)}</span>
-      </div>
       <div class="bar-chart bar-chart--mini" id="weekChart">
         ${buckets.map((b) => {
     const pct = max > 0 ? Math.max(3, Math.round((b.hours / max) * 100)) : 3;
@@ -502,8 +509,9 @@ function statusCardHTML(state, periodKey = currentPeriodKey()) {
       </button>` : ''}
       <div class="status-row status-row--meter">
         <span class="status-row__label">Bu hafta puantaj</span>
-        <span class="status-row__value">${formatHours(total)} <span class="status-row__sub">program ${formatHours(planned)} + mesai ${formatHours(overtime)}</span></span>
+        <span class="status-row__value">${formatHours(total)}</span>
       </div>
+      <div class="status-row__note">program ${formatHours(planned)} + mesai ${formatHours(overtime)}</div>
       <div class="meter" role="img" aria-label="Bu hafta toplam ${formatHours(total)}, kanuni sınır 45 saat">
         <div class="meter__fill meter__fill--planned" style="width:${plannedPct.toFixed(1)}%"></div>
         <div class="meter__fill meter__fill--overtime" style="left:${plannedPct.toFixed(1)}%; width:${overtimePct.toFixed(1)}%"></div>
@@ -595,8 +603,10 @@ function netWorthHTML(state) {
   const net = portfolio.totalValue - debt;
   const up = portfolio.totalProfit >= 0;
   return `
+    <div class="section-header">
+      <span class="section-title" style="margin:0;">Net değer</span>
+    </div>
     <div class="card" id="netWorthCard" role="button" tabindex="0">
-      <div class="section-title" style="margin-top:0;">Net değer</div>
       <div class="hero__value" style="font-size:26px;">${formatMoney(net, { decimals: false })}</div>
       <div class="rows" style="margin-top:10px;">
         ${receiptRow('Yatırım', formatMoney(portfolio.totalValue, { decimals: false }), { valueCls: 'is-positive' })}

@@ -265,6 +265,25 @@ function statusCellHTML(row) {
             data-status-period="${row.periodKey}" data-status="${status.key}" title="${status.hint} · değiştirmek için dokun">${status.label}</button>`;
 }
 
+// Bir kalem bu ay için anlamlı mı? Hesaba göre bir karşılığı varsa ya da
+// daha önce girilmişse gösterilir; yoksa "diğer kalemler"in altında durur.
+function isRelevant(line, summary, slip) {
+  if (slip[line.key] !== undefined && slip[line.key] !== null && slip[line.key] !== '') return true;
+  return Number(line.expectedOf(summary)) > 0;
+}
+
+function lineFieldsHTML(lines, summary, slip) {
+  return lines.map((line) => `
+    <div class="field">
+      <label class="field__label">${line.label} (₺)
+        <span style="font-weight:500;color:var(--text-tertiary);">hesaba göre ${formatMoney(line.expectedOf(summary), { decimals: false })}</span>
+      </label>
+      <input class="input input--amount" type="text" inputmode="decimal" data-line="${line.key}"
+        value="${numValue(slip[line.key])}" placeholder="0" autocomplete="off" />
+    </div>
+  `).join('');
+}
+
 function numValue(value) {
   if (value === undefined || value === null || value === '') return '';
   return String(value).replace('.', ',');
@@ -294,20 +313,28 @@ function openLineSheet(ctx, summary, tableRow) {
           Bordroda ayrı yazan kalemleri gir; girmediklerin karşılaştırmaya katılmaz.
           Ödeme günü beklenen: <b>${formatMoney(summary.payoutTotal, { decimals: false })}</b>
         </p>
-        ${EXTRA_LINES.map((line) => `
-          <div class="field">
-            <label class="field__label">${line.label} (₺)
-              <span style="font-weight:500;color:var(--text-tertiary);">hesaba göre ${formatMoney(line.expectedOf(summary), { decimals: false })}</span>
-            </label>
-            <input class="input input--amount" type="text" inputmode="decimal" data-line="${line.key}"
-              value="${numValue(slip[line.key])}" placeholder="0" autocomplete="off" />
-          </div>
-        `).join('')}
+        ${lineFieldsHTML(EXTRA_LINES.filter((l) => isRelevant(l, summary, slip)), summary, slip)}
+        ${(() => {
+          const rest = EXTRA_LINES.filter((l) => !isRelevant(l, summary, slip));
+          if (rest.length === 0) return '';
+          return `
+            <button class="btn btn--ghost btn--sm" id="showExtraLines" type="button" style="margin-bottom:14px;">
+              + Diğer kalemler (${rest.map((l) => l.label.toLocaleLowerCase('tr-TR')).join(', ')})
+            </button>
+            <div id="extraLines" hidden>${lineFieldsHTML(rest, summary, slip)}</div>`;
+        })()}
         <div class="field" style="margin-bottom:0;">
           <label class="field__label">Not <span style="font-weight:500;color:var(--text-tertiary);">(opsiyonel)</span></label>
           <input class="input" type="text" id="slipNote" value="${(slip.note || '').replace(/"/g, '&quot;')}" placeholder="ör. ikramiye ayrı yattı" />
         </div>
       `;
+
+      // Kullanılmayan kalemler (ör. prim yoksa "Prim") formu kirletmesin —
+      // gerektiğinde tek dokunuşla açılır, kaydetme yolu ikisinde de aynı.
+      bodyEl.querySelector('#showExtraLines')?.addEventListener('click', (e) => {
+        bodyEl.querySelector('#extraLines').hidden = false;
+        e.currentTarget.remove();
+      });
 
       footerEl.querySelector('#saveLinesBtn').addEventListener('click', () => {
         const payload = {};

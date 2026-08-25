@@ -1093,6 +1093,7 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
 .meter__fill--planned { left: 0; background: color-mix(in srgb, var(--accent) 34%, var(--divider)); }
 .meter__fill--overtime { background: linear-gradient(90deg, var(--accent), var(--accent-strong)); }
 .meter__limit { position: absolute; top: -3px; bottom: -3px; width: 2px; border-radius: 1px; background: var(--negative); }
+.status-row__note { font-size: 11px; color: var(--text-tertiary); margin: -2px 0 8px; }
 .status-card__foot { font-size: 10.5px; color: var(--text-tertiary); margin-top: 8px; text-align: right; }
 
 /* ===== Tatil listesi (sheet) ===== */
@@ -1145,6 +1146,9 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* Sabit yükseklik: iki sütunun başlıkları ve altlarındaki kartlar birbirine
+     göre 1-2px kaymasın (kimi başlıkta sağda rakam, kiminde yok). */
+  min-height: 20px;
   margin: 24px 4px 10px;
 }
 .section-header__link {
@@ -1530,11 +1534,13 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
    Ekranlar aynı DOM'u üretir; yerleşimi tamamen CSS belirler. */
 .panes { display: flex; flex-direction: column; gap: 12px; }
 .pane { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-/* Kartlar arası boşluk artık gap ile veriliyor; eski margin kuralını sıfırla. */
-.pane > .card + .card,
-.pane > .stat-strip { margin-top: 0; }
-.pane > .section-title:first-child,
-.pane > .section-header:first-child { margin-top: 0; }
+/* Boşluk artık yalnız gap ile veriliyor; kalan margin kuralları sıfırlanır ki
+   iki sütun aynı hizadan başlasın (kimi kart 12px margin taşıyordu). */
+.pane > * { margin-top: 0; }
+/* Başlık kendi kartına yapışsın, sonraki gruptan ayrılsın. */
+.pane > .section-header { margin-bottom: -6px; }
+.pane > .card + .section-header,
+.pane > .list + .section-header { margin-top: 8px; }
 
 /* Kenar çubuğu markası — yalnızca masaüstünde görünür. */
 .sidebar-brand { display: none; }
