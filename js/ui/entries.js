@@ -40,12 +40,9 @@ export function renderEntries(container, state, ctx) {
   const totalAmount = filtered.reduce((sum, e) => sum + entryAmount(e, settings), 0);
   const filterActive = view.type !== 'all';
 
-  container.innerHTML = `
-    <div class="segmented" id="viewSegmented" style="margin-bottom:12px;">
-      <button class="segmented__item ${view.mode === 'list' ? 'is-active' : ''}" data-view="list" type="button">Liste</button>
-      <button class="segmented__item ${view.mode === 'calendar' ? 'is-active' : ''}" data-view="calendar" type="button">Takvim</button>
-    </div>
+  const days = new Set(filtered.map((e) => e.date)).size;
 
+  container.innerHTML = `
     <div class="period-card">
       <button class="period-card__nav" id="prevPeriod" type="button" aria-label="Önceki ay" ${view.allTime ? 'disabled' : ''}>
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
@@ -59,16 +56,46 @@ export function renderEntries(container, state, ctx) {
       </button>
     </div>
 
-    ${view.mode === 'list' ? `
-      <div class="chips" id="filterChips" style="margin:14px 0;">
+    <div class="toolbar">
+      <div class="chips toolbar__filters" id="filterChips">
         ${TYPE_FILTERS.map((f) => `<button class="quick-chip ${view.type === f.key ? 'is-active' : ''}" data-type="${f.key}" type="button">${f.label}</button>`).join('')}
         <button class="quick-chip ${view.allTime ? 'is-active' : ''}" data-alltime="1" type="button">Tüm zamanlar</button>
       </div>
-      ${listSectionHTML(filtered, settings, view, filterActive)}
-    ` : calendarSectionHTML(filtered, state, view)}
+      <div class="segmented segmented--sm" id="viewSegmented">
+        <button class="segmented__item ${view.mode === 'list' ? 'is-active' : ''}" data-view="list" type="button">Liste</button>
+        <button class="segmented__item ${view.mode === 'calendar' ? 'is-active' : ''}" data-view="calendar" type="button">Takvim</button>
+      </div>
+    </div>
+
+    <div class="stat-strip stat-strip--kpi">
+      <div class="stat-strip__item">
+        <div class="stat-strip__label">Kayıt</div>
+        <div class="stat-strip__value">${filtered.length}</div>
+      </div>
+      <div class="stat-strip__divider"></div>
+      <div class="stat-strip__item">
+        <div class="stat-strip__label">Toplam süre</div>
+        <div class="stat-strip__value">${formatHours(totalHours)}</div>
+      </div>
+      <div class="stat-strip__divider"></div>
+      <div class="stat-strip__item stat-strip__item--lead">
+        <div class="stat-strip__label">Tutar</div>
+        <div class="stat-strip__value">${formatMoney(totalAmount, { decimals: false })}</div>
+      </div>
+      <div class="stat-strip__divider stat-strip__divider--wide"></div>
+      <div class="stat-strip__item stat-strip__item--desktop">
+        <div class="stat-strip__label">Mesai yapılan gün</div>
+        <div class="stat-strip__value">${days}</div>
+      </div>
+    </div>
+
+    ${view.mode === 'list'
+    ? listSectionHTML(filtered, settings, view, filterActive)
+    : calendarSectionHTML(filtered, state, view)}
   `;
 
-  wireCommon(container, ctx, view, `${filtered.length} kayıt · ${formatHours(totalHours)}`);
+  wireCommon(container, ctx, view, `${filtered.length} kayıt · ${formatHours(totalHours)} · ${formatMoney(totalAmount, { decimals: false })}`);
+  wireFilters(container, ctx);
   if (view.mode === 'list') wireList(container, state, ctx, filtered);
   else wireCalendar(container, ctx);
 }
@@ -143,15 +170,17 @@ function wireCommon(container, ctx, view, meta) {
   });
 }
 
-function wireList(container, state, ctx, filtered) {
-  // Filtre değişince sayfa başa döner, yoksa boş sayfada kalınabilir.
+// Filtre değişince sayfa başa döner, yoksa boş sayfada kalınabilir.
+function wireFilters(container, ctx) {
   container.querySelector('#filterChips')?.addEventListener('click', (e) => {
     const typeChip = e.target.closest('[data-type]');
     if (typeChip) { ctx.setEntriesView({ type: typeChip.dataset.type, page: 1 }); return; }
     const allTimeChip = e.target.closest('[data-alltime]');
     if (allTimeChip) ctx.setEntriesView({ allTime: !ctx.entriesView.allTime, page: 1 });
   });
+}
 
+function wireList(container, state, ctx, filtered) {
   container.querySelector('#clearFilter')?.addEventListener('click', () => {
     ctx.setEntriesView({ type: 'all', page: 1 });
   });

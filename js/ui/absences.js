@@ -44,18 +44,34 @@ export function render(container, state, ctx) {
       </button>
       <div class="period-card__body">
         <div class="period-card__label">${periodLabel(periodKey)}</div>
-        <div class="period-card__sub">${ozet}</div>
+        <div class="period-card__sub">${rows.length ? `${rows.length} gün gelinmedi` : 'gelinmeyen gün yok'}</div>
       </div>
       <button class="period-card__nav" id="nextMonth" type="button" aria-label="Sonraki ay">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
       </button>
     </div>
 
-    <p class="field__hint" style="margin:14px 0 10px;">
-      Gelmediğin güne dokun, türünü seç. Yemek ve yol parası beklentisi o gün için düşer — maaşa dokunulmaz.
-    </p>
+    <div class="stat-strip stat-strip--kpi">
+      <div class="stat-strip__item">
+        <div class="stat-strip__label">İş günü</div>
+        <div class="stat-strip__value">${workdays}</div>
+      </div>
+      <div class="stat-strip__divider"></div>
+      <div class="stat-strip__item">
+        <div class="stat-strip__label">Gelinmedi</div>
+        <div class="stat-strip__value ${rows.length ? 'is-negative' : ''}">${rows.length}</div>
+      </div>
+      <div class="stat-strip__divider"></div>
+      <div class="stat-strip__item stat-strip__item--lead">
+        <div class="stat-strip__label">Yan ödeme günü</div>
+        <div class="stat-strip__value">${payDays}</div>
+      </div>
+    </div>
 
     <div class="card cal-card">
+      <div class="cal-legend">
+        ${ABSENCE_KINDS.map((k) => `<span class="cal-legend__item"><i class="dot" style="background:${k.color};"></i>${k.label}</span>`).join('')}
+      </div>
       <div class="cal__head">${WEEKDAY_HEADERS.map((d) => `<span>${d}</span>`).join('')}</div>
       <div class="cal__grid" id="absenceGrid">
         ${cells.map((cell) => {
@@ -72,16 +88,20 @@ export function render(container, state, ctx) {
     ].filter(Boolean).join(' ');
     return `
           <button class="${classes}" type="button" data-date="${cell.iso}" ${cell.inMonth ? '' : 'disabled'}
-                  title="${holiday ? holidayName(cell.iso) : ''}">
+                  ${kind ? `style="--kind:${kind.color};"` : ''}
+                  title="${kind ? kind.label : holiday ? holidayName(cell.iso) : ''}">
             <span class="cal-cell__day">${cell.day}</span>
-            ${kind ? `<span class="cal-cell__badge" style="background:${kind.color};color:#fff;">${kind.short}</span>` : ''}
+            ${kind ? `<span class="cal-cell__mark" style="background:${kind.color};" aria-label="${kind.label}"></span>` : ''}
           </button>`;
   }).join('')}
       </div>
+      <p class="field__hint" style="margin:12px 0 0;">
+        Gelmediğin güne dokun, türünü seç. Yemek ve yol parası beklentisi o gün için düşer — maaşa dokunulmaz.
+      </p>
     </div>
 
     ${rows.length === 0 ? '' : `
-    <div class="section-title">Bu ay</div>
+    <div class="section-header"><span class="section-title" style="margin:0;">Bu ay</span></div>
     <div class="card">
       <div class="rows">
         ${rows.map((a) => {
@@ -95,16 +115,20 @@ export function render(container, state, ctx) {
       </div>
     </div>`}
 
-    <div class="section-title">${year} özeti</div>
+    <div class="section-header"><span class="section-title" style="margin:0;">${year} özeti</span></div>
     <div class="card">
-      <div class="rows">
-        ${ABSENCE_KINDS.map((k) => `
+      ${stats.total === 0
+    ? '<p class="field__hint" style="margin:0;">Bu yıl gelinmeyen gün işaretlenmemiş.</p>'
+    : `
+      <div class="rows rows--receipt">
+        ${ABSENCE_KINDS.filter((k) => stats.counts[k.key] > 0).map((k) => `
           <div class="row">
             <span class="row__label"><span class="dot" style="background:${k.color};"></span>${k.label}</span>
+            <span class="row__leader"></span>
             <span class="row__value">${stats.counts[k.key]} gün</span>
           </div>`).join('')}
-        <div class="row row--total"><span class="row__label">Toplam</span><span class="row__value">${stats.total} gün</span></div>
-      </div>
+        <div class="row row--total"><span class="row__label">Toplam</span><span class="row__leader"></span><span class="row__value">${stats.total} gün</span></div>
+      </div>`}
     </div>
   `;
 

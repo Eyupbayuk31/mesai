@@ -301,13 +301,24 @@ export function openBalance(rows) {
   return { open, compensated, accepted };
 }
 
-/** Kaç dönem tuttu, kaç dönem eksik ödendi? Rapor özeti için. */
+/**
+ * Kaç dönem tuttu, kaç dönem eksik ödendi? Rapor özeti için.
+ * `cells`, verilen dönemlerle aynı sırada durum listesidir
+ * ('match' | 'short' | 'over' | 'empty') — yılın 12 ayını tek şeritte
+ * göstermek için.
+ */
 export function payslipStats(state, summaries, settings) {
-  const stats = { checked: 0, match: 0, short: 0, over: 0, totalDiff: 0 };
-  for (const row of payslipRows(state, summaries, settings)) {
+  const stats = { checked: 0, match: 0, short: 0, over: 0, totalDiff: 0, cells: [] };
+  const rows = payslipRows(state, summaries, settings);
+  const byPeriod = new Map(rows.map((r) => [r.periodKey, r]));
+
+  for (const row of rows) {
     stats.checked += 1;
     stats[row.status] += 1;
     stats.totalDiff += row.diff;
+  }
+  for (const summary of summaries || []) {
+    stats.cells.push(byPeriod.get(summary.periodKey)?.status || 'empty');
   }
   return stats;
 }

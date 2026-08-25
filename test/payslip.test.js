@@ -476,3 +476,19 @@ test('comparePayslip - net maaş girilince tam karşılaştırma yapılır', () 
   assert.equal(res.partial, false);
   assert.equal(res.expected, 38510);
 });
+
+test('payslipStats - cells dönem sırasıyla durum verir', () => {
+  const state = {
+    settings,
+    payslips: [
+      { id: 'p1', periodKey: '2026-02', amount: 45300 },
+      { id: 'p2', periodKey: '2026-03', amount: 45000 },
+    ],
+  };
+  const summaries = ['2026-01', '2026-02', '2026-03', '2026-04']
+    .map((periodKey) => ({ ...summary(), periodKey, payoutTotal: 45300, netTotal: 45300 }));
+  const stats = payslipStats(state, summaries, settings);
+  assert.deepEqual(stats.cells, ['empty', 'match', 'short', 'empty']);
+  assert.equal(stats.checked, 2);
+  assert.equal(stats.cells.length, summaries.length, 'her döneme bir hücre');
+});

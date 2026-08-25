@@ -225,7 +225,9 @@ function boot(profileId) {
     ctx.setTopbarAction(null);
     ctx.setTopbarContext(null);
     // Ekran başına ızgara şeması CSS'te .screen--<sekme> ile seçilir.
-    screenEl.className = `screen screen--${tab}${page ? ' screen--sub' : ''}`;
+    // Alt sayfaya da sınıf verilir: CSS "hangi sayfadayız" bilgisine erişsin
+    // (ör. Mesai kayıtları masaüstünde kart listesi yerine tablo gösterir).
+    screenEl.className = `screen screen--${tab}${page ? ` screen--sub screen--${tab}-${page}` : ''}`;
     renderSidebar(state);
 
     if (tab === 'home') renderHome(screenEl, state, ctx);

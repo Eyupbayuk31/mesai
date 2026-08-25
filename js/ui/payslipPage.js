@@ -74,7 +74,7 @@ export function render(container, state, ctx) {
       </button>
     </div>
 
-    ${balanceHTML(balance, year)}
+    ${heroHTML(balance, stats, year)}
 
     <p class="field__hint" style="margin:14px 0 10px;">
       Her ay cebine geçen net maaşı ve yol parasını yaz. Bordroda çalışılan gün ve
@@ -83,6 +83,7 @@ export function render(container, state, ctx) {
     </p>
 
     <div class="card">
+      <p class="scroll-hint">Tabloyu sağa kaydırarak gün, saat ve fark sütunlarını görebilirsin.</p>
       <div class="year-table__scroll">
         <table class="year-table payslip-table">
           <thead>
@@ -96,7 +97,10 @@ export function render(container, state, ctx) {
           </tbody>
         </table>
       </div>
-      <button class="btn btn--primary" id="savePayslips" type="button" style="margin-top:14px;">Kaydet</button>
+      <div class="table-foot">
+        <span class="table-foot__hint" id="saveHint">Değişiklikler kaydedilene kadar tutulmaz.</span>
+        <button class="btn btn--primary btn--inline" id="savePayslips" type="button">Kaydet</button>
+      </div>
     </div>
 
     ${lineTotals.length === 0 ? '' : `
@@ -120,6 +124,15 @@ export function render(container, state, ctx) {
       </p>
     </div>`}
   `;
+
+  container.querySelector('#yearStrip')?.addEventListener('click', (e) => {
+    const cell = e.target.closest('[data-jump]');
+    if (!cell) return;
+    const input = container.querySelector(`[data-row="${cell.dataset.jump}"][data-field="amount"]`);
+    if (!input) return;
+    input.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    input.focus({ preventScroll: true });
+  });
 
   container.querySelector('#prevYear').addEventListener('click', () => { ctx.payslipYear = year - 1; ctx.rerender(); });
   container.querySelector('#nextYear').addEventListener('click', () => { ctx.payslipYear = year + 1; ctx.rerender(); });
@@ -181,25 +194,72 @@ function saveRows(container, ctx, state, periodKeys) {
   return { saved, cleared };
 }
 
-function balanceHTML(balance, year) {
-  if (balance.open <= 1 && balance.compensated <= 1 && balance.accepted <= 1) return '';
+function heroHTML(balance, stats, year) {
+  const alacak = balance.open > 1;
   const extras = [];
   if (balance.compensated > 1) extras.push(`${formatMoney(balance.compensated, { decimals: false })} sonraki ayda telafi edildi`);
   if (balance.accepted > 1) extras.push(`${formatMoney(balance.accepted, { decimals: false })} kabul edildi`);
+
   return `
-    <div class="card balance-card ${balance.open > 1 ? 'balance-card--open' : 'balance-card--clear'}" style="margin-top:14px;">
-      <div class="balance-card__label">${year} yılından alacağın</div>
-      <div class="balance-card__value">${formatMoney(balance.open, { decimals: false })}</div>
-      ${extras.length ? `<div class="balance-card__sub">${extras.join(' · ')}</div>` : ''}
+    <div class="card income-hero">
+      <div class="income-hero__main">
+        <div class="income-hero__label">${year} yılından alacağın</div>
+        <div class="income-hero__value ${alacak ? 'is-negative' : 'is-positive'}">${formatMoney(balance.open, { decimals: false })}</div>
+        <div class="income-hero__meta">
+          ${stats.checked === 0
+    ? 'Aşağıdaki tabloya bordronu gir, uygulamanın hesabıyla karşılaştıralım.'
+    : alacak
+      ? 'Eksik yatan ve henüz kapanmayan tutar.'
+      : 'Girilen aylarda açık kalan bir eksik yok.'}
+          ${extras.length ? `<br><span style="color:var(--text-tertiary);">${extras.join(' · ')}</span>` : ''}
+        </div>
+        <div class="income-hero__facts">
+          ${fact('Girilen ay', `${stats.checked} / 12`, '')}
+          ${fact('Tuttu', String(stats.match), '')}
+          ${fact('Eksik', String(stats.short), stats.over > 0 ? `${stats.over} ay fazla` : '')}
+        </div>
+      </div>
+      <div class="income-hero__mix">${yearBarsHTML(stats)}</div>
+    </div>`;
+}
+
+// Yılın 12 ayı tek bakışta: hangi ay girilmiş, tutmuş mu?
+function yearBarsHTML(stats) {
+  return `
+    <div class="year-strip">
+      <div class="year-strip__label">Aylar</div>
+      <div class="year-strip__cells" id="yearStrip">
+        ${MONTHS.map((m, i) => `
+          <button class="year-cell year-cell--${stats.cells[i]}" type="button" data-jump="${i}" title="${m}: ${CELL_TITLE[stats.cells[i]]}">
+            <span>${i + 1}</span>
+          </button>`).join('')}
+      </div>
+      <div class="year-strip__legend">
+        <span><i class="year-dot year-dot--match"></i>tuttu</span>
+        <span><i class="year-dot year-dot--short"></i>eksik</span>
+        <span><i class="year-dot year-dot--over"></i>fazla</span>
+        <span><i class="year-dot year-dot--empty"></i>girilmedi</span>
+      </div>
+    </div>`;
+}
+
+const CELL_TITLE = { match: 'tuttu', short: 'eksik', over: 'fazla', empty: 'girilmedi' };
+
+function fact(label, value, sub) {
+  return `
+    <div class="income-fact">
+      <div class="income-fact__label">${label}</div>
+      <div class="income-fact__value">${value}</div>
+      ${sub ? `<div class="income-fact__sub">${sub}</div>` : ''}
     </div>`;
 }
 
 function statsLine(stats) {
   if (stats.checked === 0) return 'henüz bordro girilmedi';
-  const parts = [`${stats.checked} ay girildi`, `${stats.match} tuttu`];
+  const parts = [`${stats.checked} ay girildi`];
+  if (stats.match > 0) parts.push(`${stats.match} tuttu`);
   if (stats.short > 0) parts.push(`${stats.short} eksik`);
   if (stats.over > 0) parts.push(`${stats.over} fazla`);
-  if (Math.abs(stats.totalDiff) > 1) parts.push(`toplam ${stats.totalDiff > 0 ? '+' : '−'}${formatMoney(Math.abs(stats.totalDiff), { decimals: false })}`);
   return parts.join(' · ');
 }
 
@@ -215,10 +275,10 @@ function rowHTML(state, summary, index, thisPeriod, byPeriod, settings) {
     <tr class="${future ? 'is-future' : ''}">
       <td>${MONTHS[index]}</td>
       <td><input class="input input--amount payslip-cell" type="text" inputmode="decimal"
-            data-row="${index}" data-field="amount" value="${numValue(slip.amount)}" placeholder="0" autocomplete="off" /></td>
+            data-row="${index}" data-field="amount" value="${numValue(slip.amount)}" placeholder="—" autocomplete="off" /></td>
       <td><input class="input input--amount payslip-cell" type="text" inputmode="decimal"
             data-row="${index}" data-field="transport" value="${numValue(slip.transport)}"
-            placeholder="${summary.transportPay > 0 ? Math.round(summary.transportPay) : '0'}" autocomplete="off" /></td>
+            placeholder="${summary.transportPay > 0 ? Math.round(summary.transportPay) : '—'}" autocomplete="off" /></td>
       <td>
         <input class="input input--amount payslip-cell payslip-cell--narrow" type="text" inputmode="decimal"
             data-row="${index}" data-field="days" value="${numValue(slip.days)}"
@@ -228,7 +288,7 @@ function rowHTML(state, summary, index, thisPeriod, byPeriod, settings) {
       <td>
         <input class="input input--amount payslip-cell payslip-cell--narrow" type="text" inputmode="decimal"
             data-row="${index}" data-field="hours" value="${numValue(slip.hours)}"
-            placeholder="${summary.totalHours > 0 ? formatHours(summary.totalHours).replace(' sa', '') : '0'}" autocomplete="off" aria-label="${MONTHS[index]} bordroda yazan mesai saati" />
+            placeholder="${summary.totalHours > 0 ? formatHours(summary.totalHours).replace(' sa', '') : '—'}" autocomplete="off" aria-label="${MONTHS[index]} bordroda yazan mesai saati" />
         ${hrs && hrs.status !== 'match'
     ? `<div class="payslip-sub ${hrs.diff < 0 ? 'is-negative' : 'is-positive'}">${hrs.diff > 0 ? '+' : '−'}${formatHours(Math.abs(hrs.diff))}</div>`
     : hrs ? '<div class="payslip-sub is-positive">saat tuttu</div>' : ''}
