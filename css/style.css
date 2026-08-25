@@ -1202,7 +1202,13 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
 
 /* ===== Profil seçim ekranı ===== */
 .profile-picker {
-  min-height: 100dvh;
+  /* Ekranın tamamına yerleşir: .app masaüstünde kenar çubuğu için sol boşluk
+     taşıyor, normal akışta kalsaydı içerik o kadar sağa kayardı. */
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overflow-y: auto;
+  background: var(--bg);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1254,7 +1260,12 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
 }
 
 .profile-picker__foot {
-  margin-top: 40px;
+  /* Akışta dursaydı marka+kart bloğunu yukarı iterdi; asıl içerik tam
+     ortada kalsın diye alta sabitlenir. */
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(22px + var(--safe-bottom));
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-tertiary);
