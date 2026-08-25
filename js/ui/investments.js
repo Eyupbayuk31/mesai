@@ -27,7 +27,10 @@ export function render(container, state, ctx) {
         ${investChartHTML(state)}
       </div>
       <div class="pane">
-        <div class="section-title">Varlıklar</div>
+        <div class="section-header">
+          <span class="section-title" style="margin:0;">Varlıklar</span>
+          ${summary.assetCount > 1 ? '<button class="section-header__link" id="updatePricesBtn" type="button">Fiyatları güncelle ›</button>' : ''}
+        </div>
         <div class="asset-list">${summary.positions.map(assetCardHTML).join('')}</div>
         ${addButtonHTML()}
       </div>
@@ -36,6 +39,10 @@ export function render(container, state, ctx) {
   `;
 
   container.querySelector('#addAssetBtn')?.addEventListener('click', () => openAssetFormSheet(ctx, null));
+  container.querySelector('#bulkPriceBtn')?.addEventListener('click', () => openBulkPriceSheet(ctx));
+  container.querySelector('#updatePricesBtn')?.addEventListener('click', () => openBulkPriceSheet(ctx));
+  container.querySelector('#allLotsBtn')?.addEventListener('click', () => ctx.navigate({ tab: 'invest', page: 'lots' }));
+  container.querySelector('#exportLotsBtn')?.addEventListener('click', () => exportLots(ctx, state));
 
   container.querySelector('#recentLotList')?.addEventListener('click', (e) => {
     const row = e.target.closest('[data-lot]');
@@ -85,7 +92,7 @@ function dashboardHTML(summary) {
           <b class="${up ? 'is-positive' : 'is-negative'}">${sign}${formatMoney(Math.abs(summary.totalProfit), { decimals: false })}
           (%${formatPct(Math.abs(summary.profitPct))})</b>
         </div>
-        ${warn ? `<div class="hero__note">${warn}</div>` : ''}
+        ${warn ? `<button class="hero__note hero__note--action" id="bulkPriceBtn" type="button">${warn} · fiyatları güncelle →</button>` : ''}
       </div>
 
       <div class="donut-block">
@@ -540,7 +547,7 @@ function openAssetSheet(ctx, asset) {
     return `
             <button class="lot-table__row" type="button" data-lot="${l.id}">
               <span class="lot-table__date">${formatDayMonth(l.date)}</span>
-              <span class="lot-table__detail">${formatQuantity(l.quantity, asset)} ${escapeHTML(unit)} × ${formatMoney(l.unitCost)}</span>
+              <span class="lot-table__detail">${formatQuantity(l.quantity, asset)} ${escapeHTML(unit)} × ${formatMoney(l.unitCost)}${l.note ? `<span class="lot-row__note">${escapeHTML(l.note)}</span>` : ''}</span>
               <span class="lot-table__total">${formatMoney(total, { decimals: false })}</span>
               <span class="lot-table__pl ${lotProfit === null || lotFlat ? 'lot-table__pl--flat' : lotUp ? 'is-positive' : 'is-negative'}">
                 ${lotProfit === null ? '' : lotFlat ? '—' : `${lotUp ? '+' : '−'}${formatMoney(Math.abs(lotProfit), { decimals: false })}`}
@@ -707,18 +714,24 @@ function investChartHTML(state) {
 
 function recentLotsHTML(state) {
   const rows = recentLots(state, 8);
+  const total = (state.investments || []).length;
   if (rows.length === 0) return '';
   return `
     <div class="section-header">
       <span class="section-title" style="margin:0;">Son alımlar</span>
-      <span class="section-header__note">satıra dokun, düzenle</span>
+      ${total > rows.length
+    ? `<button class="section-header__link" id="allLotsBtn" type="button">Tümünü gör (${total}) ›</button>`
+    : '<span class="section-header__note">satıra dokun, düzenle</span>'}
     </div>
     <div class="card">
       <div class="lot-list" id="recentLotList">
         ${rows.map((l) => `
           <button class="lot-row lot-row--wide" type="button" data-lot="${l.id}">
             <span class="lot-row__date">${formatDayMonth(l.date)}</span>
-            <span class="lot-row__asset"><span class="asset__dot" style="background:${l.color || 'var(--accent)'}"></span>${escapeHTML(l.label)}</span>
+            <span class="lot-row__asset">
+              <span class="asset__dot" style="background:${l.color || 'var(--accent)'}"></span>
+              <span class="lot-row__name">${escapeHTML(l.label)}${l.note ? `<span class="lot-row__note">${escapeHTML(l.note)}</span>` : ''}</span>
+            </span>
             <span class="lot-row__qty">${formatQuantity(l.quantity, l.asset)} ${escapeHTML(l.unit)} × ${formatMoney(l.unitCost)}</span>
             <span class="lot-row__total">${formatMoney(l.total, { decimals: false })}</span>
           </button>
@@ -783,4 +796,128 @@ function bestWorstHTML(summary) {
       </div>
     </div>
   `;
+}
+
+// --- Toplu fiyat güncelleme ----------------------------------------------
+//
+// Beş varlık için beş ayrı sayfa açmak yerine hepsi tek listede. Yalnızca
+// değiştirilen alanlar kaydedilir; boş bırakılan varlığın fiyatına dokunulmaz.
+
+function openBulkPriceSheet(ctx) {
+  const assets = ctx.store.getState().assets || [];
+  if (assets.length === 0) return;
+
+  openSheet({
+    title: 'Fiyatları güncelle',
+    footerHTML: '<button class="btn btn--primary" id="savePricesBtn" type="button">Kaydet</button>',
+    build(bodyEl, footerEl) {
+      bodyEl.innerHTML = `
+        <p class="field__hint" style="margin:-4px 0 14px;">Değişenleri yaz, gerisine dokunma.</p>
+        <div class="bulk-price">
+          ${assets.map((a) => {
+    const days = a.priceUpdatedAt ? Math.floor((Date.now() - Date.parse(a.priceUpdatedAt)) / 86400000) : null;
+    return `
+            <label class="bulk-price__row">
+              <span class="bulk-price__name">
+                <span class="asset__dot" style="background:${a.color || 'var(--accent)'}"></span>
+                <span>
+                  ${escapeHTML(a.label)}
+                  <span class="bulk-price__meta">1 ${escapeHTML(unitOf(a))}${days === null ? ' · fiyat yok' : days === 0 ? ' · bugün' : ` · ${days} gün önce`}</span>
+                </span>
+              </span>
+              <input class="input input--amount bulk-price__input" type="text" inputmode="decimal"
+                data-asset="${a.id}" value="${a.currentPrice ? String(a.currentPrice).replace('.', ',') : ''}" placeholder="0" autocomplete="off" />
+            </label>`;
+  }).join('')}
+        </div>
+      `;
+
+      footerEl.querySelector('#savePricesBtn').addEventListener('click', () => {
+        let changed = 0;
+        for (const input of bodyEl.querySelectorAll('[data-asset]')) {
+          const asset = assets.find((a) => a.id === input.dataset.asset);
+          const price = parseAmount(input.value);
+          if (!asset || price <= 0) continue;
+          if (Number(asset.currentPrice) === price) continue;
+          ctx.store.setAssetPrice(asset.id, price);
+          changed += 1;
+        }
+        showToast(changed > 0 ? `${changed} fiyat güncellendi` : 'Değişiklik yok');
+        closeSheet();
+      });
+    },
+  });
+}
+
+// --- Tüm alımlar (alt sayfa) ---------------------------------------------
+
+export const lotsPageTitle = 'Tüm alımlar';
+
+export function renderLotsPage(container, state, ctx) {
+  const rows = recentLots(state, 0);
+  const assets = state.assets || [];
+  const filter = ctx.investFilter || 'all';
+  const shown = filter === 'all' ? rows : rows.filter((l) => l.assetId === filter);
+  const total = shown.reduce((sum, l) => sum + l.total, 0);
+
+  container.innerHTML = `
+    <div class="period-card">
+      <div style="width:34px;"></div>
+      <div class="period-card__body">
+        <div class="period-card__label">${shown.length} alım</div>
+        <div class="period-card__sub">toplam ${formatMoney(total, { decimals: false })}</div>
+      </div>
+      <div style="width:34px;"></div>
+    </div>
+
+    ${assets.length > 1 ? `
+    <div class="chips" id="lotFilter" style="margin:14px 0;">
+      <button class="quick-chip ${filter === 'all' ? 'is-active' : ''}" type="button" data-filter="all">Hepsi</button>
+      ${assets.map((a) => `<button class="quick-chip ${filter === a.id ? 'is-active' : ''}" type="button" data-filter="${a.id}">${escapeHTML(a.label)}</button>`).join('')}
+    </div>` : ''}
+
+    <div class="card">
+      <div class="lot-list" id="allLotList">
+        ${shown.length === 0 ? '<div class="field__hint">Bu varlıkta alım yok.</div>' : shown.map((l) => `
+          <button class="lot-row lot-row--wide" type="button" data-lot="${l.id}">
+            <span class="lot-row__date">${formatDayMonth(l.date)}</span>
+            <span class="lot-row__asset">
+              <span class="asset__dot" style="background:${l.color || 'var(--accent)'}"></span>
+              <span class="lot-row__name">${escapeHTML(l.label)}${l.note ? `<span class="lot-row__note">${escapeHTML(l.note)}</span>` : ''}</span>
+            </span>
+            <span class="lot-row__qty">${formatQuantity(l.quantity, l.asset)} ${escapeHTML(l.unit)} × ${formatMoney(l.unitCost)}</span>
+            <span class="lot-row__total">${formatMoney(l.total, { decimals: false })}</span>
+          </button>
+        `).join('')}
+      </div>
+    </div>
+
+    <button class="btn btn--secondary btn--sm" id="exportLotsBtn" type="button" style="margin-top:14px;">CSV indir</button>
+  `;
+
+  container.querySelector('#lotFilter')?.addEventListener('click', (e) => {
+    const chip = e.target.closest('[data-filter]');
+    if (!chip) return;
+    ctx.investFilter = chip.dataset.filter;
+    ctx.rerender();
+  });
+
+  container.querySelector('#allLotList').addEventListener('click', (e) => {
+    const row = e.target.closest('[data-lot]');
+    if (!row) return;
+    const lot = (state.investments || []).find((l) => l.id === row.dataset.lot);
+    const asset = assets.find((a) => a.id === lot?.assetId);
+    if (lot && asset) openLotSheet(ctx, asset, lot);
+  });
+
+  container.querySelector('#exportLotsBtn').addEventListener('click', () => exportLots(ctx, state));
+}
+
+async function exportLots(ctx, state) {
+  const { downloadFile, csvForInvestments } = await import('./exportUtils.js');
+  const rows = recentLots(state, 0);
+  if (rows.length === 0) { showToast('Dışa aktarılacak alım yok'); return; }
+  const stamp = todayISO();
+  downloadFile(`yatirim-alimlari-${stamp}.csv`, '﻿' + csvForInvestments(rows), 'text/csv;charset=utf-8');
+  showToast('CSV indirildi');
 }

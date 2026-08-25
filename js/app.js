@@ -155,6 +155,7 @@ function boot(profileId) {
   // Alt sayfa başlığı: Ayarlar'ın kendi sayfaları + Bütçe → Borçlar.
   function subPageTitle(tab, page) {
     if (tab === 'budget' && page === 'loans') return loansPage.title;
+    if (tab === 'invest' && page === 'lots') return investPage.lotsPageTitle;
     return settingsPageTitle(page);
   }
 
@@ -217,7 +218,10 @@ function boot(profileId) {
       if (page === 'loans') loansPage.render(screenEl, state, ctx);
       else renderBudget(screenEl, state, ctx);
     }
-    else if (tab === 'invest') investPage.render(screenEl, state, ctx);
+    else if (tab === 'invest') {
+      if (page === 'lots') investPage.renderLotsPage(screenEl, state, ctx);
+      else investPage.render(screenEl, state, ctx);
+    }
     else if (tab === 'settings') renderSettingsRoute(screenEl, state, ctx, page);
     else renderUnknownTab(tab);
   }

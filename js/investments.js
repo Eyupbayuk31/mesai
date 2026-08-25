@@ -337,21 +337,25 @@ export function monthlyInvestBuckets(state, periodKey, months = 6) {
   return buckets;
 }
 
-/** Tüm varlıkların son alımları, yeniden eskiye (varlık adıyla birlikte). */
+/**
+ * Tüm varlıkların alımları, yeniden eskiye (varlık bilgisiyle birlikte).
+ * limit = 0 → hepsi (tam liste ve dışa aktarım için).
+ */
 export function recentLots(state, limit = 8) {
   const labels = new Map((state?.assets || []).map((a) => [a.id, a]));
   return (state?.investments || [])
     .filter((l) => l && labels.has(l.assetId))
     .slice()
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
-    .slice(0, limit)
+    .slice(0, limit > 0 ? limit : undefined)
     .map((l) => ({
       ...l,
       label: labels.get(l.assetId).label,
       unit: unitOf(labels.get(l.assetId)),
       color: labels.get(l.assetId).color,
-      asset: labels.get(l.assetId),
+      kindLabel: kindOf(labels.get(l.assetId)).label,
       total: lotTotal(l),
+      asset: labels.get(l.assetId),
     }));
 }
 

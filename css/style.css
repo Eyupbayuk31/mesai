@@ -2820,3 +2820,54 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
   .profile-card__key { opacity: 1; }
   .profile-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: var(--shadow-md, var(--shadow-sm)); }
 }
+
+/* Toplu fiyat güncelleme */
+.bulk-price { display: flex; flex-direction: column; }
+.bulk-price__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--divider);
+}
+.bulk-price__row:last-child { border-bottom: 0; }
+.bulk-price__name {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 650;
+}
+.bulk-price__meta {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+.bulk-price__input { width: 132px; flex: 0 0 auto; text-align: right; }
+
+/* Alım notu: adın altında ikinci satır */
+.lot-row__name { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.lot-row__note,
+.lot-table__detail .lot-row__note {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Panodaki uyarı artık düğme */
+.hero__note--action {
+  display: inline-block;
+  color: var(--accent);
+  font-weight: 700;
+  text-align: center;
+}
+.hero__note--action:active { opacity: 0.7; }

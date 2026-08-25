@@ -462,3 +462,24 @@ test('priceUpdateFromLot - geçmiş tarihli alımın damgası o gün, güncel fi
   const fiyatsiz = priceUpdateFromLot({ id: 'a2' }, { date: '2026-06-10', quantity: 1, unitCost: 7100 }, nowMs);
   assert.equal(fiyatsiz.priceUpdatedAt, '2026-06-10T12:00:00.000Z');
 });
+
+test('recentLots - limit 0 hepsini döner, alım bilgisi tam', () => {
+  const rows = recentLots(state, 0);
+  assert.equal(rows.length, state.investments.length);
+  assert.equal(rows[0].kindLabel, 'Hisse');
+  assert.equal(rows[0].total, 28000);
+});
+
+test('csvForInvestments - tarih sırasıyla, tutar hesaplanmış, noktalı virgüllü', async () => {
+  const { csvForInvestments } = await import('../js/ui/exportUtils.js');
+  const csv = csvForInvestments([
+    { date: '2026-08-20', label: 'Gram altın', kindLabel: 'Altın', quantity: 5, unit: 'gram', unitCost: 7900, note: '' },
+    { date: '2026-06-10', label: 'Gram altın', kindLabel: 'Altın', quantity: 1, unit: 'gram', unitCost: 7100, note: 'kuyumcu; nakit' },
+  ]);
+  const lines = csv.split('\n');
+  assert.equal(lines[0], 'Tarih;Varlik;Tur;Miktar;Birim;Birim fiyat;Tutar;Not');
+  assert.ok(lines[1].startsWith('2026-06-10'), 'eskiden yeniye sıralanır');
+  assert.ok(lines[1].includes('7100,00;7100,00'), 'birim fiyat ve tutar');
+  assert.ok(lines[1].includes('"kuyumcu; nakit"'), 'noktalı virgüllü not tırnaklanır');
+  assert.ok(lines[2].includes('39500,00'), '5 × 7.900');
+});

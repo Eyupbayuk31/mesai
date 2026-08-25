@@ -33,6 +33,33 @@ export function csvForEntries(entries, settings, entryAmountFn) {
   return lines.join('\n');
 }
 
+/**
+ * Yatırım alımlarının CSV'si. Excel'e açılıp kuyumcu/banka dökümüyle
+ * karşılaştırılabilsin diye tutar da hesaplanmış olarak yazılır.
+ *
+ * @param {Array} lots recentLots() gibi varlık bilgisi eklenmiş alımlar
+ */
+export function csvForInvestments(lots) {
+  const header = ['Tarih', 'Varlik', 'Tur', 'Miktar', 'Birim', 'Birim fiyat', 'Tutar', 'Not'];
+  const lines = [header.join(';')];
+  const sorted = [...lots].sort((a, b) => (a.date < b.date ? -1 : 1));
+  for (const l of sorted) {
+    const quantity = Number(l.quantity) || 0;
+    const unitCost = Number(l.unitCost) || 0;
+    lines.push([
+      l.date,
+      csvEscape(l.label || ''),
+      csvEscape(l.kindLabel || ''),
+      String(quantity).replace('.', ','),
+      csvEscape(l.unit || ''),
+      unitCost.toFixed(2).replace('.', ','),
+      (quantity * unitCost).toFixed(2).replace('.', ','),
+      csvEscape(l.note || ''),
+    ].join(';'));
+  }
+  return lines.join('\n');
+}
+
 function csvEscape(value) {
   if (value.includes(';') || value.includes('"') || value.includes('\n')) {
     return `"${value.replace(/"/g, '""')}"`;
