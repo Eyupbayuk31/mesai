@@ -86,3 +86,21 @@ export function parseLocaleNumber(input) {
 export function todayISO() {
   return toISODate(new Date());
 }
+
+// Türkçe bulunma hâli eki: "Ağustos" → "Ağustos'ta", "Eylül" → "Eylül'de".
+// Ay adlarını elle yazmak yerine ünlü uyumu + ünsüz benzeşmesi uygulanır.
+const BACK_VOWELS = 'aıou';
+const VOICELESS = 'fstkçşhp';
+
+export function locative(word) {
+  const text = String(word || '');
+  if (!text) return text;
+  const lower = text.toLocaleLowerCase('tr-TR');
+  let lastVowel = '';
+  for (const ch of lower) {
+    if ('aeıioöuü'.includes(ch)) lastVowel = ch;
+  }
+  const vowel = BACK_VOWELS.includes(lastVowel) ? 'a' : 'e';
+  const consonant = VOICELESS.includes(lower.slice(-1)) ? 't' : 'd';
+  return `${text}'${consonant}${vowel}`;
+}

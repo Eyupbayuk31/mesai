@@ -6,7 +6,7 @@ import { periodLabel, payDateForPeriod } from '../period.js';
 import { budgetSummary, yearFinance, rangeFinance } from '../budget.js';
 import { portfolioSummary, investedInPeriod, formatQuantity, unitOf, kindOf } from '../investments.js';
 import { yearsWithData, compareYears, realChange, categoryTrend } from '../analysis.js';
-import { payslipRows, payslipStats, payslipLineTotals } from '../payslip.js';
+import { payslipRows, payslipStats, payslipLineTotals, openBalance } from '../payslip.js';
 
 const TYPE_LABEL = { normal: 'Normal', weekend: 'Hafta tatili', holiday: 'Resmi tatil' };
 const TYPE_COLOR = { normal: '#3b6fe0', weekend: '#a24fd6', holiday: '#e2483d' };
@@ -717,7 +717,15 @@ function payslipSection(state, periodKeys, heading) {
 
   const stats = payslipStats(state, summaries);
   const totals = payslipLineTotals(state, summaries);
+  const balance = openBalance(rows);
   const lineOf = (row, key) => row.lines.find((l) => l.key === key);
+  const withHours = rows.some((r) => r.hours);
+  const hoursCell = (row) => {
+    if (!row.hours) return '<span style="color:#9aa3b0;">—</span>';
+    if (row.hours.status === 'match') return '<span style="color:#12946b;">tuttu</span>';
+    const d = row.hours.diff;
+    return `<span style="color:${d < 0 ? '#c9402f' : '#12946b'};">${d > 0 ? '+' : '−'}${formatHours(Math.abs(d))}</span>`;
+  };
   const diffCell = (diff) => (Math.abs(diff) <= 1
     ? '<span style="color:#12946b;">tuttu</span>'
     : `<span style="color:${diff < 0 ? '#c9402f' : '#12946b'};">${diff > 0 ? '+' : '−'}${formatMoney(Math.abs(diff), { decimals: false })}</span>`);
@@ -728,7 +736,7 @@ function payslipSection(state, periodKeys, heading) {
       Kontrol edilen <b>${stats.checked} ay</b> · ${stats.match} tuttu${stats.short > 0 ? ` · ${stats.short} eksik` : ''}${stats.over > 0 ? ` · ${stats.over} fazla` : ''}${Math.abs(stats.totalDiff) > 1 ? ` · toplam ${stats.totalDiff > 0 ? '+' : '−'}${formatMoney(Math.abs(stats.totalDiff), { decimals: false })}` : ''}
     </p>
     <table class="table">
-      <thead><tr><th>Ay</th><th class="num">Beklenen</th><th class="num">Net maaş</th><th class="num">Yol</th><th class="num">Toplam</th><th class="num">Fark</th></tr></thead>
+      <thead><tr><th>Ay</th><th class="num">Beklenen</th><th class="num">Net maaş</th><th class="num">Yol</th><th class="num">Toplam</th>${withHours ? '<th class="num">Saat farkı</th>' : ''}<th class="num">Fark</th></tr></thead>
       <tbody>
         ${rows.map((r) => {
     const maas = lineOf(r, 'amount');
@@ -740,11 +748,14 @@ function payslipSection(state, periodKeys, heading) {
             <td class="num">${maas ? formatMoney(maas.paid, { decimals: false }) : '—'}</td>
             <td class="num">${yol ? formatMoney(yol.paid, { decimals: false }) : '—'}</td>
             <td class="num">${formatMoney(r.paid, { decimals: false })}</td>
-            <td class="num">${diffCell(r.diff)}</td>
+            ${withHours ? `<td class="num">${hoursCell(r)}</td>` : ''}
+            <td class="num">${diffCell(r.diff)}${r.compensatedBy ? `<div style="font-size:10.5px;color:#12946b;">↩ ${periodLabel(r.compensatedBy)} telafi</div>` : ''}</td>
           </tr>`;
   }).join('')}
       </tbody>
     </table>
+
+    ${balanceLine(balance)}
 
     <h2>Kalem bazında toplam</h2>
     <table class="table">
@@ -761,4 +772,16 @@ function payslipSection(state, periodKeys, heading) {
       </tbody>
     </table>
   `;
+}
+
+// Yılın açık alacağı: telafi edilen ve kabul edilen düşülmüş.
+function balanceLine(balance) {
+  if (balance.open <= 1 && balance.compensated <= 1 && balance.accepted <= 1) return '';
+  const extras = [];
+  if (balance.compensated > 1) extras.push(`${formatMoney(balance.compensated, { decimals: false })} sonraki ayda telafi edildi`);
+  if (balance.accepted > 1) extras.push(`${formatMoney(balance.accepted, { decimals: false })} kabul edildi`);
+  return `
+    <p style="font-size:13px;margin:10px 0 0;">
+      <b>Açık alacağın: <span style="color:${balance.open > 1 ? '#c9402f' : '#12946b'};">${formatMoney(balance.open, { decimals: false })}</span></b>${extras.length ? ` <span style="color:#5b6472;">· ${extras.join(' · ')}</span>` : ''}
+    </p>`;
 }

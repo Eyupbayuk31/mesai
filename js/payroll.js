@@ -2,6 +2,7 @@
 
 import { isDateInPeriod, periodKeyFromISODate } from './period.js';
 import { isHoliday } from './holidays.js';
+import { absenceDatesInPeriod } from './absences.js';
 
 /**
  * Bir dönemde geçerli olan maaş.
@@ -197,14 +198,17 @@ const EMPTY_TYPE_TOTALS = () => ({
 
 // Dönemin günlük yan ödeme (yemek/yol parası) gün sayısı: haftalık programda
 // çalışılan günler; resmi tatile denk gelenler düşülür (o gün kart yüklenmez).
-export function workdaysForPeriod(periodKey, settings) {
+export function workdaysForPeriod(periodKey, settings, absenceDates = []) {
   const [y, m] = periodKey.split('-').map(Number);
   const daysInMonth = new Date(y, m, 0).getDate();
+  // Gelinmeyen gün zaten iş günü değilse (hafta sonu, resmi tatil) iki kez
+  // düşülmesin diye küme olarak tutulur ve yalnız iş gününde sayılır.
+  const absent = new Set(absenceDates || []);
   let count = 0;
   for (let day = 1; day <= daysInMonth; day++) {
     const iso = `${periodKey}-${String(day).padStart(2, '0')}`;
     const dow = new Date(y, m - 1, day).getDay();
-    if (settings.weeklySchedule?.[dow]?.works && !isHoliday(iso)) count++;
+    if (settings.weeklySchedule?.[dow]?.works && !isHoliday(iso) && !absent.has(iso)) count++;
   }
   return count;
 }
@@ -244,7 +248,7 @@ export function periodSummary(state, periodKey) {
   const mealAllowance = Number(settings.mealAllowance) || 0;
   const transportAllowance = Number(settings.transportAllowance) || 0;
   const allowanceDays = (mealAllowance > 0 || transportAllowance > 0)
-    ? workdaysForPeriod(periodKey, settings)
+    ? workdaysForPeriod(periodKey, settings, absenceDatesInPeriod(state, periodKey))
     : 0;
   const mealPay = allowanceDays * mealAllowance;
   const transportPay = allowanceDays * transportAllowance;

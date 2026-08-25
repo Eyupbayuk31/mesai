@@ -49,9 +49,62 @@ function normalizeSlip(slip) {
  * @param {object} summary periodSummary() çıktısı
  * @param {object|number} slip bordro kaydı (veya eski kullanım: yatan tutar)
  */
-export function comparePayslip(summary, slip) {
+/**
+ * Bordroda yazan çalışılan gün, uygulamanınkinden farklıysa yemek/yol
+ * beklentisi ona göre düzeltilir. İzin işaretlenmemişse uygulama fazla gün
+ * sayar ve boş yere "eksik" der; bordrodaki gün bunu kesin olarak bilir.
+ */
+export function adjustForDays(summary, days, settings) {
+  if (!Number.isFinite(days) || days < 0 || !summary) return summary;
+  const appDays = num(summary.allowanceDays);
+  if (appDays === days) return summary;
+
+  const meal = num(settings?.mealAllowance ?? summary.mealAllowance);
+  const transport = num(settings?.transportAllowance ?? summary.transportAllowance);
+  const mealPay = days * meal;
+  const transportPay = days * transport;
+  const delta = (mealPay - num(summary.mealPay)) + (transportPay - num(summary.transportPay));
+
+  return {
+    ...summary,
+    allowanceDays: days,
+    mealPay,
+    transportPay,
+    earnedTotal: num(summary.earnedTotal) + delta,
+    payoutTotal: num(summary.payoutTotal) + delta,
+    netTotal: num(summary.netTotal) + delta,
+    daysAdjusted: true,
+    appAllowanceDays: appDays,
+  };
+}
+
+/**
+ * Bordroda yazan mesai saati ile uygulamanın saydığı saat tutuyor mu?
+ * Uygulamanın varlık sebebi bu: para farkının SEBEBİ çoğu zaman saattir.
+ */
+export function hoursCheck(summary, slip, settings) {
   const record = normalizeSlip(slip);
-  const expectedTotal = num(summary?.payoutTotal ?? summary?.netTotal);
+  if (!entered(record, 'hours')) return null;
+
+  const appHours = num(summary?.totalHours);
+  const slipHours = num(record.hours);
+  const diff = slipHours - appHours;
+  const rate = hourlyRate(settings, summary?.periodKey);
+  const multiplier = settings?.multipliers?.normal ?? 1.5;
+
+  return {
+    appHours,
+    slipHours,
+    diff,
+    money: diff * rate * multiplier,
+    status: Math.abs(diff) < 0.01 ? 'match' : diff < 0 ? 'short' : 'over',
+  };
+}
+
+export function comparePayslip(summary, slip, settings) {
+  const record = normalizeSlip(slip);
+  const adjusted = entered(record, 'days') ? adjustForDays(summary, num(record.days), settings) : summary;
+  const payoutExpected = num(adjusted?.payoutTotal ?? adjusted?.netTotal);
 
   // Ayrıca girilen kalemler: hem ödenene hem "kalan"ın hesabına girer.
   const lines = [];
@@ -61,7 +114,7 @@ export function comparePayslip(summary, slip) {
   for (const line of EXTRA_LINES) {
     if (!entered(record, line.key)) continue;
     const paid = num(record[line.key]);
-    const expected = num(line.expectedOf(summary));
+    const expected = num(line.expectedOf(adjusted));
     const sign = line.negative ? -1 : 1;
     extrasPaid += sign * paid;
     extrasExpected += sign * expected;
@@ -75,9 +128,12 @@ export function comparePayslip(summary, slip) {
     });
   }
 
-  const salaryExpected = expectedTotal - extrasExpected;
+  // Net maaş girilmemişse yalnız girilen kalemler kıyaslanır. Aksi halde
+  // "yol parasını yazdım" diyen biri bütün maaşı eksik yatmış gibi görürdü.
+  const salaryEntered = entered(record, 'amount');
+  const salaryExpected = payoutExpected - extrasExpected;
   const salaryPaid = num(record.amount);
-  if (entered(record, 'amount')) {
+  if (salaryEntered) {
     lines.unshift({
       key: 'amount',
       label: 'Net maaş',
@@ -87,14 +143,26 @@ export function comparePayslip(summary, slip) {
     });
   }
 
-  const paid = salaryPaid + extrasPaid;
+  const expectedTotal = salaryEntered ? payoutExpected : extrasExpected;
+  const paid = salaryEntered ? salaryPaid + extrasPaid : extrasPaid;
   const diff = paid - expectedTotal;
 
   let status = 'match';
   if (diff < -TOLERANCE) status = 'short';
   else if (diff > TOLERANCE) status = 'over';
 
-  return { expected: expectedTotal, paid, diff, status, lines, tolerance: TOLERANCE };
+  const dayCheck = entered(record, 'days')
+    ? { appDays: num(summary?.allowanceDays), slipDays: num(record.days), diff: num(record.days) - num(summary?.allowanceDays) }
+    : null;
+
+  return {
+    expected: expectedTotal, paid, diff, status, lines,
+    partial: !salaryEntered,
+    payoutExpected,
+    dayCheck,
+    hours: hoursCheck(summary, record, settings),
+    tolerance: TOLERANCE,
+  };
 }
 
 /**
@@ -178,21 +246,65 @@ export function hasPayslipData(slip) {
  * Bordro girilmiş dönemlerin karşılaştırma satırları, yeniden eskiye.
  * Girilmemiş dönemler listeye hiç girmez — boş ay listeyi kirletmesin.
  */
-export function payslipRows(state, summaries) {
+export function payslipRows(state, summaries, settings) {
+  const config = settings || state?.settings;
   const rows = [];
   for (const summary of summaries) {
     const slip = payslipFor(state, summary.periodKey);
     if (!slip || !hasPayslipData(slip)) continue;
-    const cmp = comparePayslip(summary, slip);
-    rows.push({ periodKey: summary.periodKey, slip, ...cmp });
+    const cmp = comparePayslip(summary, slip, config);
+    rows.push({ periodKey: summary.periodKey, slip, status2: slip.status || 'acik', ...cmp });
   }
-  return rows.sort((a, b) => (a.periodKey < b.periodKey ? 1 : -1));
+  return matchCompensations(rows.sort((a, b) => (a.periodKey < b.periodKey ? 1 : -1)));
+}
+
+/**
+ * Bir ayın eksiği sonraki bir ayda fazla olarak yatmışsa eşleştirir.
+ * Bir fazla yalnız bir eksiği kapatır — aynı para iki kez sayılmaz.
+ * Satırlar yeniden eskiye sıralı gelir; eşleşme kronolojik yapılır.
+ */
+export function matchCompensations(rows) {
+  const chrono = [...rows].sort((a, b) => (a.periodKey < b.periodKey ? -1 : 1));
+  const used = new Set();
+
+  for (const short of chrono) {
+    if (short.diff >= -TOLERANCE) continue;
+    const missing = -short.diff;
+    const match = chrono.find((later) => (
+      later.periodKey > short.periodKey
+      && !used.has(later.periodKey)
+      && later.diff > TOLERANCE
+      && Math.abs(later.diff - missing) <= TOLERANCE
+    ));
+    if (!match) continue;
+    used.add(match.periodKey);
+    short.compensatedBy = match.periodKey;
+    match.compensates = short.periodKey;
+  }
+  return rows;
+}
+
+/**
+ * Yılın açık alacağı: telafi edilenler ve "kabul" işaretliler düşülür.
+ */
+export function openBalance(rows) {
+  let open = 0;
+  let compensated = 0;
+  let accepted = 0;
+  for (const row of rows) {
+    if (row.diff >= -TOLERANCE) continue;
+    const missing = -row.diff;
+    if (row.compensatedBy) compensated += missing;
+    else if (row.status2 === 'kabul') accepted += missing;
+    else open += missing;
+  }
+  return { open, compensated, accepted };
 }
 
 /** Kaç dönem tuttu, kaç dönem eksik ödendi? Rapor özeti için. */
-export function payslipStats(state, summaries) {
+export function payslipStats(state, summaries, settings) {
   const stats = { checked: 0, match: 0, short: 0, over: 0, totalDiff: 0 };
-  for (const row of payslipRows(state, summaries)) {
+  for (const row of payslipRows(state, summaries, settings)) {
     stats.checked += 1;
     stats[row.status] += 1;
     stats.totalDiff += row.diff;
@@ -204,9 +316,9 @@ export function payslipStats(state, summaries) {
  * Kalem bazında yıl toplamı: hangi kalem sistematik eksik yatıyor?
  * Yalnız girilmiş kalemler sayılır.
  */
-export function payslipLineTotals(state, summaries) {
+export function payslipLineTotals(state, summaries, settings) {
   const totals = new Map();
-  for (const row of payslipRows(state, summaries)) {
+  for (const row of payslipRows(state, summaries, settings)) {
     for (const line of row.lines) {
       const t = totals.get(line.key) || { key: line.key, label: line.label, expected: 0, paid: 0, months: 0 };
       t.expected += line.expected;

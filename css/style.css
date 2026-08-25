@@ -429,8 +429,9 @@ ul { margin: 0; padding: 0; list-style: none; }
   padding: 11px 0;
 }
 .row + .row { border-top: 1px solid var(--divider); }
-.row__label { font-size: 14.5px; color: var(--text-secondary); display: flex; align-items: center; gap: 8px; }
-.row__value { font-family: var(--font-mono); font-size: 14.5px; font-weight: 600; }
+.row__label { font-size: 14.5px; color: var(--text-secondary); display: flex; align-items: center; gap: 8px; min-width: 0; }
+
+.row__value { font-family: var(--font-mono); font-size: 14.5px; font-weight: 600; flex-shrink: 0; }
 .row--total .row__label, .row--total .row__value { font-size: 15px; font-weight: 750; color: var(--text); }
 .row--subtotal .row__label, .row--subtotal .row__value { font-weight: 700; color: var(--text); }
 .row__value.is-positive { color: var(--positive); }
@@ -438,7 +439,11 @@ ul { margin: 0; padding: 0; list-style: none; }
 
 /* Fiş satırları: satır çizgisi yok, noktalı kılavuz; toplam çift çizgiyle damgalı */
 .rows--receipt .row { border-top: 0; padding: 9px 0; align-items: baseline; gap: 10px; }
-.rows--receipt .row__label { font-size: 14px; flex-shrink: 0; }
+/* Etiket gerekirse kısalır (nokta kılavuzu 16px'e iner), tutar asla taşmaz:
+   "Net maaş · 2 ay · beklenen ₺107.115" gibi uzun etiketler sayfayı yana
+   kaydırıyordu. */
+.rows--receipt .row__label { font-size: 14px; flex-shrink: 1; min-width: 0; }
+.rows--receipt .row__label > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rows--receipt .row__value { font-size: 14.5px; flex-shrink: 0; }
 .rows--receipt .row--subtotal .row__label,
 .rows--receipt .row--subtotal .row__value { font-weight: 600; }
@@ -1089,7 +1094,9 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
 .cal__head,
 .cal__grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  /* minmax(0,1fr): hücredeki rozet metni ("Rapor") sütunu şişirmesin —
+     dar telefonda takvim yatay taşıyordu. */
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 4px;
 }
 .cal__head {
@@ -1106,6 +1113,7 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
 }
 .cal-cell {
   aspect-ratio: 1 / 1.15;
+  overflow: hidden;
   border-radius: 9px;
   display: flex;
   flex-direction: column;
@@ -1135,6 +1143,12 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
 .cal-cell__badge--normal { background: var(--type-normal-soft); color: var(--type-normal); }
 .cal-cell__badge--weekend { background: var(--type-weekend-soft); color: var(--type-weekend); }
 .cal-cell__badge--holiday { background: var(--type-holiday-soft); color: var(--type-holiday); }
+
+/* Gelinmeyen gün: renk kutunun kendisinde, rozet türü söyler. */
+.cal-cell--absent { background: var(--bg-elevated); box-shadow: inset 0 0 0 1px var(--card-border); }
+.cal-cell--absent .cal-cell__day { color: var(--text); font-weight: 700; }
+.cal-cell--absent .cal-cell__badge { font-size: 8.5px; letter-spacing: -0.01em; max-width: 100%; overflow: hidden; }
+.cal-cell[disabled] { pointer-events: none; }
 
 /* ===== Ayarlar kategori menüsü ===== */
 .card--menu { padding: 6px 8px; }
@@ -2539,6 +2553,11 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
 .year-table { min-width: 520px; }
 @media (min-width: 900px) { .year-table { min-width: 0; } }
 
+/* Takvim geniş ekranda sayfa boyunca esneyip devasa hücrelere dönüşmesin. */
+@media (min-width: 900px) {
+  .cal, .cal-card { max-width: 640px; margin-inline: auto; }
+}
+
 /* Son alımlar: tarih · varlık · miktar × fiyat · tutar */
 .lot-row--wide {
   grid-template-columns: minmax(58px, auto) minmax(0, 1fr) minmax(0, auto) auto;
@@ -2984,7 +3003,7 @@ body.has-drawer { overflow: hidden; }
 }
 
 /* Bordro tablosu */
-.payslip-table { min-width: 560px; }
+.payslip-table { min-width: 790px; }
 .payslip-table td { padding: 6px 4px; }
 .payslip-cell {
   width: 104px;
@@ -3004,3 +3023,80 @@ body.has-drawer { overflow: hidden; }
 }
 .payslip-detail:active { background: var(--divider); }
 .payslip-line__diff { margin-left: 8px; font-size: 12px; font-weight: 700; }
+
+/* Gün ve Saat sütunları: iki haneli sayı, dar kutu yeter. */
+.payslip-cell--narrow { width: 68px; }
+
+/* Hücrenin altındaki küçük fark satırı: "−1,5 sa", "−2 gün". */
+.payslip-sub {
+  margin-top: 3px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+/* Eksiğin akıbeti. Dokununca sıradaki duruma geçer. */
+.slip-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 750;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+  background: var(--divider);
+  color: var(--text-secondary);
+}
+button.slip-badge { cursor: pointer; }
+button.slip-badge:active { transform: scale(0.96); }
+.slip-badge--acik { background: var(--negative-soft); color: var(--negative); }
+.slip-badge--soruldu { background: var(--accent-soft); color: var(--accent); }
+.slip-badge--duzeltildi { background: var(--positive-soft); color: var(--positive); }
+.slip-badge--kabul { background: var(--divider); color: var(--text-tertiary); }
+.slip-badge--done { background: var(--positive-soft); color: var(--positive); }
+
+/* Yılın açık alacağı: sayfanın en tepesinde, tek rakam. */
+.balance-card { text-align: center; }
+.balance-card__label { font-size: 12px; font-weight: 650; color: var(--text-tertiary); }
+.balance-card__value {
+  margin-top: 4px;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.balance-card--open .balance-card__value { color: var(--negative); }
+.balance-card--clear .balance-card__value { color: var(--positive); }
+.balance-card__sub { margin-top: 6px; font-size: 12px; color: var(--text-secondary); }
+
+/* Bordro kartındaki saat ve gün kontrolü: farkın SEBEBİ burada yazar. */
+.slip-checks {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--divider);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.slip-check {
+  display: flex;
+  gap: 10px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+.slip-check__key {
+  flex: 0 0 74px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+}
+.slip-check b { font-weight: 750; }
+.slip-check__link {
+  display: inline;
+  padding: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--accent-strong);
+  background: none;
+}

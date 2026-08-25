@@ -156,6 +156,7 @@ export function renderIncome(container, state, ctx) {
     showToast('Bordro kaydı silindi');
   });
   container.querySelector('#payslipYearBtn')?.addEventListener('click', () => ctx.navigate({ tab: 'income', page: 'payslip' }));
+  container.querySelector('#absenceLink')?.addEventListener('click', () => ctx.navigate({ tab: 'income', page: 'absences' }));
 }
 
 // --- Bordro karşılaştırma kartı ------------------------------------------
@@ -188,7 +189,7 @@ function payslipCardHTML(state, summary, settings) {
     `;
   }
 
-  const cmp = comparePayslip(summary, slip);
+  const cmp = comparePayslip(summary, slip, settings);
   const explanation = explainPayslipDiff(summary, cmp, settings);
   const durum = {
     match: { cls: 'is-positive', baslik: 'Tutuyor ✓', not: 'Ödenen tutar hesapla aynı.' },
@@ -220,11 +221,38 @@ function payslipCardHTML(state, summary, settings) {
         <div class="row"><span class="row__label">Hesaba göre</span><span class="row__leader"></span><span class="row__value">${formatMoney(cmp.expected)}</span></div>
         <div class="row row--total"><span class="row__label">Fark</span><span class="row__leader"></span><span class="row__value ${durum.cls}">${Math.abs(cmp.diff) <= 1 ? '—' : (cmp.diff > 0 ? '+' : '−') + formatMoney(Math.abs(cmp.diff))}</span></div>
       </div>
+      ${checksHTML(cmp)}
       <p class="field__hint" style="margin:12px 0 0;">
         ${durum.not}${explanation ? ` <b style="color:var(--text-secondary);">${explanation}</b>` : ''}
       </p>
     </div>
   `;
+}
+
+// Saat ve gün kontrolü: para farkının SEBEBİ. Bordroda yazmıyorsa satır çıkmaz.
+function checksHTML(cmp) {
+  const parts = [];
+
+  if (cmp.hours) {
+    const h = cmp.hours;
+    const cls = h.status === 'match' ? 'is-positive' : h.status === 'short' ? 'is-negative' : 'is-positive';
+    const text = h.status === 'match'
+      ? `Saat tutuyor: ${formatHours(h.appHours)}.`
+      : `Sen ${formatHours(h.appHours)} girmişsin, bordroda ${formatHours(h.slipHours)} yazıyor — <b class="${cls}">${formatHours(Math.abs(h.diff))} ${h.diff < 0 ? 'sayılmamış' : 'fazla sayılmış'}</b>${Math.abs(h.money) >= 1 ? ` (≈${formatMoney(Math.abs(h.money), { decimals: false })})` : ''}.`;
+    parts.push(`<div class="slip-check ${cls}"><span class="slip-check__key">Mesai saati</span><span>${text}</span></div>`);
+  }
+
+  if (cmp.dayCheck) {
+    const d = cmp.dayCheck;
+    const same = d.diff === 0;
+    const cls = same ? 'is-positive' : 'is-negative';
+    const text = same
+      ? `Çalışılan gün tutuyor: ${d.slipDays} gün.`
+      : `Uygulamaya göre ${d.appDays} gün, bordroda ${d.slipDays} gün — <b class="${cls}">${Math.abs(d.diff)} gün ${d.diff < 0 ? 'eksik' : 'fazla'}</b>. ${d.diff < 0 ? 'İzin ya da rapor işaretledin mi?' : ''}`;
+    parts.push(`<div class="slip-check ${cls}"><span class="slip-check__key">Çalışılan gün</span><span>${text}${same ? '' : ' <button class="slip-check__link" id="absenceLink" type="button">Gelinmeyen günler ›</button>'}</span></div>`);
+  }
+
+  return parts.length ? `<div class="slip-checks">${parts.join('')}</div>` : '';
 }
 
 // --- Ek kalem sayfası -----------------------------------------------------

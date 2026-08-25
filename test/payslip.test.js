@@ -351,3 +351,128 @@ test('PAYSLIP_LINES - net maaş kalan, kesinti negatif', () => {
   assert.equal(PAYSLIP_LINES[0].remainder, true);
   assert.equal(PAYSLIP_LINES.find((l) => l.key === 'deduction').negative, true);
 });
+
+// --- Gün, saat ve telafi -------------------------------------------------
+
+import { adjustForDays, hoursCheck, matchCompensations, openBalance } from '../js/payslip.js';
+
+const gunlu = (over = {}) => ({
+  periodKey: '2026-08',
+  payoutTotal: 38510, netTotal: 38510, earnedTotal: 38510,
+  overtimePay: 3650, mealPay: 5500, transportPay: 1430,
+  mealAllowance: 250, transportAllowance: 65, allowanceDays: 22,
+  totalHours: 14, bonuses: 0, advances: 0, deductions: 0,
+  ...over,
+});
+
+const gunSettings = { ...settings, mealAllowance: 250, transportAllowance: 65 };
+
+test('adjustForDays - bordroda az gün varsa yemek/yol beklentisi düşer', () => {
+  const s = gunlu();
+  const a = adjustForDays(s, 20, gunSettings);
+  assert.equal(a.allowanceDays, 20);
+  assert.equal(a.mealPay, 20 * 250);
+  assert.equal(a.transportPay, 20 * 65);
+  // 2 gün × (250 + 65) = 630 düşer
+  assert.equal(a.payoutTotal, 38510 - 630);
+  assert.equal(a.appAllowanceDays, 22);
+});
+
+test('adjustForDays - gün aynıysa özet aynen döner', () => {
+  const s = gunlu();
+  assert.equal(adjustForDays(s, 22, gunSettings), s);
+  assert.equal(adjustForDays(s, NaN, gunSettings), s);
+});
+
+test('comparePayslip - bordrodaki gün beklentiyi düzeltir, boş alarm kalkar', () => {
+  const s = gunlu();
+  // Şirket 20 gün üzerinden ödemiş; gün girilmezse 630 eksik görünür.
+  const gunsuz = comparePayslip(s, { amount: 38510 - 630 }, gunSettings);
+  assert.equal(gunsuz.status, 'short');
+  assert.equal(gunsuz.diff, -630);
+
+  const gunlu2 = comparePayslip(s, { amount: 38510 - 630, days: 20 }, gunSettings);
+  assert.equal(gunlu2.status, 'match', 'gün girilince tutmalı');
+  assert.equal(gunlu2.dayCheck.appDays, 22);
+  assert.equal(gunlu2.dayCheck.slipDays, 20);
+  assert.equal(gunlu2.dayCheck.diff, -2);
+});
+
+test('hoursCheck - bordroda az saat yazıyorsa yakalar', () => {
+  const s = gunlu();
+  const res = hoursCheck(s, { hours: 12.5 }, gunSettings);
+  assert.equal(res.appHours, 14);
+  assert.equal(res.slipHours, 12.5);
+  assert.equal(res.diff, -1.5);
+  assert.equal(res.status, 'short');
+  // saat ücreti 45000/225 = 200, çarpan 1,5 → saati 300 → 1,5 saat = 450
+  assert.equal(res.money, -450);
+});
+
+test('hoursCheck - saat girilmemişse null, eşitse match', () => {
+  assert.equal(hoursCheck(gunlu(), {}, gunSettings), null);
+  assert.equal(hoursCheck(gunlu(), { hours: 14 }, gunSettings).status, 'match');
+  assert.equal(hoursCheck(gunlu(), { hours: 16 }, gunSettings).status, 'over');
+});
+
+test('matchCompensations - sonraki ayın fazlası eksiği kapatır', () => {
+  const rows = matchCompensations([
+    { periodKey: '2026-08', diff: 180 },
+    { periodKey: '2026-07', diff: -180 },
+  ]);
+  const temmuz = rows.find((r) => r.periodKey === '2026-07');
+  const agustos = rows.find((r) => r.periodKey === '2026-08');
+  assert.equal(temmuz.compensatedBy, '2026-08');
+  assert.equal(agustos.compensates, '2026-07');
+});
+
+test('matchCompensations - önceki ayın fazlası eşleşmez', () => {
+  const rows = matchCompensations([
+    { periodKey: '2026-08', diff: -180 },
+    { periodKey: '2026-07', diff: 180 },
+  ]);
+  assert.equal(rows.find((r) => r.periodKey === '2026-08').compensatedBy, undefined);
+});
+
+test('matchCompensations - bir fazla yalnız bir eksiği kapatır', () => {
+  const rows = matchCompensations([
+    { periodKey: '2026-06', diff: -180 },
+    { periodKey: '2026-07', diff: -180 },
+    { periodKey: '2026-08', diff: 180 },
+  ]);
+  assert.equal(rows.find((r) => r.periodKey === '2026-06').compensatedBy, '2026-08');
+  assert.equal(rows.find((r) => r.periodKey === '2026-07').compensatedBy, undefined);
+});
+
+test('openBalance - telafi ve kabul edilenler alacaktan düşer', () => {
+  const rows = matchCompensations([
+    { periodKey: '2026-05', diff: -500, status2: 'acik' },
+    { periodKey: '2026-06', diff: -300, status2: 'kabul' },
+    { periodKey: '2026-07', diff: -180, status2: 'acik' },
+    { periodKey: '2026-08', diff: 180, status2: 'acik' },
+  ]);
+  const bakiye = openBalance(rows);
+  assert.equal(bakiye.compensated, 180, 'temmuz ağustosta kapandı');
+  assert.equal(bakiye.accepted, 300);
+  assert.equal(bakiye.open, 500, 'yalnız mayıs açık kalır');
+});
+
+test('comparePayslip - net maaş girilmemişse yalnız girilen kalemler kıyaslanır', () => {
+  const s = detay();
+  const res = comparePayslip(s, { transport: 1430 });
+  assert.equal(res.partial, true, 'kısmi karşılaştırma');
+  assert.equal(res.expected, 1430, 'beklenen yalnız yol parası');
+  assert.equal(res.paid, 1430);
+  assert.equal(res.status, 'match', 'maaş yazılmadı diye "eksik" denmez');
+  assert.equal(res.payoutExpected, 38510, 'ayın tam beklentisi yine de taşınır');
+
+  const eksik = comparePayslip(s, { transport: 1250 });
+  assert.equal(eksik.status, 'short');
+  assert.equal(eksik.diff, -180);
+});
+
+test('comparePayslip - net maaş girilince tam karşılaştırma yapılır', () => {
+  const res = comparePayslip(detay(), { amount: 37080, transport: 1430 });
+  assert.equal(res.partial, false);
+  assert.equal(res.expected, 38510);
+});

@@ -1,8 +1,8 @@
 import { periodLabel, shiftPeriod, currentPeriodKey } from '../period.js';
 import { mountPeriodNav } from './periodNav.js';
-import { payslipRows, payslipStats, payslipLineTotals } from '../payslip.js';
+import { payslipRows, payslipStats, payslipLineTotals, openBalance } from '../payslip.js';
 import { periodSummary, yearSummary, entryAmount } from '../payroll.js';
-import { formatMoney, formatHours, formatMonthYear } from '../format.js';
+import { formatMoney, formatHours, formatMonthYear, locative } from '../format.js';
 import { showToast } from './toast.js';
 import { openSheet, closeSheet } from './sheet.js';
 import { downloadFile, csvForEntries } from './exportUtils.js';
@@ -459,8 +459,10 @@ function payslipSectionHTML(state, year) {
 
   const stats = payslipStats(state, summaries);
   const totals = payslipLineTotals(state, summaries);
+  const balance = openBalance(rows);
   const diffCls = stats.totalDiff < -1 ? 'is-negative' : stats.totalDiff > 1 ? 'is-positive' : '';
   const lineOf = (row, key) => row.lines.find((l) => l.key === key);
+  const withHours = rows.some((r) => r.hours);
 
   return `
     <div class="section-header">
@@ -476,7 +478,7 @@ function payslipSectionHTML(state, year) {
       <div class="year-table__scroll">
         <table class="year-table">
           <thead>
-            <tr><th>Ay</th><th>Beklenen</th><th>Net maaş</th><th>Yol</th><th>Toplam</th><th>Fark</th></tr>
+            <tr><th>Ay</th><th>Beklenen</th><th>Net maaş</th><th>Yol</th><th>Toplam</th>${withHours ? '<th>Saat farkı</th>' : ''}<th>Fark</th></tr>
           </thead>
           <tbody>
             ${rows.map((r) => {
@@ -489,14 +491,18 @@ function payslipSectionHTML(state, year) {
                 <td>${maas ? formatMoney(maas.paid, { decimals: false }) : '—'}</td>
                 <td>${yol ? formatMoney(yol.paid, { decimals: false }) : '—'}</td>
                 <td>${formatMoney(r.paid, { decimals: false })}</td>
+                ${withHours ? `<td>${hoursDiffCell(r)}</td>` : ''}
                 <td>${Math.abs(r.diff) <= 1
       ? '<span class="is-positive">tuttu ✓</span>'
-      : `<span class="${r.diff < 0 ? 'is-negative' : 'is-positive'}">${r.diff > 0 ? '+' : '−'}${formatMoney(Math.abs(r.diff), { decimals: false })}</span>`}</td>
+      : `<span class="${r.diff < 0 ? 'is-negative' : 'is-positive'}">${r.diff > 0 ? '+' : '−'}${formatMoney(Math.abs(r.diff), { decimals: false })}</span>`}
+                  ${r.compensatedBy ? `<div class="payslip-sub is-positive">↩ ${locative(formatMonthYear(r.compensatedBy).replace(` ${year}`, ''))} telafi</div>` : ''}</td>
               </tr>`;
   }).join('')}
           </tbody>
         </table>
       </div>
+
+      ${balanceSummaryHTML(balance)}
 
       <div class="section-title" style="font-size:12px;margin-top:18px;">Kalem bazında yıl toplamı</div>
       <div class="rows rows--receipt">
@@ -514,4 +520,29 @@ function payslipSectionHTML(state, year) {
       </div>
     </div>
   `;
+}
+
+// Saat farkı hücresi: bordroda saat yazmayan ay için "—".
+function hoursDiffCell(row) {
+  if (!row.hours) return '<span style="color:var(--text-tertiary);">—</span>';
+  const h = row.hours;
+  if (h.status === 'match') return '<span class="is-positive">tuttu ✓</span>';
+  return `<span class="${h.diff < 0 ? 'is-negative' : 'is-positive'}">${h.diff > 0 ? '+' : '−'}${formatHours(Math.abs(h.diff))}</span>`;
+}
+
+// Yılın alacak özeti: telafi edilen ve kabul edilen düşülmüş açık tutar.
+function balanceSummaryHTML(balance) {
+  if (balance.open <= 1 && balance.compensated <= 1 && balance.accepted <= 1) return '';
+  const extras = [];
+  if (balance.compensated > 1) extras.push(`${formatMoney(balance.compensated, { decimals: false })} telafi edildi`);
+  if (balance.accepted > 1) extras.push(`${formatMoney(balance.accepted, { decimals: false })} kabul edildi`);
+  return `
+    <div class="rows rows--receipt" style="margin-top:14px;">
+      <div class="row row--total">
+        <span class="row__label">Açık alacağın</span>
+        <span class="row__leader"></span>
+        <span class="row__value ${balance.open > 1 ? 'is-negative' : 'is-positive'}">${formatMoney(balance.open, { decimals: false })}</span>
+      </div>
+      ${extras.length ? `<div class="row"><span class="row__label" style="font-size:12.5px;color:var(--text-tertiary);">${extras.join(' · ')}</span></div>` : ''}
+    </div>`;
 }

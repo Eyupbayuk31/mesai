@@ -17,6 +17,7 @@ export const NAV_TREE = [
     children: [
       { page: 'entries', label: 'Mesai kayıtları' },
       { page: 'payslip', label: 'Bordro' },
+      { page: 'absences', label: 'Gelinmeyen günler' },
     ],
   },
   {

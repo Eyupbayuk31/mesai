@@ -63,6 +63,9 @@ function defaultState() {
     // Krediler/borçlar: her ay taksiti bütçeden düşer, ödendikçe borç azalır.
     // [{id, label, amount, installments, firstPeriod, day, category, active}]
     loans: [],
+    // Gelinmeyen günler: [{id, date, kind, note}] — yalnız yan ödeme gününü
+    // etkiler (yemek/yol), maaş hesabına karışmaz.
+    absences: [],
     // Yatırım varlıkları: [{id, label, unit, color, currentPrice, priceUpdatedAt}]
     // Güncel fiyat ayarlarda değil burada durur — ayarlar toptan LWW ile
     // senkronlanıyor, telefonda güncellenen fiyat PC'nin ayar yazımıyla
@@ -83,10 +86,10 @@ function defaultState() {
   };
 }
 
-const TOMBSTONE_COLLECTIONS = ['entries', 'expenses', 'recurring', 'adjustments', 'loans', 'payslips', 'assets', 'investments'];
+const TOMBSTONE_COLLECTIONS = ['entries', 'expenses', 'recurring', 'adjustments', 'loans', 'payslips', 'assets', 'investments', 'absences'];
 
 function emptyTombstones() {
-  return { entries: {}, expenses: {}, recurring: {}, adjustments: {}, loans: {}, payslips: {}, assets: {}, investments: {} };
+  return { entries: {}, expenses: {}, recurring: {}, adjustments: {}, loans: {}, payslips: {}, assets: {}, investments: {}, absences: {} };
 }
 
 function normalizeTombstones(raw) {
@@ -140,6 +143,7 @@ function migrate(raw) {
   state.payslips = Array.isArray(raw?.payslips) ? raw.payslips : [];
   state.assets = migrateAssets(Array.isArray(raw?.assets) ? raw.assets : [], Number(raw?.schemaVersion) || 1);
   state.investments = Array.isArray(raw?.investments) ? raw.investments : [];
+  state.absences = Array.isArray(raw?.absences) ? raw.absences : [];
   state.tombstones = normalizeTombstones(raw?.tombstones);
   state.settingsUpdatedAt = typeof raw?.settingsUpdatedAt === 'string' ? raw.settingsUpdatedAt : null;
   state.schemaVersion = SCHEMA_VERSION;
@@ -424,6 +428,27 @@ export class Store {
 
   removeInvestment(id) {
     this.update((s) => withTombstone(s, 'investments', id));
+  }
+
+  // Bir güne yalnız tek kayıt: aynı gün tekrar işaretlenirse üzerine yazılır.
+  setAbsence(dateISO, kind, note = '') {
+    const now = new Date().toISOString();
+    this.update((s) => {
+      const existing = s.absences.find((a) => a.date === dateISO);
+      if (existing) {
+        return { ...s, absences: s.absences.map((a) => (a.date === dateISO ? { ...a, kind, note, updatedAt: now } : a)) };
+      }
+      const record = {
+        id: `ab_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+        date: dateISO, kind, note, createdAt: now, updatedAt: now,
+      };
+      return { ...s, absences: [...s.absences, record] };
+    });
+  }
+
+  removeAbsence(dateISO) {
+    const found = this.state.absences.find((a) => a.date === dateISO);
+    if (found) this.update((s) => withTombstone(s, 'absences', found.id));
   }
 
   replaceAll(newState) {
