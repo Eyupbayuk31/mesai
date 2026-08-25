@@ -73,6 +73,11 @@
   --info: #2f63c4;
   --info-soft: rgba(47, 99, 196, 0.11);
 
+  /* Gelir bileşimi çubuğu */
+  --mix-salary: #d97d0d;
+  --mix-overtime: #2f63c4;
+  --mix-allowance: #1a7f57;
+  --mix-extra: #8447b5;
   --type-normal: #2f63c4;
   --type-normal-soft: rgba(47, 99, 196, 0.11);
   --type-weekend: #8447b5;
@@ -122,6 +127,10 @@
     --negative-soft: rgba(240, 101, 82, 0.13);
     --info: #7ba4f0;
     --info-soft: rgba(123, 164, 240, 0.13);
+    --mix-salary: #f0a33a;
+    --mix-overtime: #7ba4f0;
+    --mix-allowance: #4cc38a;
+    --mix-extra: #b98ae0;
     --type-normal: #7ba4f0;
     --type-normal-soft: rgba(123, 164, 240, 0.13);
     --type-weekend: #c39aee;
@@ -157,6 +166,10 @@
   --negative-soft: rgba(240, 101, 82, 0.13);
   --info: #7ba4f0;
   --info-soft: rgba(123, 164, 240, 0.13);
+  --mix-salary: #f0a33a;
+  --mix-overtime: #7ba4f0;
+  --mix-allowance: #4cc38a;
+  --mix-extra: #b98ae0;
   --type-normal: #7ba4f0;
   --type-normal-soft: rgba(123, 164, 240, 0.13);
   --type-weekend: #c39aee;
@@ -444,6 +457,21 @@ ul { margin: 0; padding: 0; list-style: none; }
    kaydırıyordu. */
 .rows--receipt .row__label { font-size: 14px; flex-shrink: 1; min-width: 0; }
 .rows--receipt .row__label > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row__detail { color: var(--text-tertiary); font-size: 12.5px; }
+/* Dar telefonda açıklama kırpılmak yerine kendi satırına insin. */
+@media (max-width: 560px) {
+  .rows--receipt .row__label { flex-wrap: wrap; }
+  .rows--receipt .row__label .row__detail { flex: 1 0 100%; padding-left: 17px; }
+  /* Etiket ikiye bölününce noktalı kılavuz havada kalıyordu; o satırlarda
+     tutar zaten sağa yaslı, kılavuza gerek yok. */
+  .rows--receipt .row--detail .row__leader { display: none; }
+  .rows--receipt .row--detail { align-items: flex-start; }
+  .rows--receipt .row--detail .row__value { padding-top: 1px; }
+}
+
+/* Toplamın altındaki kırılım satırları: girintili ve daha soluk. */
+.rows--receipt .row--sub .row__label { padding-left: 14px; font-size: 13px; }
+.rows--receipt .row--sub .row__value { font-size: 13px; opacity: 0.85; }
 .rows--receipt .row__value { font-size: 14.5px; flex-shrink: 0; }
 .rows--receipt .row--subtotal .row__label,
 .rows--receipt .row--subtotal .row__value { font-weight: 600; }
@@ -699,6 +727,168 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
   color: var(--text-secondary);
 }
 .quick-chip:active { background: var(--accent-soft); color: var(--accent-strong); border-color: transparent; }
+
+/* ===== Gelir sayfası ===== */
+/* Kahraman: solda ödeme günü yatacak rakam, sağda gelirin bileşimi. */
+.income-hero { padding: 0; overflow: hidden; }
+.income-hero__main { padding: 22px 20px 18px; }
+.income-hero__label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--text-tertiary);
+}
+.income-hero__value {
+  margin-top: 6px;
+  font-size: 38px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-strong);
+}
+.income-hero__meta { margin-top: 6px; font-size: 13px; color: var(--text-secondary); }
+.income-hero__meta b { font-weight: 700; color: var(--text); }
+
+.income-hero__facts {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--divider);
+}
+.income-fact { flex: 1; min-width: 0; }
+.income-fact__label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-tertiary);
+}
+.income-fact__value {
+  margin-top: 3px;
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.income-fact__sub { font-size: 11px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.income-hero__mix {
+  padding: 18px 20px 20px;
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--divider);
+}
+.income-hero__empty { font-size: 13px; color: var(--text-tertiary); }
+
+/* Yığın çubuk: tek bakışta "paranın ne kadarı neyden". */
+.mix__bar {
+  display: flex;
+  height: 12px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--divider);
+}
+.mix__seg { display: block; height: 100%; }
+.mix__seg + .mix__seg { border-left: 2px solid var(--bg-elevated); }
+.mix__legend {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.mix__item { display: flex; align-items: center; gap: 9px; font-size: 13px; }
+.mix__name { flex: 1; min-width: 0; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mix__pct {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  min-width: 34px;
+  text-align: right;
+}
+.mix__amount {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 650;
+  min-width: 74px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Ek kalem düğmeleri: çip yerine ikonlu, dokunması kolay dört kutu. */
+.adj-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.adj-btn {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  border: 1px solid var(--card-border);
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--text);
+  text-align: left;
+}
+.adj-btn:active { transform: scale(0.98); }
+.adj-btn__icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.adj-btn--income .adj-btn__icon, .adj-btn--bonus .adj-btn__icon { background: var(--positive-soft); color: var(--positive); }
+.adj-btn--advance .adj-btn__icon, .adj-btn--deduction .adj-btn__icon { background: var(--negative-soft); color: var(--negative); }
+
+.adj-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: var(--divider);
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+.adj-tag--bonus, .adj-tag--income { background: var(--positive-soft); color: var(--positive); }
+.adj-tag--advance, .adj-tag--deduction { background: var(--negative-soft); color: var(--negative); }
+
+@media (min-width: 900px) {
+  /* Geniş ekranda kahraman iki sütuna açılır: rakam solda, bileşim sağda. */
+  .income-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 0.95fr);
+    align-items: stretch;
+  }
+  .income-hero__main { padding: 26px 26px 24px; }
+  .income-hero__value { font-size: 44px; }
+  .income-hero__mix {
+    border-top: 0;
+    border-left: 1px solid var(--divider);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 26px;
+  }
+  .adj-actions { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
 
 /* Live preview strip */
 .preview-strip {

@@ -3,10 +3,11 @@
 // Eskiden bu kartlar Rapor'un içindeydi; Rapor artık geriye dönük analiz
 // sayfası, dönemin kendi hesabı buraya taşındı.
 
-import { periodLabel, shiftPeriod, currentPeriodKey } from '../period.js';
+import { periodLabel, shiftPeriod, currentPeriodKey, payDateForPeriod, daysUntilPay } from '../period.js';
 import { periodSummary } from '../payroll.js';
 import { comparePayslip, explainPayslipDiff, payslipFor, hasPayslipData } from '../payslip.js';
-import { formatMoney, formatHours, parseLocaleNumber } from '../format.js';
+import { formatMoney, formatHours, formatFullDate, toISODate, parseLocaleNumber } from '../format.js';
+import { incomeMix } from '../incomeMix.js';
 import { entryRowHTML } from './entryRow.js';
 import { mountPeriodNav } from './periodNav.js';
 import { openSheet, closeSheet } from './sheet.js';
@@ -25,6 +26,12 @@ export function renderIncome(container, state, ctx) {
   const summary = periodSummary(state, periodKey);
   const settings = state.settings;
 
+  const mix = incomeMix(summary);
+  const payDate = payDateForPeriod(periodKey, settings);
+  const daysLeft = daysUntilPay(periodKey, settings);
+  const daysText = daysLeft === 0 ? 'bugün' : daysLeft === 1 ? 'yarın' : `${daysLeft} gün kaldı`;
+  const future = periodKey > currentPeriodKey();
+
   container.innerHTML = `
     <div class="period-card">
       <button class="period-card__nav" id="prevPeriod" type="button" aria-label="Önceki dönem">
@@ -39,71 +46,65 @@ export function renderIncome(container, state, ctx) {
       </button>
     </div>
 
-    <div class="stat-strip stat-strip--kpi stat-strip--report">
-      <div class="stat-strip__item stat-strip__item--lead">
-        <div class="stat-strip__label">Dönem kazancı</div>
-        <div class="stat-strip__value">${formatMoney(summary.earnedTotal, { decimals: false })}</div>
+    <div class="card income-hero">
+      <div class="income-hero__main">
+        <div class="income-hero__label">${future ? 'Bu dönem beklenen' : 'Ödeme günü yatacak'}</div>
+        <div class="income-hero__value">${formatMoney(summary.payoutTotal, { decimals: false })}</div>
+        <div class="income-hero__meta">
+          <b>${formatFullDate(toISODate(payDate))}</b>${future ? '' : ` · ${daysText}`}
+        </div>
+        <div class="income-hero__facts">
+          ${fact('Mesai', formatHours(summary.totalHours), summary.overtimePay > 0 ? formatMoney(summary.overtimePay, { decimals: false }) : '')}
+          ${fact('Kayıt', String(summary.entryCount), '')}
+          ${summary.advances > 0 ? fact('Avans düşüldü', `− ${formatMoney(summary.advances, { decimals: false })}`, `kazanç ${formatMoney(summary.earnedTotal, { decimals: false })}`) : fact('Saat ücreti', formatMoney(summary.baseSalary / (settings.hoursDivisor || 225), { decimals: false }), '')}
+        </div>
       </div>
-      <div class="stat-strip__divider"></div>
-      <div class="stat-strip__item">
-        <div class="stat-strip__label">Mesai</div>
-        <div class="stat-strip__value">${formatHours(summary.totalHours)}</div>
-      </div>
-      <div class="stat-strip__divider"></div>
-      <div class="stat-strip__item">
-        <div class="stat-strip__label">Ödeme günü</div>
-        <div class="stat-strip__value">${formatMoney(summary.payoutTotal, { decimals: false })}</div>
-      </div>
-      <div class="stat-strip__divider stat-strip__divider--wide"></div>
-      <div class="stat-strip__item stat-strip__item--desktop">
-        <div class="stat-strip__label">Mesai ücreti</div>
-        <div class="stat-strip__value">${formatMoney(summary.overtimePay, { decimals: false })}</div>
-      </div>
+      <div class="income-hero__mix">${mixHTML(mix)}</div>
     </div>
 
     <div class="panes">
     <div class="pane">
-      <div class="section-title">Kazanç dökümü</div>
+      <div class="section-header"><span class="section-title" style="margin:0;">Kazanç dökümü</span></div>
       <div class="card">
         <div class="rows rows--receipt">
-          <div class="row"><span class="row__label">Maaş</span><span class="row__value">${formatMoney(summary.baseSalary, { decimals: false })}</span></div>
-          ${TYPE_ROWS.map((t) => (summary.byType[t.key].hours > 0 ? `
-            <div class="row">
-              <span class="row__label"><span class="dot dot--${t.key}"></span>${t.label} <span style="color:var(--text-tertiary);">${formatHours(summary.byType[t.key].hours)} ×${settings.multipliers[t.key]}</span></span>
-              <span class="row__value is-positive">+ ${formatMoney(summary.byType[t.key].amount, { decimals: false })}</span>
-            </div>` : '')).join('')}
-          ${summary.overtimePay > 0 ? `<div class="row"><span class="row__label">Mesai ücreti</span><span class="row__value is-positive">+ ${formatMoney(summary.overtimePay, { decimals: false })}</span></div>` : ''}
-          ${summary.mealPay > 0 ? `<div class="row"><span class="row__label">Yemek parası <span style="color:var(--text-tertiary);">${summary.allowanceDays} gün</span></span><span class="row__value is-positive">+ ${formatMoney(summary.mealPay, { decimals: false })}</span></div>` : ''}
-          ${summary.transportPay > 0 ? `<div class="row"><span class="row__label">Yol parası <span style="color:var(--text-tertiary);">${summary.allowanceDays} gün</span></span><span class="row__value is-positive">+ ${formatMoney(summary.transportPay, { decimals: false })}</span></div>` : ''}
-          ${summary.bonuses > 0 ? `<div class="row"><span class="row__label">Prim</span><span class="row__value is-positive">+ ${formatMoney(summary.bonuses, { decimals: false })}</span></div>` : ''}
-          ${summary.extraIncome > 0 ? `<div class="row"><span class="row__label">Para girişi</span><span class="row__value is-positive">+ ${formatMoney(summary.extraIncome, { decimals: false })}</span></div>` : ''}
-          ${summary.deductions > 0 ? `<div class="row"><span class="row__label">Kesinti</span><span class="row__value is-negative">− ${formatMoney(summary.deductions, { decimals: false })}</span></div>` : ''}
-          <div class="row row--total"><span class="row__label">Dönem kazancın</span><span class="row__value">${formatMoney(summary.earnedTotal)}</span></div>
-          ${summary.advances > 0 ? `<div class="row"><span class="row__label">Avans olarak aldın</span><span class="row__value is-negative">− ${formatMoney(summary.advances, { decimals: false })}</span></div>` : ''}
-          ${summary.advances > 0 ? `<div class="row row--subtotal"><span class="row__label">Ödeme günü yatacak</span><span class="row__value">${formatMoney(summary.payoutTotal)}</span></div>` : ''}
+          <div class="row"><span class="row__label"><span class="dot" style="background:var(--mix-salary);"></span>Maaş</span><span class="row__leader"></span><span class="row__value">${formatMoney(summary.baseSalary, { decimals: false })}</span></div>
+          ${overtimeRowsHTML(summary, settings)}
+          ${summary.mealPay > 0 ? `<div class="row row--detail"><span class="row__label"><span class="dot" style="background:var(--mix-allowance);"></span>Yemek parası <span class="row__detail">${summary.allowanceDays} gün</span></span><span class="row__leader"></span><span class="row__value is-positive">+ ${formatMoney(summary.mealPay, { decimals: false })}</span></div>` : ''}
+          ${summary.transportPay > 0 ? `<div class="row row--detail"><span class="row__label"><span class="dot" style="background:var(--mix-allowance);"></span>Yol parası <span class="row__detail">${summary.allowanceDays} gün</span></span><span class="row__leader"></span><span class="row__value is-positive">+ ${formatMoney(summary.transportPay, { decimals: false })}</span></div>` : ''}
+          ${summary.bonuses > 0 ? `<div class="row"><span class="row__label"><span class="dot" style="background:var(--mix-extra);"></span>Prim</span><span class="row__leader"></span><span class="row__value is-positive">+ ${formatMoney(summary.bonuses, { decimals: false })}</span></div>` : ''}
+          ${summary.extraIncome > 0 ? `<div class="row"><span class="row__label"><span class="dot" style="background:var(--mix-extra);"></span>Para girişi</span><span class="row__leader"></span><span class="row__value is-positive">+ ${formatMoney(summary.extraIncome, { decimals: false })}</span></div>` : ''}
+          ${summary.deductions > 0 ? `<div class="row"><span class="row__label">Kesinti</span><span class="row__leader"></span><span class="row__value is-negative">− ${formatMoney(summary.deductions, { decimals: false })}</span></div>` : ''}
+          <div class="row row--total"><span class="row__label">Dönem kazancın</span><span class="row__leader"></span><span class="row__value">${formatMoney(summary.earnedTotal)}</span></div>
+          ${summary.advances > 0 ? `<div class="row"><span class="row__label">Avans olarak aldın</span><span class="row__leader"></span><span class="row__value is-negative">− ${formatMoney(summary.advances, { decimals: false })}</span></div>` : ''}
+          ${summary.advances > 0 ? `<div class="row row--subtotal"><span class="row__label">Ödeme günü yatacak</span><span class="row__leader"></span><span class="row__value">${formatMoney(summary.payoutTotal)}</span></div>` : ''}
         </div>
       </div>
 
-      <div class="section-title">Ek kalemler</div>
+      <div class="section-header"><span class="section-title" style="margin:0;">Ek kalemler</span></div>
       <div class="card">
-        <div class="chips" style="margin-bottom:${summary.adjustments.length ? '14px' : '0'};">
-          <button class="quick-chip" id="addIncome" type="button">+ Para girişi</button>
-          <button class="quick-chip" id="addBonus" type="button">+ Prim</button>
-          <button class="quick-chip" id="addAdvance" type="button">− Avans</button>
-          <button class="quick-chip" id="addDeduction" type="button">− Kesinti</button>
+        <div class="adj-actions">
+          ${adjButton('addIncome', 'income', 'Para girişi')}
+          ${adjButton('addBonus', 'bonus', 'Prim')}
+          ${adjButton('addAdvance', 'advance', 'Avans')}
+          ${adjButton('addDeduction', 'deduction', 'Kesinti')}
         </div>
-        ${summary.adjustments.length === 0 ? '' : `
-          <div class="rows" id="adjustmentRows">
-            ${summary.adjustments.map((a) => `
+        ${summary.adjustments.length === 0
+    ? '<p class="field__hint" style="margin:14px 0 0;">Maaş dışında yatan ya da kesilen bir şey varsa buraya ekle; dönem hesabına girer.</p>'
+    : `
+          <div class="rows" id="adjustmentRows" style="margin-top:14px;">
+            ${summary.adjustments.map((a) => {
+      const plus = a.kind === 'bonus' || a.kind === 'income';
+      return `
               <div class="row" data-adj-id="${a.id}">
-                <span class="row__label">${escapeHTML(a.label || adjustmentLabel(a.kind))}</span>
-                <span class="row__value ${a.kind === 'bonus' || a.kind === 'income' ? 'is-positive' : 'is-negative'}" style="display:flex; align-items:center; gap:10px;">
-                  ${a.kind === 'bonus' || a.kind === 'income' ? '+' : '−'} ${formatMoney(a.amount, { decimals: false })}
+                <span class="row__label"><span class="adj-tag adj-tag--${a.kind}">${adjustmentLabel(a.kind)}</span>${escapeHTML(a.label || '')}</span>
+                <span class="row__value ${plus ? 'is-positive' : 'is-negative'}" style="display:flex; align-items:center; gap:10px;">
+                  ${plus ? '+' : '−'} ${formatMoney(a.amount, { decimals: false })}
                   <button class="link-row__chevron" data-remove-adj="${a.id}" type="button" aria-label="Sil" style="line-height:0;">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
                   </button>
                 </span>
-              </div>`).join('')}
+              </div>`;
+    }).join('')}
           </div>`}
       </div>
     </div>
@@ -157,6 +158,91 @@ export function renderIncome(container, state, ctx) {
   });
   container.querySelector('#payslipYearBtn')?.addEventListener('click', () => ctx.navigate({ tab: 'income', page: 'payslip' }));
   container.querySelector('#absenceLink')?.addEventListener('click', () => ctx.navigate({ tab: 'income', page: 'absences' }));
+}
+
+// Mesai satırları. Tek tür varsa "Mesai ücreti · 14 sa ×1,5" tek satırdır;
+// birden fazla türde her tür ayrı satır, altında toplam. (Eskiden tür
+// kırılımı ile toplam yan yana basılıyor, aynı para iki kez yazılmış
+// görünüyordu.)
+function overtimeRowsHTML(summary, settings) {
+  const active = TYPE_ROWS.filter((t) => summary.byType[t.key].hours > 0);
+  if (active.length === 0) return '';
+
+  const dot = '<span class="dot" style="background:var(--mix-overtime);"></span>';
+  if (active.length === 1) {
+    const t = active[0];
+    const detay = `${formatHours(summary.byType[t.key].hours)} ×${String(settings.multipliers[t.key]).replace('.', ',')}`;
+    return `
+      <div class="row row--detail">
+        <span class="row__label">${dot}Mesai ücreti <span class="row__detail">${t.label.toLocaleLowerCase('tr-TR')} · ${detay}</span></span>
+        <span class="row__leader"></span>
+        <span class="row__value is-positive">+ ${formatMoney(summary.overtimePay, { decimals: false })}</span>
+      </div>`;
+  }
+
+  return `
+    ${active.map((t) => `
+      <div class="row row--sub row--detail">
+        <span class="row__label"><span class="dot dot--${t.key}"></span>${t.label} <span class="row__detail">${formatHours(summary.byType[t.key].hours)} ×${String(settings.multipliers[t.key]).replace('.', ',')}</span></span>
+        <span class="row__leader"></span>
+        <span class="row__value is-positive">+ ${formatMoney(summary.byType[t.key].amount, { decimals: false })}</span>
+      </div>`).join('')}
+    <div class="row row--detail">
+      <span class="row__label">${dot}Mesai ücreti <span class="row__detail">${formatHours(summary.totalHours)}</span></span>
+      <span class="row__leader"></span>
+      <span class="row__value is-positive">+ ${formatMoney(summary.overtimePay, { decimals: false })}</span>
+    </div>`;
+}
+
+// Kahramanın altındaki küçük gerçekler şeridi.
+function fact(label, value, sub) {
+  return `
+    <div class="income-fact">
+      <div class="income-fact__label">${label}</div>
+      <div class="income-fact__value">${value}</div>
+      ${sub ? `<div class="income-fact__sub">${sub}</div>` : ''}
+    </div>`;
+}
+
+// Gelirin bileşimi: tek yığın çubuk + okunur bir liste. "Maaşım 45 bin"
+// demek kolay; cebe girenin ne kadarı mesai, ne kadarı yemek-yol — asıl
+// merak edilen bu.
+function mixHTML(mix) {
+  if (mix.total <= 0) {
+    return '<div class="income-hero__empty">Bu dönem için henüz hesaplanacak bir gelir yok.</div>';
+  }
+  return `
+    <div class="mix">
+      <div class="mix__bar" role="img" aria-label="Gelir bileşimi">
+        ${mix.parts.map((p) => `<span class="mix__seg" style="width:${p.pct}%; background:${p.color};" title="${p.label} %${p.pct}"></span>`).join('')}
+      </div>
+      <ul class="mix__legend">
+        ${mix.parts.map((p) => `
+          <li class="mix__item">
+            <span class="dot" style="background:${p.color};"></span>
+            <span class="mix__name">${p.label}</span>
+            <span class="mix__pct">%${p.pct}</span>
+            <span class="mix__amount">${formatMoney(p.amount, { decimals: false })}</span>
+          </li>`).join('')}
+      </ul>
+    </div>`;
+}
+
+const ADJ_ICON = {
+  income: '<path d="M12 19V5M6 11l6-6 6 6"/>',
+  bonus: '<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.2 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z"/>',
+  advance: '<path d="M12 5v14M6 13l6 6 6-6"/>',
+  deduction: '<path d="M5 12h14"/>',
+};
+
+function adjButton(id, kind, label) {
+  return `
+    <button class="adj-btn adj-btn--${kind}" id="${id}" type="button">
+      <span class="adj-btn__icon">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${ADJ_ICON[kind]}</svg>
+      </span>
+      ${label}
+    </button>`;
 }
 
 // --- Bordro karşılaştırma kartı ------------------------------------------
