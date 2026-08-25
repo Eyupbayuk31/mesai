@@ -357,6 +357,9 @@ function htmlShell({ title, headerTitle, metaRight, body }) {
   }
   .table tr:last-child td { border-bottom: none; }
   .num { text-align: right; font-variant-numeric: tabular-nums; }
+  /* .table th kuralı .num'dan daha güçlü olduğu için başlıklar sola kayıyordu;
+     sayı sütunlarında başlık da sağa hizalanmalı ki rakamların üstüne otursun. */
+  .table th.num { text-align: right; }
   .dot {
     display: inline-block;
     width: 8px; height: 8px;
@@ -488,7 +491,7 @@ function portfolioTable(portfolio) {
   return `
     <h2>Yatırım portföyü</h2>
     <table class="table">
-      <thead><tr><th>Varlık</th><th>Tür</th><th class="num">Miktar</th><th class="num">Ort. maliyet</th><th class="num">Güncel değer</th><th class="num">Değer</th><th class="num">Kâr/zarar</th></tr></thead>
+      <thead><tr><th>Varlık</th><th>Tür</th><th class="num">Miktar</th><th class="num">Ort. maliyet</th><th class="num">Güncel fiyat</th><th class="num">Toplam değer</th><th class="num">Kâr/zarar</th></tr></thead>
       <tbody>
         ${rows.map((p) => {
     const up = p.profit >= 0;
@@ -528,7 +531,7 @@ function periodInvestmentTable(periodKey, periodInvested, lots, assets) {
   return `
     <h2>Bu ayki yatırımlar</h2>
     <table class="table">
-      <thead><tr><th>Tarih</th><th>Varlık</th><th class="num">Miktar</th><th class="num">Birim değer</th><th class="num">Tutar</th></tr></thead>
+      <thead><tr><th>Tarih</th><th>Varlık</th><th class="num">Miktar</th><th class="num">Birim fiyat</th><th class="num">Tutar</th></tr></thead>
       <tbody>
         ${rows.map((l) => `
           <tr>

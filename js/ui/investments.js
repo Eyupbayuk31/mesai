@@ -442,6 +442,9 @@ function openAssetSheet(ctx, asset) {
   const state = ctx.store.getState();
   const lots = assetLots(state, asset.id);
   const p = assetPosition(asset, lots);
+  const unit = unitOf(asset);
+  const rate = kindOf(asset).rate;
+  const up = p.profit >= 0;
 
   openSheet({
     title: asset.label,
@@ -451,25 +454,78 @@ function openAssetSheet(ctx, asset) {
     `,
     build(bodyEl, footerEl) {
       bodyEl.innerHTML = `
-        <div class="stat-strip">
-          <div class="stat-strip__item"><span class="stat-strip__label">Miktar</span><span class="stat-strip__value">${formatQuantity(p.quantity, asset)} ${escapeHTML(p.unit)}</span></div>
-          <div class="stat-strip__item"><span class="stat-strip__label">${kindOf(asset).rate ? 'Ort. kur' : 'Ort. maliyet'}</span><span class="stat-strip__value">${formatMoney(p.avgCost)}</span></div>
-          <div class="stat-strip__item"><span class="stat-strip__label">Değer</span><span class="stat-strip__value">${formatMoney(p.value, { decimals: false })}</span></div>
+        <div class="asset-detail">
+          <div class="asset-detail__hero">
+            <div class="asset-detail__label">Bugünkü değeri</div>
+            <div class="asset-detail__value">${formatMoney(p.value, { decimals: false })}</div>
+            <div class="asset-detail__sub">
+              ${formatQuantity(p.quantity, asset)} ${escapeHTML(unit)}
+              ${p.hasPrice ? `· ${rate ? 'kur' : 'fiyat'} ${formatMoney(p.price)}` : ''}
+            </div>
+            ${p.hasPrice ? `
+            <div class="asset-detail__pl ${up ? 'is-positive' : 'is-negative'}">
+              ${up ? '+' : '−'}${formatMoney(Math.abs(p.profit), { decimals: false })}
+              <span>(%${formatPct(Math.abs(p.profitPct))})</span>
+            </div>` : `
+            <button class="asset-detail__cta" id="setPriceBtn" type="button">Güncel ${rate ? 'kuru' : 'fiyatı'} gir →</button>`}
+          </div>
+
+          <div class="asset-detail__grid">
+            <div class="asset-detail__cell">
+              <span class="asset-detail__cell-label">Toplam maliyet</span>
+              <span class="asset-detail__cell-value">${formatMoney(p.cost, { decimals: false })}</span>
+            </div>
+            <div class="asset-detail__cell">
+              <span class="asset-detail__cell-label">${rate ? 'Ortalama kur' : 'Ortalama maliyet'}</span>
+              <span class="asset-detail__cell-value">${formatMoney(p.avgCost)}</span>
+            </div>
+            <div class="asset-detail__cell">
+              <span class="asset-detail__cell-label">Alım sayısı</span>
+              <span class="asset-detail__cell-value">${lots.length}</span>
+            </div>
+          </div>
         </div>
-        <div class="section-title" style="margin-top:14px;">Alımlar (${lots.length})</div>
-        ${lots.length === 0 ? '<div class="field__hint" style="margin-bottom:6px;">Henüz alım yok. Aşağıdaki <b>Alım ekle</b> ile kaç tane aldığını gir.</div>' : ''}
-        <div class="lot-list">
-          ${lots.map((l) => `
-            <button class="lot-row" type="button" data-lot="${l.id}">
-              <span class="lot-row__date">${formatDayMonth(l.date)}</span>
-              <span class="lot-row__qty">${formatQuantity(l.quantity, asset)} ${escapeHTML(unitOf(asset))} × ${formatMoney(l.unitCost)}</span>
-              <span class="lot-row__total">${formatMoney(lotTotal(l), { decimals: false })}</span>
-            </button>
-          `).join('')}
+
+        <div class="section-header" style="margin-top:18px;">
+          <span class="section-title" style="margin:0;">Alımlar</span>
+          <span class="section-header__note">${lots.length ? 'satıra dokun, düzenle' : ''}</span>
         </div>
+        ${lots.length === 0 ? `
+        <div class="field__hint">Henüz alım yok. Aşağıdaki <b>Alım ekle</b> ile kaç ${escapeHTML(unit)} aldığını gir.</div>` : `
+        <div class="lot-table">
+          ${lots.map((l) => {
+    const total = lotTotal(l);
+    // Bu alım tek başına ne durumda? Ortalamaya karışmadan, kendi fiyatıyla.
+    const lotProfit = p.hasPrice ? (p.price - (Number(l.unitCost) || 0)) * (Number(l.quantity) || 0) : null;
+    const lotFlat = lotProfit !== null && Math.abs(lotProfit) < 0.005;
+    const lotUp = (lotProfit || 0) >= 0;
+    return `
+            <button class="lot-table__row" type="button" data-lot="${l.id}">
+              <span class="lot-table__date">${formatDayMonth(l.date)}</span>
+              <span class="lot-table__detail">${formatQuantity(l.quantity, asset)} ${escapeHTML(unit)} × ${formatMoney(l.unitCost)}</span>
+              <span class="lot-table__total">${formatMoney(total, { decimals: false })}</span>
+              <span class="lot-table__pl ${lotProfit === null || lotFlat ? 'lot-table__pl--flat' : lotUp ? 'is-positive' : 'is-negative'}">
+                ${lotProfit === null ? '' : lotFlat ? '—' : `${lotUp ? '+' : '−'}${formatMoney(Math.abs(lotProfit), { decimals: false })}`}
+              </span>
+            </button>`;
+  }).join('')}
+          <div class="lot-table__row lot-table__row--total">
+            <span class="lot-table__date">Toplam</span>
+            <span class="lot-table__detail">${formatQuantity(p.quantity, asset)} ${escapeHTML(unit)}</span>
+            <span class="lot-table__total">${formatMoney(p.cost, { decimals: false })}</span>
+            <span class="lot-table__pl ${p.hasPrice ? (up ? 'is-positive' : 'is-negative') : ''}">
+              ${p.hasPrice ? `${up ? '+' : '−'}${formatMoney(Math.abs(p.profit), { decimals: false })}` : ''}
+            </span>
+          </div>
+        </div>`}
       `;
 
-      bodyEl.querySelector('.lot-list').addEventListener('click', (e) => {
+      bodyEl.querySelector('#setPriceBtn')?.addEventListener('click', () => {
+        closeSheet();
+        setTimeout(() => openPriceSheet(ctx, asset), 280);
+      });
+
+      bodyEl.querySelector('.lot-table')?.addEventListener('click', (e) => {
         const row = e.target.closest('[data-lot]');
         if (!row) return;
         const lot = lots.find((l) => l.id === row.dataset.lot);
