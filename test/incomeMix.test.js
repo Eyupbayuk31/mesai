@@ -28,7 +28,7 @@ test('incomeMix - sıfır kalem listeye girmez', () => {
   assert.equal(res.parts[0].pct, 100);
 });
 
-test('incomeMix - prim ve para girişi tek kalem', () => {
+test('incomeMix - eski bonus kayıtları ek gelirle birleşir', () => {
   const res = incomeMix(summary({ bonuses: 1000, extraIncome: 500 }));
   assert.equal(res.parts.find((p) => p.key === 'extra').amount, 1500);
 });

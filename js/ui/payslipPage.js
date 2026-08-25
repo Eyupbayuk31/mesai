@@ -4,7 +4,7 @@
 // form açmak yerine tablo: her satırda cebe geçen net maaş, yol parası ve
 // bordroda yazan çalışılan gün / mesai saati. Yanında uygulamanın beklediği
 // tutar, fark ve o farkın akıbeti (soruldu mu, düzeldi mi, kabul mü).
-// Detay isteyen satırdaki › ile diğer kalemleri (yemek, mesai, prim, kesinti)
+// Detay isteyen satırdaki › ile diğer kalemleri (yemek, mesai, kesinti)
 // de girer.
 
 import { periodSummary } from '../payroll.js';
@@ -389,7 +389,7 @@ function openLineSheet(ctx, summary, tableRow) {
         </div>
       `;
 
-      // Kullanılmayan kalemler (ör. prim yoksa "Prim") formu kirletmesin —
+      // O ay karşılığı olmayan kalemler formu kirletmesin —
       // gerektiğinde tek dokunuşla açılır, kaydetme yolu ikisinde de aynı.
       bodyEl.querySelector('#showExtraLines')?.addEventListener('click', (e) => {
         bodyEl.querySelector('#extraLines').hidden = false;

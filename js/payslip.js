@@ -21,7 +21,6 @@ export const PAYSLIP_LINES = [
   { key: 'transport', label: 'Yol parası', expectedOf: (s) => s.transportPay },
   { key: 'meal', label: 'Yemek parası', expectedOf: (s) => s.mealPay },
   { key: 'overtime', label: 'Mesai ücreti', expectedOf: (s) => s.overtimePay },
-  { key: 'bonus', label: 'Prim', expectedOf: (s) => s.bonuses },
   // Kesinti ödemeyi azaltır: girilirse toplamdan düşülür.
   { key: 'deduction', label: 'Kesinti', expectedOf: (s) => s.deductions, negative: true },
 ];
@@ -192,7 +191,6 @@ export function explainPayslipDiff(summary, comparison, settings) {
     { label: 'Yemek parası', value: summary.mealPay },
     { label: 'Yol parası', value: summary.transportPay },
     { label: 'Mesai ücreti', value: summary.overtimePay },
-    { label: 'Prim', value: summary.bonuses },
   ];
   for (const item of items) {
     if (item.value > 0 && Math.abs(missing - item.value) <= TOLERANCE) {

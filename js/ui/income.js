@@ -71,8 +71,7 @@ export function renderIncome(container, state, ctx) {
           ${overtimeRowsHTML(summary, settings)}
           ${summary.mealPay > 0 ? `<div class="row row--detail"><span class="row__label"><span class="dot" style="background:var(--mix-allowance);"></span>Yemek parası <span class="row__detail">${summary.allowanceDays} gün</span></span><span class="row__leader"></span><span class="row__value is-positive">+ ${formatMoney(summary.mealPay, { decimals: false })}</span></div>` : ''}
           ${summary.transportPay > 0 ? `<div class="row row--detail"><span class="row__label"><span class="dot" style="background:var(--mix-allowance);"></span>Yol parası <span class="row__detail">${summary.allowanceDays} gün</span></span><span class="row__leader"></span><span class="row__value is-positive">+ ${formatMoney(summary.transportPay, { decimals: false })}</span></div>` : ''}
-          ${summary.bonuses > 0 ? `<div class="row"><span class="row__label"><span class="dot" style="background:var(--mix-extra);"></span>Prim</span><span class="row__leader"></span><span class="row__value is-positive">+ ${formatMoney(summary.bonuses, { decimals: false })}</span></div>` : ''}
-          ${summary.extraIncome > 0 ? `<div class="row"><span class="row__label"><span class="dot" style="background:var(--mix-extra);"></span>Para girişi</span><span class="row__leader"></span><span class="row__value is-positive">+ ${formatMoney(summary.extraIncome, { decimals: false })}</span></div>` : ''}
+          ${summary.extraIncome + summary.bonuses > 0 ? `<div class="row"><span class="row__label"><span class="dot" style="background:var(--mix-extra);"></span>Para girişi</span><span class="row__leader"></span><span class="row__value is-positive">+ ${formatMoney(summary.extraIncome + summary.bonuses, { decimals: false })}</span></div>` : ''}
           ${summary.deductions > 0 ? `<div class="row"><span class="row__label">Kesinti</span><span class="row__leader"></span><span class="row__value is-negative">− ${formatMoney(summary.deductions, { decimals: false })}</span></div>` : ''}
           <div class="row row--total"><span class="row__label">Dönem kazancın</span><span class="row__leader"></span><span class="row__value">${formatMoney(summary.earnedTotal)}</span></div>
           ${summary.advances > 0 ? `<div class="row"><span class="row__label">Avans olarak aldın</span><span class="row__leader"></span><span class="row__value is-negative">− ${formatMoney(summary.advances, { decimals: false })}</span></div>` : ''}
@@ -84,7 +83,6 @@ export function renderIncome(container, state, ctx) {
       <div class="card">
         <div class="adj-actions">
           ${adjButton('addIncome', 'income', 'Para girişi')}
-          ${adjButton('addBonus', 'bonus', 'Prim')}
           ${adjButton('addAdvance', 'advance', 'Avans')}
           ${adjButton('addDeduction', 'deduction', 'Kesinti')}
         </div>
@@ -137,7 +135,6 @@ export function renderIncome(container, state, ctx) {
   container.querySelector('#seeAllEntries')?.addEventListener('click', () => ctx.navigate({ tab: 'income', page: 'entries' }));
 
   container.querySelector('#addIncome').addEventListener('click', () => openAdjustmentSheet(ctx.store, periodKey, 'income'));
-  container.querySelector('#addBonus').addEventListener('click', () => openAdjustmentSheet(ctx.store, periodKey, 'bonus'));
   container.querySelector('#addAdvance').addEventListener('click', () => openAdjustmentSheet(ctx.store, periodKey, 'advance'));
   container.querySelector('#addDeduction').addEventListener('click', () => openAdjustmentSheet(ctx.store, periodKey, 'deduction'));
   container.querySelector('#adjustmentRows')?.addEventListener('click', (e) => {
@@ -230,7 +227,6 @@ function mixHTML(mix) {
 
 const ADJ_ICON = {
   income: '<path d="M12 19V5M6 11l6-6 6 6"/>',
-  bonus: '<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.2 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z"/>',
   advance: '<path d="M12 5v14M6 13l6 6 6-6"/>',
   deduction: '<path d="M5 12h14"/>',
 };
@@ -343,7 +339,8 @@ function checksHTML(cmp) {
 
 // --- Ek kalem sayfası -----------------------------------------------------
 
-const ADJ_LABEL = { advance: 'Avans', deduction: 'Kesinti', bonus: 'Prim', income: 'Para girişi' };
+// 'bonus' artık eklenemiyor; eski kayıtlar para girişi olarak okunur.
+const ADJ_LABEL = { advance: 'Avans', deduction: 'Kesinti', bonus: 'Para girişi', income: 'Para girişi' };
 
 function adjustmentLabel(kind) {
   return ADJ_LABEL[kind] || kind;

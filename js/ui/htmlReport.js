@@ -10,7 +10,7 @@ import { payslipRows, payslipStats, payslipLineTotals, openBalance } from '../pa
 
 const TYPE_LABEL = { normal: 'Normal', weekend: 'Hafta tatili', holiday: 'Resmi tatil' };
 const TYPE_COLOR = { normal: '#3b6fe0', weekend: '#a24fd6', holiday: '#e2483d' };
-const ADJ_LABEL = { advance: 'Avans', deduction: 'Kesinti', bonus: 'Prim', income: 'Para girişi' };
+const ADJ_LABEL = { advance: 'Avans', deduction: 'Kesinti', bonus: 'Para girişi', income: 'Para girişi' };
 
 function escapeHTML(str) {
   return String(str ?? '')

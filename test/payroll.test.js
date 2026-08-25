@@ -83,7 +83,7 @@ test('periodSummary - para girişi (beklenmedik gelir) toplam gelir ve nete ekle
   assert.equal(summary.netTotal, 29800);    // ... - avans
 });
 
-test('periodSummary - avans/prim/kesinti netTotal\'a yansır', () => {
+test('periodSummary - avans/ek gelir/kesinti netTotal\'a yansır', () => {
   const state = {
     settings: baseSettings,
     entries: [],

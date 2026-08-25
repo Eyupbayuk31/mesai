@@ -119,8 +119,7 @@ export function renderHome(container, state, ctx) {
           ${receiptRow('Mesai ücreti', `+ ${formatMoney(summary.overtimePay, { decimals: false })}`, { valueCls: 'is-positive' })}
           ${summary.mealPay > 0 ? receiptRow(`Yemek parası <span style="color:var(--text-tertiary);">(${summary.allowanceDays} gün)</span>`, `+ ${formatMoney(summary.mealPay, { decimals: false })}`, { valueCls: 'is-positive' }) : ''}
           ${summary.transportPay > 0 ? receiptRow(`Yol parası <span style="color:var(--text-tertiary);">(${summary.allowanceDays} gün)</span>`, `+ ${formatMoney(summary.transportPay, { decimals: false })}`, { valueCls: 'is-positive' }) : ''}
-          ${summary.bonuses > 0 ? receiptRow('Prim', `+ ${formatMoney(summary.bonuses, { decimals: false })}`, { valueCls: 'is-positive' }) : ''}
-          ${summary.extraIncome > 0 ? receiptRow('Para girişi', `+ ${formatMoney(summary.extraIncome, { decimals: false })}`, { valueCls: 'is-positive' }) : ''}
+          ${summary.extraIncome + summary.bonuses > 0 ? receiptRow('Para girişi', `+ ${formatMoney(summary.extraIncome + summary.bonuses, { decimals: false })}`, { valueCls: 'is-positive' }) : ''}
           ${summary.deductions > 0 ? receiptRow('Kesinti', `− ${formatMoney(summary.deductions, { decimals: false })}`, { valueCls: 'is-negative' }) : ''}
           ${receiptRow('Bu dönem kazancın', formatMoney(summary.earnedTotal), { rowCls: 'row--total' })}
           ${summary.advances > 0 ? receiptRow('Avans olarak aldın', `− ${formatMoney(summary.advances, { decimals: false })}`, { valueCls: 'is-negative' }) : ''}

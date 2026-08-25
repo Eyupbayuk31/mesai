@@ -9,7 +9,7 @@ export const MIX_PARTS = [
   { key: 'salary', label: 'Maaş', color: 'var(--mix-salary)', of: (s) => s.baseSalary },
   { key: 'overtime', label: 'Mesai', color: 'var(--mix-overtime)', of: (s) => s.overtimePay },
   { key: 'allowance', label: 'Yemek + yol', color: 'var(--mix-allowance)', of: (s) => num(s.mealPay) + num(s.transportPay) },
-  { key: 'extra', label: 'Prim + ek gelir', color: 'var(--mix-extra)', of: (s) => num(s.bonuses) + num(s.extraIncome) },
+  { key: 'extra', label: 'Ek gelir', color: 'var(--mix-extra)', of: (s) => num(s.bonuses) + num(s.extraIncome) },
 ];
 
 function num(value) {
