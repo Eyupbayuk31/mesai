@@ -323,3 +323,82 @@ test('bestWorstAsset - fiyatsız varlık yarışmaz, tek adayda null', () => {
   };
   assert.equal(bestWorstAsset(portfolioSummary(eksik, NOW)), null, 'tek fiyatlı varlık kaldı');
 });
+
+// --- Gerçek senaryo: farklı fiyatlardan iki alım -------------------------
+// "1 gramı 3.000'e aldım, sonra 5 gram daha aldım tanesi 7.000"
+
+test('senaryo - 1×3000 sonra 5×7000: ortalama maliyet ve kâr doğru', () => {
+  const asset = { id: 'a1', label: 'Gram altın', kind: 'altin', unit: 'gram', currentPrice: 7000, priceUpdatedAt: daysAgo(0) };
+  const p = assetPosition(asset, [
+    { id: 'l1', assetId: 'a1', date: '2026-01-10', quantity: 1, unitCost: 3000 },
+    { id: 'l2', assetId: 'a1', date: '2026-08-20', quantity: 5, unitCost: 7000 },
+  ], NOW);
+
+  assert.equal(p.quantity, 6);
+  assert.equal(p.cost, 38000, '3.000 + 35.000');
+  assert.equal(Math.round(p.avgCost * 100) / 100, 6333.33);
+  assert.equal(p.value, 42000, '6 × 7.000');
+  assert.equal(p.profit, 4000);
+  assert.equal(Math.round(p.profitPct * 100) / 100, 10.53);
+  // Çapraz kontrol: miktar × (fiyat − ort. maliyet) da aynı kârı vermeli.
+  // Ortalama maliyet devirli ondalık (6.333,33…) olduğu için kuruş altı
+  // sapmaya izin veriliyor; uygulamanın kendi toplamı tam (4.000).
+  assert.ok(Math.abs(p.profit - p.quantity * (p.price - p.avgCost)) < 0.01);
+});
+
+test('senaryo - ikinci alım güncel fiyatı 3.000den 7.000e taşır', () => {
+  const asset = { id: 'a1', label: 'Gram altın', kind: 'altin', currentPrice: 3000, priceUpdatedAt: '2026-01-10T12:00:00.000Z' };
+  const update = priceUpdateFromLot(asset, { date: '2026-08-20', quantity: 5, unitCost: 7000 });
+  assert.equal(update.currentPrice, 7000);
+
+  const p = assetPosition({ ...asset, ...update }, [
+    { id: 'l1', assetId: 'a1', date: '2026-01-10', quantity: 1, unitCost: 3000 },
+    { id: 'l2', assetId: 'a1', date: '2026-08-20', quantity: 5, unitCost: 7000 },
+  ], NOW);
+  assert.equal(p.value, 42000);
+  assert.equal(p.profit, 4000);
+});
+
+test('senaryo - ters sırada girilse de sonuç aynı, eski alım fiyatı bozmaz', () => {
+  // Önce 5×7000 girildi, sonra geçmişe dönük 1×3000 eklendi.
+  const asset = { id: 'a1', label: 'Gram altın', kind: 'altin', currentPrice: 7000, priceUpdatedAt: '2026-08-20T12:00:00.000Z' };
+  assert.equal(priceUpdateFromLot(asset, { date: '2026-01-10', quantity: 1, unitCost: 3000 }), null,
+    'eski tarihli alım güncel fiyatı 3.000e çekmemeli');
+
+  const p = assetPosition(asset, [
+    { id: 'l2', assetId: 'a1', date: '2026-08-20', quantity: 5, unitCost: 7000 },
+    { id: 'l1', assetId: 'a1', date: '2026-01-10', quantity: 1, unitCost: 3000 },
+  ], NOW);
+  assert.equal(p.cost, 38000);
+  assert.equal(p.value, 42000);
+  assert.equal(p.profit, 4000);
+});
+
+test('senaryo - fiyat maliyetin altına düşerse zarar gösterir', () => {
+  const asset = { id: 'a1', label: 'Gram altın', kind: 'altin', currentPrice: 6000, priceUpdatedAt: daysAgo(0) };
+  const p = assetPosition(asset, [
+    { id: 'l1', assetId: 'a1', date: '2026-01-10', quantity: 1, unitCost: 3000 },
+    { id: 'l2', assetId: 'a1', date: '2026-08-20', quantity: 5, unitCost: 7000 },
+  ], NOW);
+  assert.equal(p.value, 36000);
+  assert.equal(p.profit, -2000);
+  assert.ok(p.profitPct < 0);
+});
+
+test('senaryo - portföy toplamı varlık kârlarının toplamına eşit', () => {
+  const s = portfolioSummary({
+    assets: [
+      { id: 'a1', label: 'Gram altın', kind: 'altin', currentPrice: 7000, priceUpdatedAt: daysAgo(0) },
+      { id: 'a2', label: 'Dolar', kind: 'doviz', unit: 'dolar', currentPrice: 41, priceUpdatedAt: daysAgo(0) },
+    ],
+    investments: [
+      { id: 'l1', assetId: 'a1', date: '2026-01-10', quantity: 1, unitCost: 3000 },
+      { id: 'l2', assetId: 'a1', date: '2026-08-20', quantity: 5, unitCost: 7000 },
+      { id: 'l3', assetId: 'a2', date: '2026-08-01', quantity: 1000, unitCost: 39 },
+    ],
+  }, NOW);
+  assert.equal(s.totalProfit, s.positions.reduce((t, p) => t + p.profit, 0));
+  assert.equal(s.totalProfit, 4000 + 2000);
+  assert.equal(s.totalValue, 42000 + 41000);
+  assert.equal(s.totalCost, 38000 + 39000);
+});
