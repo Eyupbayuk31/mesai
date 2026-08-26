@@ -47,6 +47,11 @@ const DEFAULT_SETTINGS = {
   // Haftalık programa hiç dokunulmadıysa ilk açılış ekranı o adımı bekliyor
   // gösterir; kullanıcı ayarladığı anda true olur.
   scheduleTouched: false,
+  // Bayram arifesi yasada yarım gün tatildir. Kapalıyken (varsayılan) tam gün
+  // tatil sayılır; açıkken iş günüdür ve yemek/yol beklentisine girer.
+  // Varsayılanı değiştirmek geçmiş ayların beklenen tutarlarını sessizce
+  // kaydırırdı — bu yüzden kullanıcı açana kadar bugünkü davranış korunur.
+  halfDayEves: false,
 };
 
 function defaultState() {

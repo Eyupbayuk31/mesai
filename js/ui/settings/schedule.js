@@ -30,6 +30,17 @@ export function render(container, state, ctx) {
       ${WEEKDAY_JS_VALUES.map((dayNum, i) => dayScheduleRowHTML(dayNum, WEEKDAY_LABELS_FULL[i], settings.weeklySchedule[dayNum])).join('')}
     </div>
 
+    <div class="section-title">Resmi tatiller</div>
+    <div class="card" id="eveCard">
+      <div class="switch-row" style="padding-top:0;">
+        <div>
+          <div class="switch-row__label">Bayram arifesinde çalışıyoruz</div>
+          <div class="switch-row__hint">Arife yasada yarım gün tatildir. Açarsan o gün iş günü sayılır; yemek ve yol parası beklentisine girer.</div>
+        </div>
+        <button class="switch ${settings.halfDayEves ? 'is-on' : ''}" id="halfDayEvesSwitch" type="button" aria-label="Bayram arifesinde çalışıyoruz"></button>
+      </div>
+    </div>
+
     <div class="section-title">Mesai molası</div>
     <div class="card" id="breakWindowCard">
       <div class="switch-row" style="padding-top:0;">
@@ -83,6 +94,10 @@ export function render(container, state, ctx) {
       weeklySchedule: { ...settings.weeklySchedule, [dayNum]: { ...current, [key]: timeValue } },
       scheduleTouched: true,
     });
+  });
+
+  container.querySelector('#halfDayEvesSwitch').addEventListener('click', () => {
+    ctx.store.updateSettings({ halfDayEves: !settings.halfDayEves });
   });
 
   const breakCard = container.querySelector('#breakWindowCard');

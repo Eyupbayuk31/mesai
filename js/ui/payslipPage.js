@@ -7,14 +7,15 @@
 // Detay isteyen satırdaki › ile diğer kalemleri (yemek, mesai, kesinti)
 // de girer.
 
-import { periodSummary } from '../payroll.js';
+import { periodSummary, workdayBreakdown } from '../payroll.js';
 import { currentPeriodKey } from '../period.js';
-import { formatMoney, formatHours, locative, parseLocaleNumber } from '../format.js';
+import { formatMoney, formatHours, formatDayMonthShort, locative, parseLocaleNumber } from '../format.js';
 import {
   PAYSLIP_LINES, comparePayslip, payslipFor, hasPayslipData, payslipStats, payslipLineTotals,
   payslipRows, openBalance, hoursCheck,
 } from '../payslip.js';
 import { mountPeriodNav } from './periodNav.js';
+import { absenceDatesInPeriod } from '../absences.js';
 import { openSheet, closeSheet } from './sheet.js';
 import { showToast } from './toast.js';
 
@@ -265,6 +266,7 @@ function statsLine(stats) {
 
 function rowHTML(state, summary, index, thisPeriod, byPeriod, settings) {
   const slip = payslipFor(state, summary.periodKey) || {};
+  const breakdown = workdayBreakdown(summary.periodKey, settings, absenceDatesInPeriod(state, summary.periodKey));
   const row = byPeriod.get(summary.periodKey) || null;
   const cmp = row || (hasPayslipData(slip) ? comparePayslip(summary, slip, settings) : null);
   const hrs = hoursCheck(summary, slip, settings);
@@ -282,8 +284,13 @@ function rowHTML(state, summary, index, thisPeriod, byPeriod, settings) {
       <td>
         <input class="input input--amount payslip-cell payslip-cell--narrow" type="text" inputmode="decimal"
             data-row="${index}" data-field="days" value="${numValue(slip.days)}"
-            placeholder="${summary.allowanceDays}" autocomplete="off" aria-label="${MONTHS[index]} bordroda yazan gün" />
-        ${dayDiff ? `<div class="payslip-sub ${dayDiff < 0 ? 'is-negative' : 'is-positive'}">${dayDiff > 0 ? '+' : '−'}${Math.abs(dayDiff)} gün</div>` : ''}
+            placeholder="${summary.allowanceDays}" autocomplete="off"
+            title="${breakdown.summaryLine}" aria-label="${MONTHS[index]} bordroda yazan gün" />
+        ${dayDiff
+    ? `<div class="payslip-sub ${dayDiff < 0 ? 'is-negative' : 'is-positive'}">${dayDiff > 0 ? '+' : '−'}${Math.abs(dayDiff)} gün</div>`
+    : breakdown.holidays.length + breakdown.absences.length > 0
+      ? `<div class="payslip-sub">${breakdown.scheduledDays} − ${dayMinusLabel(breakdown)}</div>`
+      : ''}
       </td>
       <td>
         <input class="input input--amount payslip-cell payslip-cell--narrow" type="text" inputmode="decimal"
@@ -344,6 +351,40 @@ function lineFieldsHTML(lines, summary, slip) {
   `).join('');
 }
 
+// "26 − 7 tatil" gibi kısa özet; hücrenin altına sığması gerekiyor.
+function dayMinusLabel(breakdown) {
+  const parts = [];
+  if (breakdown.holidays.length > 0) parts.push(`${breakdown.holidays.length} tatil`);
+  if (breakdown.absences.length > 0) parts.push(`${breakdown.absences.length} izin`);
+  return parts.join(' − ');
+}
+
+// Kalem sayfasındaki "Gün hesabı": sayının nereden geldiği tarih tarih yazar.
+function dayBreakdownHTML(breakdown) {
+  if (breakdown.holidays.length === 0 && breakdown.absences.length === 0 && breakdown.eveWorkdays.length === 0) {
+    return `<p class="field__hint" style="margin:-4px 0 14px;">Bu ay resmi tatil yok: <b>${breakdown.workdays} iş günü</b>.</p>`;
+  }
+  return `
+    <div class="day-calc">
+      <div class="day-calc__line">${breakdown.summaryLine}</div>
+      ${breakdown.holidays.map((h) => `
+        <div class="day-calc__row">
+          <span>${formatDayMonthShort(h.date)}</span>
+          <span>${h.name}${h.eve ? ' <i>(yarım gün)</i>' : ''}</span>
+        </div>`).join('')}
+      ${breakdown.absences.map((date) => `
+        <div class="day-calc__row">
+          <span>${formatDayMonthShort(date)}</span>
+          <span>Gelinmedi</span>
+        </div>`).join('')}
+      ${breakdown.eveWorkdays.map((h) => `
+        <div class="day-calc__row is-worked">
+          <span>${formatDayMonthShort(h.date)}</span>
+          <span>${h.name} — çalışıldı, iş günü sayıldı</span>
+        </div>`).join('')}
+    </div>`;
+}
+
 function numValue(value) {
   if (value === undefined || value === null || value === '') return '';
   return String(value).replace('.', ',');
@@ -363,6 +404,7 @@ function readRow(container, index) {
 function openLineSheet(ctx, summary, tableRow) {
   const state = ctx.store.getState();
   const slip = payslipFor(state, summary.periodKey) || {};
+  const breakdown = workdayBreakdown(summary.periodKey, state.settings, absenceDatesInPeriod(state, summary.periodKey));
 
   openSheet({
     title: `${MONTHS[Number(summary.periodKey.slice(5, 7)) - 1]} bordrosu`,
@@ -383,6 +425,9 @@ function openLineSheet(ctx, summary, tableRow) {
             </button>
             <div id="extraLines" hidden>${lineFieldsHTML(rest, summary, slip)}</div>`;
         })()}
+        <div class="section-title" style="margin-top:4px;">Gün hesabı</div>
+        ${dayBreakdownHTML(breakdown)}
+
         <div class="field" style="margin-bottom:0;">
           <label class="field__label">Not <span style="font-weight:500;color:var(--text-tertiary);">(opsiyonel)</span></label>
           <input class="input" type="text" id="slipNote" value="${(slip.note || '').replace(/"/g, '&quot;')}" placeholder="ör. ikramiye ayrı yattı" />

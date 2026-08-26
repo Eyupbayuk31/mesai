@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { holidayName, isHoliday, suggestType, holidayListForYear, nextHoliday } from '../js/holidays.js';
+import { holidayName, isHoliday, isHolidayEve, isOffDay, suggestType, holidayListForYear, nextHoliday } from '../js/holidays.js';
 
 test('holidayName - sabit tatil', () => {
   assert.equal(holidayName('2026-10-29'), 'Cumhuriyet Bayramı');
@@ -65,4 +65,48 @@ test('nextHoliday - yıl tükendiyse gelecek yılın ilki', () => {
   assert.equal(h.date, '2027-01-01');
   assert.equal(h.name, 'Yılbaşı');
   assert.equal(h.daysLeft, 1);
+});
+
+// --- Bayram arifesi -----------------------------------------------------
+test('isHolidayEve - yalnız arife günleri', () => {
+  assert.equal(isHolidayEve('2026-05-26'), true, 'Kurban arifesi');
+  assert.equal(isHolidayEve('2026-03-19'), true, 'Ramazan arifesi');
+  assert.equal(isHolidayEve('2026-05-27'), false, 'bayramın 1. günü arife değil');
+  assert.equal(isHolidayEve('2026-05-19'), false, 'sabit tatil arife değil');
+  assert.equal(isHolidayEve('2026-08-14'), false, 'tatil bile değil');
+});
+
+test('isOffDay - arife ayara göre iş günü olur', () => {
+  const kapali = { halfDayEves: false };
+  const acik = { halfDayEves: true };
+
+  // Arife: ayar açıkken çalışma günü
+  assert.equal(isOffDay('2026-05-26', kapali), true);
+  assert.equal(isOffDay('2026-05-26', acik), false);
+
+  // Bayramın kendisi her iki durumda da tatil
+  assert.equal(isOffDay('2026-05-27', kapali), true);
+  assert.equal(isOffDay('2026-05-27', acik), true);
+
+  // Sabit tatil ayardan etkilenmez
+  assert.equal(isOffDay('2026-05-19', acik), true);
+  // Normal gün hiçbir durumda tatil değil
+  assert.equal(isOffDay('2026-08-14', acik), false);
+  assert.equal(isOffDay('2026-08-14', undefined), false, 'ayar verilmese de çalışır');
+});
+
+test('holidayListForYear - arife eve bayrağıyla döner', () => {
+  const mayis = holidayListForYear(2026).filter((h) => h.date.startsWith('2026-05'));
+  assert.equal(mayis.length, 7, '1 + 19 Mayıs + 5 gün Kurban Bayramı');
+  assert.equal(mayis.find((h) => h.date === '2026-05-26').eve, true);
+  assert.equal(mayis.find((h) => h.date === '2026-05-27').eve, false);
+});
+
+test('suggestType - arifede çalışılıyorsa normal önerilir', () => {
+  const date = new Date(2026, 4, 26);
+  const base = { weekendDays: [0] };
+  assert.equal(suggestType(date, '2026-05-26', { ...base, halfDayEves: false }).type, 'holiday');
+  assert.equal(suggestType(date, '2026-05-26', { ...base, halfDayEves: true }).type, 'normal');
+  // Bayramın kendisi ayardan etkilenmez
+  assert.equal(suggestType(new Date(2026, 4, 27), '2026-05-27', { ...base, halfDayEves: true }).type, 'holiday');
 });

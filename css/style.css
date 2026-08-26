@@ -986,6 +986,31 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
 .table-foot__hint { font-size: 12px; color: var(--text-tertiary); }
 /* Dar ekranda tablonun yana kaydığı belli olsun. */
 .scroll-hint { font-size: 11.5px; color: var(--text-tertiary); margin: 0 0 10px; }
+
+/* Gün hesabının dökümü: hangi gün neden düştü? */
+.day-calc {
+  margin: -2px 0 16px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  border: 1px solid var(--card-border);
+}
+.day-calc__line { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+.day-calc__row {
+  display: flex;
+  gap: 12px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  padding: 3px 0;
+}
+.day-calc__row > span:first-child {
+  flex: 0 0 62px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+}
+.day-calc__row i { color: var(--text-tertiary); font-style: normal; }
+.day-calc__row.is-worked > span:last-child { color: var(--positive); }
 @media (min-width: 900px) { .scroll-hint { display: none; } }
 .btn--inline { width: auto; min-width: 140px; height: 42px; margin: 0; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 18px; }
 @media (max-width: 560px) {

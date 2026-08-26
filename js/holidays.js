@@ -16,59 +16,61 @@ function fixedHolidaysForYear(year) {
   ];
 }
 
-// Dini bayramlar 2026-2030 (Diyanet takvimine göre tahmini; arife günleri
-// yarım gün resmi tatildir, tam gün olarak dahil edildi).
+// Dini bayramlar 2026-2030 (Diyanet takvimine göre tahmini).
+// Arife günleri `eve: true` taşır: yasada yarım gün tatildir. Uygulama
+// varsayılan olarak tam gün tatil sayar; Ayarlar → Program'daki
+// "Bayram arifesinde çalışıyoruz" anahtarı açılırsa iş günü olur.
 const RELIGIOUS_HOLIDAYS = {
   2026: [
-    { date: '2026-03-19', name: 'Ramazan Bayramı Arifesi' },
+    { date: '2026-03-19', name: 'Ramazan Bayramı Arifesi', eve: true },
     { date: '2026-03-20', name: 'Ramazan Bayramı (1. gün)' },
     { date: '2026-03-21', name: 'Ramazan Bayramı (2. gün)' },
     { date: '2026-03-22', name: 'Ramazan Bayramı (3. gün)' },
-    { date: '2026-05-26', name: 'Kurban Bayramı Arifesi' },
+    { date: '2026-05-26', name: 'Kurban Bayramı Arifesi', eve: true },
     { date: '2026-05-27', name: 'Kurban Bayramı (1. gün)' },
     { date: '2026-05-28', name: 'Kurban Bayramı (2. gün)' },
     { date: '2026-05-29', name: 'Kurban Bayramı (3. gün)' },
     { date: '2026-05-30', name: 'Kurban Bayramı (4. gün)' },
   ],
   2027: [
-    { date: '2027-03-08', name: 'Ramazan Bayramı Arifesi' },
+    { date: '2027-03-08', name: 'Ramazan Bayramı Arifesi', eve: true },
     { date: '2027-03-09', name: 'Ramazan Bayramı (1. gün)' },
     { date: '2027-03-10', name: 'Ramazan Bayramı (2. gün)' },
     { date: '2027-03-11', name: 'Ramazan Bayramı (3. gün)' },
-    { date: '2027-05-15', name: 'Kurban Bayramı Arifesi' },
+    { date: '2027-05-15', name: 'Kurban Bayramı Arifesi', eve: true },
     { date: '2027-05-16', name: 'Kurban Bayramı (1. gün)' },
     { date: '2027-05-17', name: 'Kurban Bayramı (2. gün)' },
     { date: '2027-05-18', name: 'Kurban Bayramı (3. gün)' },
     { date: '2027-05-19', name: 'Kurban Bayramı (4. gün)' },
   ],
   2028: [
-    { date: '2028-02-25', name: 'Ramazan Bayramı Arifesi' },
+    { date: '2028-02-25', name: 'Ramazan Bayramı Arifesi', eve: true },
     { date: '2028-02-26', name: 'Ramazan Bayramı (1. gün)' },
     { date: '2028-02-27', name: 'Ramazan Bayramı (2. gün)' },
     { date: '2028-02-28', name: 'Ramazan Bayramı (3. gün)' },
-    { date: '2028-05-03', name: 'Kurban Bayramı Arifesi' },
+    { date: '2028-05-03', name: 'Kurban Bayramı Arifesi', eve: true },
     { date: '2028-05-04', name: 'Kurban Bayramı (1. gün)' },
     { date: '2028-05-05', name: 'Kurban Bayramı (2. gün)' },
     { date: '2028-05-06', name: 'Kurban Bayramı (3. gün)' },
     { date: '2028-05-07', name: 'Kurban Bayramı (4. gün)' },
   ],
   2029: [
-    { date: '2029-02-13', name: 'Ramazan Bayramı Arifesi' },
+    { date: '2029-02-13', name: 'Ramazan Bayramı Arifesi', eve: true },
     { date: '2029-02-14', name: 'Ramazan Bayramı (1. gün)' },
     { date: '2029-02-15', name: 'Ramazan Bayramı (2. gün)' },
     { date: '2029-02-16', name: 'Ramazan Bayramı (3. gün)' },
-    { date: '2029-04-23', name: 'Kurban Bayramı Arifesi' },
+    { date: '2029-04-23', name: 'Kurban Bayramı Arifesi', eve: true },
     { date: '2029-04-24', name: 'Kurban Bayramı (1. gün)' },
     { date: '2029-04-25', name: 'Kurban Bayramı (2. gün)' },
     { date: '2029-04-26', name: 'Kurban Bayramı (3. gün)' },
     { date: '2029-04-27', name: 'Kurban Bayramı (4. gün)' },
   ],
   2030: [
-    { date: '2030-02-02', name: 'Ramazan Bayramı Arifesi' },
+    { date: '2030-02-02', name: 'Ramazan Bayramı Arifesi', eve: true },
     { date: '2030-02-03', name: 'Ramazan Bayramı (1. gün)' },
     { date: '2030-02-04', name: 'Ramazan Bayramı (2. gün)' },
     { date: '2030-02-05', name: 'Ramazan Bayramı (3. gün)' },
-    { date: '2030-04-12', name: 'Kurban Bayramı Arifesi' },
+    { date: '2030-04-12', name: 'Kurban Bayramı Arifesi', eve: true },
     { date: '2030-04-13', name: 'Kurban Bayramı (1. gün)' },
     { date: '2030-04-14', name: 'Kurban Bayramı (2. gün)' },
     { date: '2030-04-15', name: 'Kurban Bayramı (3. gün)' },
@@ -83,21 +85,38 @@ function holidaysForYear(year) {
   const fixed = fixedHolidaysForYear(year);
   const religious = RELIGIOUS_HOLIDAYS[year] || [];
   const map = new Map();
-  for (const h of [...fixed, ...religious]) map.set(h.date, h.name);
+  for (const h of [...fixed, ...religious]) map.set(h.date, { name: h.name, eve: !!h.eve });
   holidayCache.set(year, map);
   return map;
 }
 
 export function holidayName(isoDateStr) {
   const year = Number(isoDateStr.slice(0, 4));
-  return holidaysForYear(year).get(isoDateStr) || null;
+  return holidaysForYear(year).get(isoDateStr)?.name || null;
+}
+
+/** Bayram arifesi mi? (yasada yarım gün tatil) */
+export function isHolidayEve(isoDateStr) {
+  const year = Number(isoDateStr.slice(0, 4));
+  return holidaysForYear(year).get(isoDateStr)?.eve === true;
+}
+
+/**
+ * Bu gün işe gidilmiyor mu? Resmi tatil evet; arife ise ayara bağlı.
+ * `settings.halfDayEves` açıkken arife çalışma günüdür (öğlene kadar
+ * çalışılır, o gün yemek kartı ve yol parası yatar).
+ */
+export function isOffDay(isoDateStr, settings) {
+  if (!isHoliday(isoDateStr)) return false;
+  if (settings?.halfDayEves && isHolidayEve(isoDateStr)) return false;
+  return true;
 }
 
 // Yılın tüm resmi tatilleri, tarihe göre sıralı: [{date, name}, ...]
 export function holidayListForYear(year) {
   return [...holidaysForYear(year).entries()]
     .sort((a, b) => (a[0] < b[0] ? -1 : 1))
-    .map(([date, name]) => ({ date, name }));
+    .map(([date, info]) => ({ date, name: info.name, eve: info.eve }));
 }
 
 // Bugünden sonraki ilk resmi tatil. Yıl tükendiyse gelecek yılın ilki.
@@ -122,7 +141,9 @@ export function isWeekendDay(date, weekendDays) {
 // Tarihten mesai türü öner. Sadece öneri: kullanıcı ekranda değiştirebilir.
 export function suggestType(date, isoDateStr, settings) {
   const holiday = holidayName(isoDateStr);
-  if (holiday) return { type: 'holiday', reason: holiday };
+  // Arifede çalışılıyorsa o gün normal iş günüdür; "resmi tatil ×2" önerisi
+  // yanlış olurdu.
+  if (holiday && isOffDay(isoDateStr, settings)) return { type: 'holiday', reason: holiday };
   if (isWeekendDay(date, settings.weekendDays)) {
     return { type: 'weekend', reason: 'Hafta tatili' };
   }

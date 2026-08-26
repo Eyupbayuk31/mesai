@@ -5,7 +5,7 @@
 
 import { calendarMonthGrid, WEEKDAY_HEADERS } from './calendar.js';
 import { currentPeriodKey, periodLabel, shiftPeriod } from '../period.js';
-import { workdaysForPeriod } from '../payroll.js';
+import { workdaysForPeriod, workdayBreakdown } from '../payroll.js';
 import { isHoliday, holidayName } from '../holidays.js';
 import { ABSENCE_KINDS, absenceKind, absenceOn, absencesInPeriod, absenceDatesInPeriod, absenceStats } from '../absences.js';
 import { formatDayMonth, todayISO } from '../format.js';
@@ -24,6 +24,7 @@ export function render(container, state, ctx) {
   const workdays = workdaysForPeriod(periodKey, settings);
   const payDays = workdaysForPeriod(periodKey, settings, absenceDatesInPeriod(state, periodKey));
   const stats = absenceStats(state, year);
+  const breakdown = workdayBreakdown(periodKey, settings, absenceDatesInPeriod(state, periodKey));
   const today = todayISO();
 
   const cells = calendarMonthGrid(year, month);
@@ -97,6 +98,7 @@ export function render(container, state, ctx) {
       </div>
       <p class="field__hint" style="margin:12px 0 0;">
         Gelmediğin güne dokun, türünü seç. Yemek ve yol parası beklentisi o gün için düşer — maaşa dokunulmaz.
+        <br><b>${breakdown.summaryLine}</b>
       </p>
     </div>
 

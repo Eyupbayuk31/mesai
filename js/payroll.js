@@ -1,7 +1,7 @@
 // Ücret hesap motoru. Tüm fonksiyonlar saf (yan etkisiz).
 
 import { isDateInPeriod, periodKeyFromISODate } from './period.js';
-import { isHoliday } from './holidays.js';
+import { isOffDay, holidayListForYear } from './holidays.js';
 import { absenceDatesInPeriod } from './absences.js';
 
 /**
@@ -208,9 +208,57 @@ export function workdaysForPeriod(periodKey, settings, absenceDates = []) {
   for (let day = 1; day <= daysInMonth; day++) {
     const iso = `${periodKey}-${String(day).padStart(2, '0')}`;
     const dow = new Date(y, m - 1, day).getDay();
-    if (settings.weeklySchedule?.[dow]?.works && !isHoliday(iso) && !absent.has(iso)) count++;
+    if (settings.weeklySchedule?.[dow]?.works && !isOffDay(iso, settings) && !absent.has(iso)) count++;
   }
   return count;
+}
+
+/**
+ * Gün sayısının dökümü: "26 çalışma günü − 7 resmi tatil = 19".
+ *
+ * Ekranda yalnız sonuç yazınca kullanıcı sayının nereden geldiğini
+ * anlayamıyordu. Sayıyı üreten hesabın aynısını kullanır — döküm ile rakam
+ * asla ayrışmaz.
+ */
+export function workdayBreakdown(periodKey, settings, absenceDates = []) {
+  const [y, m] = periodKey.split('-').map(Number);
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const absent = new Set(absenceDates || []);
+
+  let scheduledDays = 0;          // programa göre çalışılacak günler (tatil hariç değil)
+  const holidays = [];            // bu ay işe gidilmeyen resmi tatiller
+  const eveWorkdays = [];         // çalışılan arife günleri (ayar açıkken)
+  const absences = [];            // gelinmeyen günler (yalnız iş gününe denk gelenler)
+
+  const named = new Map(holidayListForYear(y).map((h) => [h.date, h]));
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const iso = `${periodKey}-${String(day).padStart(2, '0')}`;
+    const dow = new Date(y, m - 1, day).getDay();
+    if (!settings?.weeklySchedule?.[dow]?.works) continue;
+    scheduledDays += 1;
+
+    if (isOffDay(iso, settings)) {
+      const info = named.get(iso);
+      holidays.push({ date: iso, name: info?.name || 'Resmi tatil', eve: !!info?.eve });
+      continue;
+    }
+    if (named.get(iso)?.eve) eveWorkdays.push({ date: iso, name: named.get(iso).name });
+    if (absent.has(iso)) {
+      absences.push(iso);
+      continue;
+    }
+  }
+
+  const workdays = scheduledDays - holidays.length - absences.length;
+  const parts = [`${scheduledDays} çalışma günü`];
+  if (holidays.length > 0) parts.push(`${holidays.length} resmi tatil`);
+  if (absences.length > 0) parts.push(`${absences.length} gelinmeyen gün`);
+  const summaryLine = parts.length === 1
+    ? `${scheduledDays} çalışma günü`
+    : `${parts.join(' − ')} = ${workdays} iş günü`;
+
+  return { scheduledDays, holidays, eveWorkdays, absences, workdays, summaryLine };
 }
 
 export function periodSummary(state, periodKey) {

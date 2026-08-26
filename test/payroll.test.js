@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { hourlyRate, entryAmount, hoursBetween, crossesMidnight, periodSummary, yearSummary, shiftOvertime, rangeOvertime, addMinutesToTime, workdaysForPeriod, scheduledWeeklyHours } from '../js/payroll.js';
+import { hourlyRate, entryAmount, hoursBetween, crossesMidnight, periodSummary, yearSummary, shiftOvertime, rangeOvertime, addMinutesToTime, workdaysForPeriod, workdayBreakdown, scheduledWeeklyHours } from '../js/payroll.js';
 
 const baseSettings = {
   monthlySalary: 30000,
@@ -381,4 +381,67 @@ test('periodSummary - kesinti hem kazançtan hem ödemeden düşer', () => {
   const s = periodSummary(state, '2026-08');
   assert.equal(s.earnedTotal, 40000);
   assert.equal(s.payoutTotal, 40000);
+});
+
+// --- Gün sayısı ve dökümü ------------------------------------------------
+// Mayıs 2026'da 7 resmi tatil var: 1 Mayıs (Cum), 19 Mayıs (Sal) ve
+// 26-30 Mayıs Kurban Bayramı. "Bordroda neden Mayıs 19 yazıyor?" sorusunun
+// cevabı budur.
+const pztCmt = {
+  weeklySchedule: Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [d, { works: d !== 0, start: '08:00', end: '18:00' }])),
+};
+
+test('workdaysForPeriod - Mayıs 2026 bayram yüzünden 19 gün', () => {
+  assert.equal(workdaysForPeriod('2026-05', { ...pztCmt, halfDayEves: false }), 19);
+  assert.equal(workdaysForPeriod('2026-08', { ...pztCmt, halfDayEves: false }), 26, 'tatilsiz ay');
+});
+
+test('workdaysForPeriod - arifede çalışılıyorsa bir gün artar', () => {
+  assert.equal(workdaysForPeriod('2026-05', { ...pztCmt, halfDayEves: true }), 20);
+  // Ayar sabit tatilli aya dokunmaz.
+  assert.equal(workdaysForPeriod('2026-08', { ...pztCmt, halfDayEves: true }), 26);
+});
+
+test('workdaysForPeriod - arife hafta tatiline denk gelirse fark yok', () => {
+  // 2027 Ramazan arifesi 8 Mart, Pazartesi; Pazar çalışılmayan güne denk
+  // getirmek için yalnız Pazartesi kapalı bir program kurulur.
+  const pazartesiKapali = {
+    weeklySchedule: Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [d, { works: d !== 1, start: '08:00', end: '18:00' }])),
+  };
+  assert.equal(
+    workdaysForPeriod('2027-03', { ...pazartesiKapali, halfDayEves: false }),
+    workdaysForPeriod('2027-03', { ...pazartesiKapali, halfDayEves: true }),
+    'zaten çalışılmayan güne denk gelen arife iki kez sayılmaz',
+  );
+});
+
+test('workdayBreakdown - sayı ile döküm birbirini tutar', () => {
+  const res = workdayBreakdown('2026-05', { ...pztCmt, halfDayEves: false });
+  assert.equal(res.scheduledDays, 26);
+  assert.equal(res.holidays.length, 7);
+  assert.equal(res.workdays, 19);
+  assert.equal(res.workdays, workdaysForPeriod('2026-05', { ...pztCmt, halfDayEves: false }));
+  assert.equal(res.summaryLine, '26 çalışma günü − 7 resmi tatil = 19 iş günü');
+  assert.equal(res.holidays.find((h) => h.date === '2026-05-26').eve, true);
+});
+
+test('workdayBreakdown - gelinmeyen gün ayrı sayılır, iki kez düşmez', () => {
+  const res = workdayBreakdown('2026-05', { ...pztCmt, halfDayEves: false }, ['2026-05-04', '2026-05-27']);
+  assert.deepEqual(res.absences, ['2026-05-04'], 'tatile denk gelen izin sayılmaz');
+  assert.equal(res.workdays, 18);
+  assert.match(res.summaryLine, /1 gelinmeyen gün/);
+});
+
+test('workdayBreakdown - arifede çalışılınca listeye "çalışıldı" diye girer', () => {
+  const res = workdayBreakdown('2026-05', { ...pztCmt, halfDayEves: true });
+  assert.equal(res.holidays.length, 6);
+  assert.equal(res.eveWorkdays.length, 1);
+  assert.equal(res.eveWorkdays[0].date, '2026-05-26');
+  assert.equal(res.workdays, 20);
+});
+
+test('workdayBreakdown - tatilsiz ayda tek cümle', () => {
+  const res = workdayBreakdown('2026-09', pztCmt);
+  assert.equal(res.holidays.length, 0);
+  assert.equal(res.summaryLine, `${res.scheduledDays} çalışma günü`);
 });
