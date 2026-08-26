@@ -7,6 +7,7 @@ import { budgetSummary, yearFinance, rangeFinance } from '../budget.js';
 import { portfolioSummary, investedInPeriod, formatQuantity, unitOf, kindOf } from '../investments.js';
 import { yearsWithData, compareYears, realChange, categoryTrend } from '../analysis.js';
 import { payslipRows, payslipStats, payslipLineTotals, openBalance } from '../payslip.js';
+import { debtReport } from '../loans.js';
 
 const TYPE_LABEL = { normal: 'Normal', weekend: 'Hafta tatili', holiday: 'Resmi tatil' };
 const TYPE_COLOR = { normal: '#3b6fe0', weekend: '#a24fd6', holiday: '#e2483d' };
@@ -168,7 +169,7 @@ export function buildHtmlReport({ profileName, periodKey, summary, settings, sco
     });
   }
   return buildPeriodReport({
-    profileName, periodKey, summary, settings, portfolio,
+    profileName, periodKey, summary, settings, portfolio, state,
     budget: state ? budgetSummary(state, periodKey) : null,
     periodInvested: state ? investedInPeriod(state, periodKey) : 0,
     lots: state?.investments || [],
@@ -214,13 +215,14 @@ function buildYearReport({ profileName, yearSummary, settings, finance, portfoli
       ${financeTable(finance, yearSummary)}
       ${payslipSection(state, finance ? finance.months.map((m) => m.periodKey) : [], `${year} bordro karşılaştırması`)}
       ${categoryTable(finance ? finance.byCategory : [], finance ? finance.spent : 0, 'Harcama kırılımı')}
+      ${debtSection(state, finance ? finance.months.map((m) => m.periodKey) : [], `${year} borç durumu`)}
       ${analysisSection(state, year)}
       ${portfolioTable(portfolio)}
     `,
   });
 }
 
-function buildPeriodReport({ profileName, periodKey, summary, settings, budget, periodInvested, lots, assets, portfolio }) {
+function buildPeriodReport({ profileName, periodKey, summary, settings, budget, periodInvested, lots, assets, portfolio, state }) {
   const payDate = payDateForPeriod(periodKey, settings);
   const payDateLabel = formatFullDate(
     `${payDate.getFullYear()}-${String(payDate.getMonth() + 1).padStart(2, '0')}-${String(payDate.getDate()).padStart(2, '0')}`
@@ -261,6 +263,7 @@ function buildPeriodReport({ profileName, periodKey, summary, settings, budget, 
       ${categoryTable(budget ? budget.byCategory : [], budget ? budget.spent : 0, 'Bu ayki harcamalar')}
       ${expenseListTable(budget)}
       ${periodInvestmentTable(periodKey, periodInvested, lots, assets)}
+      ${state ? debtSection(state, [periodKey], 'Borç durumu') : ''}
       ${portfolioTable(portfolio)}
 
       <h2>Günlük kayıtlar (${summary.entryCount})</h2>
@@ -702,9 +705,37 @@ function buildRangeReport({ profileName, settings, finance, portfolio, state }) 
 
       ${categoryTable(finance.byCategory, finance.spent, 'Harcama kırılımı')}
       ${payslipSection(state, finance.months.map((m) => m.periodKey), 'Bordro karşılaştırması')}
+      ${debtSection(state, finance.months.map((m) => m.periodKey), 'Borç durumu')}
       ${portfolioTable(portfolio)}
     `,
   });
+}
+
+// Borç durumu: kalan borç ve dönem içinde borca ödenen para. Taksitler
+// harcama tablosuna zaten giriyor; burada borcun kendisi görünür.
+function debtSection(state, periodKeys, heading) {
+  const debts = debtReport(state, periodKeys);
+  if (!debts.hasDebt) return '';
+
+  return `
+    <h2>${escapeHTML(heading)}</h2>
+    <table class="table">
+      <thead><tr><th>Tür</th><th class="num">Kalan borç</th><th class="num">Dönemde ödenen</th></tr></thead>
+      <tbody>
+        ${debts.byKind.map((row) => `
+          <tr>
+            <td>${escapeHTML(row.label)}</td>
+            <td class="num">${formatMoney(row.remaining, { decimals: false })}</td>
+            <td class="num">${row.paid > 0 ? formatMoney(row.paid, { decimals: false }) : '—'}</td>
+          </tr>`).join('')}
+        <tr class="total-row">
+          <td>Toplam</td>
+          <td class="num">${formatMoney(debts.remaining, { decimals: false })}</td>
+          <td class="num">${formatMoney(debts.totalPaid, { decimals: false })}</td>
+        </tr>
+      </tbody>
+    </table>
+  `;
 }
 
 // Bordro karşılaştırma: ay ay ödenen ile hesabın farkı, altında kalem bazında

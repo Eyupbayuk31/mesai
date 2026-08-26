@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   loanTotal, periodDiff, loanDueInPeriod, loanStatus, loansSummary, loanExpensesForPeriod,
-  loanKind, isOpenDebt, DEBT_KINDS,
+  loanKind, isOpenDebt, DEBT_KINDS, debtReport,
 } from '../js/loans.js';
 import { budgetSummary } from '../js/budget.js';
 
@@ -259,4 +259,93 @@ test('loansSummary - eski kayıt (kind yok) kredi süzgecine girer', () => {
   const state = { loans: [eski], expenses: [], recurring: [], settings: {} };
   assert.equal(loansSummary(state, '2026-08', { kind: 'kredi' }).count, 1);
   assert.equal(loansSummary(state, '2026-08', { kind: 'kisi' }).count, 0);
+});
+
+// --- Rapor özeti ---------------------------------------------------------
+test('debtReport - kalan borç son dönemin fotoğrafıdır, ödenen toplanır', () => {
+  const state = { loans: [araba], expenses: [], recurring: [], settings: {} };
+  const res = debtReport(state, ['2026-08', '2026-09', '2026-10'], '2026-10');
+
+  assert.equal(res.hasDebt, true);
+  // 3 taksit ödendi → 360.000 − 30.000
+  assert.equal(res.remaining, 330000);
+  assert.equal(res.totalPaid, 30000, 'üç ayın taksiti');
+  assert.deepEqual(res.months.map((m) => m.paid), [10000, 10000, 10000]);
+  assert.deepEqual(res.months.map((m) => m.remaining), [350000, 340000, 330000]);
+  assert.equal(res.byKind.length, 1);
+  assert.equal(res.byKind[0].key, 'kredi');
+  assert.equal(res.byKind[0].remaining, 330000);
+  assert.equal(res.byKind[0].paid, 30000);
+});
+
+test('debtReport - taksitsiz borç kalanda görünür, ödeme yapılmadan ödenen 0', () => {
+  const state = { loans: [ahmet], expenses: [], recurring: [], settings: {} };
+  const res = debtReport(state, ['2026-08', '2026-09'], '2026-09');
+  assert.equal(res.remaining, 20000);
+  assert.equal(res.totalPaid, 0);
+  assert.equal(res.byKind[0].key, 'kisi');
+  assert.equal(res.byKind[0].remaining, 20000);
+});
+
+test('debtReport - elden ödeme hem ödenene hem kalana yansır', () => {
+  const state = {
+    loans: [ahmet],
+    expenses: [ödeme('2026-09-10', 7500)],
+    recurring: [], settings: {},
+  };
+  const res = debtReport(state, ['2026-08', '2026-09'], '2026-09');
+  assert.equal(res.totalPaid, 7500);
+  assert.deepEqual(res.months.map((m) => m.paid), [0, 7500]);
+  assert.deepEqual(res.months.map((m) => m.remaining), [20000, 12500]);
+  assert.equal(res.remaining, 12500);
+});
+
+test('debtReport - tür kırılımı kredi ve borcu ayırır', () => {
+  const state = {
+    loans: [araba, ahmet],
+    expenses: [ödeme('2026-08-10', 5000)],
+    recurring: [], settings: {},
+  };
+  const res = debtReport(state, ['2026-08'], '2026-08');
+  const kredi = res.byKind.find((r) => r.key === 'kredi');
+  const kisi = res.byKind.find((r) => r.key === 'kisi');
+  assert.equal(kredi.paid, 10000);
+  assert.equal(kisi.paid, 5000);
+  assert.equal(res.totalPaid, 15000);
+  assert.equal(res.remaining, 350000 + 15000);
+});
+
+test('debtReport - hiç borç yoksa boş sonuç, bölüm basılmaz', () => {
+  const bos = debtReport({ loans: [], expenses: [] }, ['2026-08'], '2026-08');
+  assert.equal(bos.hasDebt, false);
+  assert.equal(bos.remaining, 0);
+  assert.deepEqual(bos.byKind, []);
+  assert.deepEqual(debtReport({}, [], '2026-08').months, []);
+  assert.equal(debtReport(null, ['2026-08'], '2026-08').hasDebt, false);
+});
+
+test('debtReport - biten borç kalanı şişirmez, ödendiği ay görünür', () => {
+  const kisa = { ...ahmet, id: 'd9', installments: 2, amount: 5000, firstPeriod: '2026-08' };
+  const state = { loans: [kisa], expenses: [], recurring: [], settings: {} };
+  const res = debtReport(state, ['2026-08', '2026-09', '2026-10'], '2026-10');
+  assert.deepEqual(res.months.map((m) => m.paid), [5000, 5000, 0]);
+  assert.equal(res.remaining, 0);
+  assert.equal(res.totalPaid, 10000);
+});
+
+test('debtReport - gelecek dönemler sayılmaz', () => {
+  const state = { loans: [araba], expenses: [], recurring: [], settings: {} };
+  const yil = Array.from({ length: 12 }, (_, i) => `2026-${String(i + 1).padStart(2, '0')}`);
+
+  // Bugün Ağustos: Eylül–Aralık taksitleri henüz ödenmedi.
+  const res = debtReport(state, yil, '2026-08');
+  assert.equal(res.months.length, 8, 'yalnız Ocak–Ağustos');
+  assert.equal(res.totalPaid, 10000, 'yalnız Ağustos taksiti (kredi Ağustos başlıyor)');
+  assert.equal(res.remaining, 350000, 'Ağustos sonundaki kalan');
+
+  // Aralık'ta bakıldığında beş taksit daha ödenmiş olur.
+  const aralik = debtReport(state, yil, '2026-12');
+  assert.equal(aralik.months.length, 12);
+  assert.equal(aralik.totalPaid, 50000);
+  assert.equal(aralik.remaining, 310000);
 });

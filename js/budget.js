@@ -17,6 +17,7 @@ export const CATEGORIES = [
   { key: 'fatura', label: 'Fatura', color: '#0e8a8a' },
   { key: 'kira', label: 'Kira', color: '#8447b5' },
   { key: 'kredi', label: 'Kredi', color: '#8a5a2b' },
+  { key: 'borc', label: 'Borç', color: '#b0431f' },
   { key: 'giyim', label: 'Giyim', color: '#c2568e' },
   { key: 'eglence', label: 'Eğlence', color: '#b0431f' },
   { key: 'diger', label: 'Diğer', color: '#7d7666' },

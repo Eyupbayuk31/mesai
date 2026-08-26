@@ -10,6 +10,8 @@ import { paginate, paginationHTML } from './pagination.js';
 import { calendarHTML, groupEntriesByDate } from './calendar.js';
 import { mountPeriodNav } from './periodNav.js';
 import { entryTableHTML, sortEntries } from './entryTable.js';
+import { downloadFile } from './exportUtils.js';
+import { profileName } from '../profile.js';
 
 const TYPE_FILTERS = [
   { key: 'all', label: 'Tümü' },
@@ -92,12 +94,61 @@ export function renderEntries(container, state, ctx) {
     ${view.mode === 'list'
     ? listSectionHTML(filtered, settings, view, filterActive)
     : calendarSectionHTML(filtered, state, view)}
+
+    ${filtered.length === 0 ? '' : `
+    <div class="section-header"><span class="section-title" style="margin:0;">Çizelgeyi dışa aktar</span></div>
+    <div class="card export-card">
+      <p class="field__hint" style="margin:0 0 12px;">
+        Yalnız <b>mesai saatleri</b> — para yazmaz. İşyerinin puantajıyla ya da bordroyla
+        karşılaştırmak için ${view.allTime ? 'tüm kayıtları' : periodLabel(view.periodKey) + ' kayıtlarını'} alır.
+      </p>
+      <div class="export-card__actions">
+        <button class="btn btn--primary btn--sm" id="exportHours" type="button">HTML çizelge</button>
+        <button class="btn btn--secondary btn--sm" id="exportHoursPng" type="button">Fotoğraf (PNG)</button>
+      </div>
+    </div>`}
   `;
 
   wireCommon(container, ctx, view, `${filtered.length} kayıt · ${formatHours(totalHours)} · ${formatMoney(totalAmount, { decimals: false })}`);
   wireFilters(container, ctx);
+  wireExport(container, ctx, filtered, view);
   if (view.mode === 'list') wireList(container, state, ctx, filtered);
   else wireCalendar(container, ctx);
+}
+
+// Çizelge dışa aktarma: ekranda hangi kayıtlar süzülmüşse onlar çıkar.
+// Ağır modül (canvas + HTML kalıbı) yalnız düğmeye basılınca yüklenir.
+function wireExport(container, ctx, filtered, view) {
+  const btnHtml = container.querySelector('#exportHours');
+  const btnPng = container.querySelector('#exportHoursPng');
+  if (!btnHtml && !btnPng) return;
+
+  const scopeLabel = view.allTime ? 'Tüm zamanlar' : periodLabel(view.periodKey);
+  const typeLabel = { normal: 'Normal', weekend: 'Hafta tatili', holiday: 'Resmi tatil' }[view.type];
+  const subtitle = typeLabel ? `${scopeLabel} · ${typeLabel}` : scopeLabel;
+  const slug = (view.allTime ? 'tum-zamanlar' : view.periodKey);
+
+  const build = async () => {
+    const mod = await import('./hoursSheet.js');
+    return { mod, table: mod.hoursTable(filtered, { title: 'Mesai çizelgesi', subtitle, profileName: profileName(ctx.profileId) }) };
+  };
+
+  btnHtml?.addEventListener('click', async () => {
+    const { mod, table } = await build();
+    downloadFile(`mesai-cizelge-${slug}.html`, mod.hoursHtml(table), 'text/html;charset=utf-8');
+    showToast('HTML çizelge indirildi');
+  });
+
+  btnPng?.addEventListener('click', async () => {
+    try {
+      const { mod, table } = await build();
+      const blob = await mod.hoursPng(table);
+      downloadFile(`mesai-cizelge-${slug}.png`, blob, 'image/png');
+      showToast('Fotoğraf indirildi');
+    } catch {
+      showToast('Fotoğraf üretilemedi');
+    }
+  });
 }
 
 function listSectionHTML(filtered, settings, view, filterActive) {

@@ -16,14 +16,14 @@
 // Böylece o ayın bütçesinden de düşerler (gerçekte de para çıkmıştır) ve
 // senkronda kayıt bazında birleşirler.
 
-import { shiftPeriod, periodRange } from './period.js';
+import { shiftPeriod, periodRange, currentPeriodKey } from './period.js';
 
 /** Borç türleri. `kind` yoksa eski kayıtlar kredidir — göç gerekmez. */
 export const DEBT_KINDS = [
   { key: 'kredi', label: 'Kredi', short: 'Kredi', color: '#8a5a2b', category: 'kredi' },
-  { key: 'kisi', label: 'Kişiye borç', short: 'Kişi', color: '#2f63c4', category: 'diger' },
-  { key: 'kart', label: 'Kredi kartı', short: 'Kart', color: '#8447b5', category: 'diger' },
-  { key: 'diger', label: 'Diğer borç', short: 'Diğer', color: '#7d7666', category: 'diger' },
+  { key: 'kisi', label: 'Kişiye borç', short: 'Kişi', color: '#2f63c4', category: 'borc' },
+  { key: 'kart', label: 'Kredi kartı', short: 'Kart', color: '#8447b5', category: 'borc' },
+  { key: 'diger', label: 'Diğer borç', short: 'Diğer', color: '#7d7666', category: 'borc' },
 ];
 
 const KIND_BY_KEY = new Map(DEBT_KINDS.map((k) => [k.key, k]));
@@ -194,6 +194,79 @@ export function loansSummary(state, periodKey, options = {}) {
     openCount: openItems.length,
     count: items.length,
     byKind,
+  };
+}
+
+/**
+ * Rapor için borç özeti: verilen dönemlerin sonunda ne kadar borç kaldı, o
+ * dönemlerde borca ne kadar ödendi?
+ *
+ * Ekran ve HTML rapor aynı çıktıyı kullanır. Yeni hesap yazılmaz; kalan borç
+ * `loansSummary`, ödenen ise taksit (`loanDueInPeriod`) + o döneme düşen
+ * ödemelerden toplanır.
+ *
+ * Gelecek dönemler sayılmaz: henüz ödenmemiş taksitleri "ödendi" yazmak
+ * borcu olduğundan küçük gösterirdi (yıllık raporda Aralık'a kadar hepsi
+ * kapanmış görünüyordu).
+ *
+ * @param {string[]} periodKeys eskiden yeniye sıralı dönemler
+ * @param {string} [nowPeriod] bugünün dönemi — testlerde sabitlenebilir
+ */
+export function debtReport(state, periodKeys, nowPeriod = currentPeriodKey()) {
+  const all = Array.isArray(periodKeys) ? periodKeys : [];
+  const keys = all.filter((k) => k <= nowPeriod);
+  const loans = (state?.loans || []).filter(Boolean);
+
+  const empty = {
+    remaining: 0, totalPaid: 0, hasDebt: false,
+    byKind: [], months: keys.map((periodKey) => ({ periodKey, remaining: 0, paid: 0 })),
+  };
+  if (loans.length === 0 || keys.length === 0) return empty;
+
+  const paidByKind = new Map();
+  const months = [];
+
+  for (const periodKey of keys) {
+    const { startISO, endISO } = periodRange(periodKey);
+    let paid = 0;
+
+    for (const loan of loans) {
+      const payments = extraPaymentsOf(state, loan.id);
+      // O dönemde borca giden para: taksit + o ay yapılan elden ödemeler.
+      const inPeriod = payments
+        .filter((p) => p?.date >= startISO && p.date <= endISO)
+        .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+      const due = loanDueInPeriod(loan, periodKey, payments);
+      const total = due + inPeriod;
+      if (total <= 0) continue;
+      paid += total;
+      const key = loanKind(loan).key;
+      paidByKind.set(key, (paidByKind.get(key) || 0) + total);
+    }
+
+    const snapshot = loansSummary(state, periodKey);
+    months.push({ periodKey, remaining: snapshot.totalRemaining, paid });
+  }
+
+  // Kalan borç son dönemin fotoğrafıdır — toplanmaz, en sondaki alınır.
+  const last = loansSummary(state, keys[keys.length - 1]);
+
+  const byKind = DEBT_KINDS.map((kind) => ({
+    key: kind.key,
+    label: kind.label,
+    color: kind.color,
+    remaining: last.byKind?.[kind.key]?.remaining || 0,
+    paid: paidByKind.get(kind.key) || 0,
+  })).filter((row) => row.remaining > 0 || row.paid > 0);
+
+  const totalPaid = months.reduce((sum, m) => sum + m.paid, 0);
+
+  return {
+    remaining: last.totalRemaining,
+    totalPaid,
+    hasDebt: last.totalRemaining > 0 || totalPaid > 0,
+    byKind,
+    months,
   };
 }
 
