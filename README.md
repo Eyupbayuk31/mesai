@@ -70,8 +70,23 @@ node --test
 ## Yayın (GitHub Pages)
 
 Repo ayarlarında **Settings → Pages → Source = GitHub Actions** seçili olmalı
-(bir kerelik kurulum). `main` dalına her push'ta `.github/workflows/pages.yml`
-otomatik olarak siteyi yayınlar.
+(bir kerelik kurulum).
+
+`.github/workflows/pages.yml` siteyi **yalnızca deponun varsayılan dalından**
+yayınlar (bugün `claude/mesai-takip-app-ky19nn`). Başka bir dala push edilince
+iş "skipped" görünür — hata değil, kasıtlı: Pages ortamı yalnız varsayılan
+daldan yayına izin veriyor.
+
+**Yayına çıktı mı?** Uygulamada Ayarlar → Uygulama hakkında'daki sürüm ile
+`js/ui/settings/about.js` içindeki `APP_VERSION` aynı olmalı. Hızlı kontrol:
+
+```bash
+curl -s https://eyupbayuk31.github.io/mesai/js/ui/settings/about.js | grep APP_VERSION
+```
+
+Farklıysa yayın koşmamış demektir (ör. GitHub Actions arızasında olduğu gibi).
+Yeni bir push ya da Actions sekmesinden **Deploy to GitHub Pages → Run
+workflow** ile yeniden tetiklenir.
 
 ## Veri ve yedekleme
 
