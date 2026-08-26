@@ -5,9 +5,19 @@ on:
     branches: ["**"]
   pull_request:
 
+# Aynı commit iki dala push ediliyor (önce çalışma dalı, sonra main), bu da
+# her sürüm için iki özdeş CI koşusu üretiyordu. Grup anahtarı commit SHA
+# olunca ikincisi iptal edilir; GitHub iptal edilen koşu için hata e-postası
+# göndermez, gereksiz kırmızı bildirim de kalkar.
+concurrency:
+  group: ci-${{ github.sha }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Koşucu atanamazsa iş saatlerce "queued" beklemesin.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
