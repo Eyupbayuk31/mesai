@@ -1,4 +1,10 @@
-// Krediler / borçlar.
+// Krediler ve borçlar.
+//
+// İki tür borç aynı kayıtta tutulur:
+//   1. TAKSİTLİ  (banka kredisi, taksitli kart borcu): her ay bütçeden sabit
+//      bir taksit düşer, taksit sayısı bellidir, bitince kendiliğinden durur.
+//   2. AÇIK      (bir kişiye borç, kart bakiyesi): aylık taksit yoktur, eline
+//      geçtikçe ödenir. `installments` 0/boş olduğunda `amount` TOPLAM borçtur.
 //
 // Bir kredi, her ay bütçeden düşen sabit bir taksittir; ödendikçe kalan borç
 // azalır. Taksitler bütçeye "sanal harcama" olarak girer (sürekli giderler gibi),
@@ -12,8 +18,29 @@
 
 import { shiftPeriod, periodRange } from './period.js';
 
+/** Borç türleri. `kind` yoksa eski kayıtlar kredidir — göç gerekmez. */
+export const DEBT_KINDS = [
+  { key: 'kredi', label: 'Kredi', short: 'Kredi', color: '#8a5a2b', category: 'kredi' },
+  { key: 'kisi', label: 'Kişiye borç', short: 'Kişi', color: '#2f63c4', category: 'diger' },
+  { key: 'kart', label: 'Kredi kartı', short: 'Kart', color: '#8447b5', category: 'diger' },
+  { key: 'diger', label: 'Diğer borç', short: 'Diğer', color: '#7d7666', category: 'diger' },
+];
+
+const KIND_BY_KEY = new Map(DEBT_KINDS.map((k) => [k.key, k]));
+
+export function loanKind(loan) {
+  return KIND_BY_KEY.get(loan?.kind) || DEBT_KINDS[0];
+}
+
+/** Taksitsiz (açık) borç mu? O zaman `amount` toplam borçtur. */
+export function isOpenDebt(loan) {
+  return !((Number(loan?.installments) || 0) > 0);
+}
+
 export function loanTotal(loan) {
-  return (Number(loan?.amount) || 0) * (Number(loan?.installments) || 0);
+  const amount = Number(loan?.amount) || 0;
+  if (isOpenDebt(loan)) return amount;
+  return amount * (Number(loan?.installments) || 0);
 }
 
 // İki dönem arasındaki ay farkı: '2026-08' → '2026-11' = 3
@@ -43,6 +70,9 @@ function extraPaidBefore(payments, periodKey) {
  */
 export function loanDueInPeriod(loan, periodKey, payments = []) {
   if (!loan || loan.active === false) return 0;
+  // Açık borcun aylık taksiti yoktur: bütçeye kendiliğinden yazılmaz, yalnız
+  // ödeme yapıldıkça gerçek harcama olarak iner.
+  if (isOpenDebt(loan)) return 0;
   const amount = Number(loan.amount) || 0;
   const installments = Number(loan.installments) || 0;
   if (amount <= 0 || installments <= 0) return 0;
@@ -66,15 +96,17 @@ export function loanDueInPeriod(loan, periodKey, payments = []) {
 export function loanStatus(loan, payments, periodKey) {
   const amount = Number(loan?.amount) || 0;
   const installments = Number(loan?.installments) || 0;
-  const total = amount * installments;
+  const total = loanTotal(loan);
+  const open = isOpenDebt(loan);
 
   const index = periodDiff(loan?.firstPeriod, periodKey);
   let paidByInstallments = 0;
   let paidInstallments = 0;
+  // Açık borçta taksit döngüsü çalışmaz; ödenen yalnız yapılan ödemelerdir.
 
   // Taksitleri tek tek toplarız: ara ödeme araya girdiğinde sonraki taksitler
   // kısalabilir veya hiç düşmeyebilir, formülle tek seferde bulunamaz.
-  for (let i = 0; i <= index && i < installments; i += 1) {
+  for (let i = 0; !open && i <= index && i < installments; i += 1) {
     const due = loanDueInPeriod(loan, shiftPeriod(loan.firstPeriod, i), payments);
     if (due <= 0) break;
     paidByInstallments += due;
@@ -90,13 +122,15 @@ export function loanStatus(loan, payments, periodKey) {
   const remaining = Math.max(0, total - paid);
 
   // Kalan borç bu hızla kaç ay sürer? Ara ödeme bitişi öne çeker.
-  const monthsLeft = amount > 0 ? Math.ceil(remaining / amount) : 0;
-  const endPeriod = remaining > 0 ? shiftPeriod(periodKey, monthsLeft) : null;
+  // Açık borçta aylık bir hız yok — bitiş tahmini de yapılmaz.
+  const monthsLeft = !open && amount > 0 ? Math.ceil(remaining / amount) : 0;
+  const endPeriod = !open && remaining > 0 ? shiftPeriod(periodKey, monthsLeft) : null;
 
   return {
     total,
     amount,
     installments,
+    open,
     paidInstallments,
     paidByInstallments,
     extraPaid,
@@ -105,14 +139,24 @@ export function loanStatus(loan, payments, periodKey) {
     monthsLeft,
     endPeriod,
     progress: total > 0 ? paid / total : 0,
-    finished: remaining <= 0,
-    notStarted: index < 0,
+    finished: total > 0 && remaining <= 0,
+    notStarted: !open && index < 0,
   };
 }
 
-/** Tüm kredilerin toplu durumu — Bütçe ve Özet özetleri için. */
-export function loansSummary(state, periodKey) {
-  const loans = (state?.loans || []).filter((l) => l && l.active !== false);
+/**
+ * Borçların toplu durumu — Bütçe ve Özet özetleri için.
+ * @param {object} [options]
+ * @param {string|string[]} [options.kind] yalnız bu tür(ler)i say
+ */
+export function loansSummary(state, periodKey, options = {}) {
+  const wanted = options.kind === undefined || options.kind === null
+    ? null
+    : new Set(Array.isArray(options.kind) ? options.kind : [options.kind]);
+
+  const loans = (state?.loans || [])
+    .filter((l) => l && l.active !== false)
+    .filter((l) => !wanted || wanted.has(loanKind(l).key));
   const items = loans.map((loan) => {
     const payments = extraPaymentsOf(state, loan.id);
     return {
@@ -125,6 +169,23 @@ export function loansSummary(state, periodKey) {
 
   // Bitmiş krediler listede kalır ama toplamları şişirmez.
   const openItems = items.filter((i) => !i.status.finished);
+
+  // Tür bazında kırılım: Gider sayfası "krediler" ve "diğer borçlar"ı ayrı
+  // satırda gösteriyor, iki kez hesaplamaya gerek kalmasın.
+  const byKind = {};
+  for (const kind of DEBT_KINDS) {
+    byKind[kind.key] = { remaining: 0, monthly: 0, count: 0, openCount: 0 };
+  }
+  for (const item of items) {
+    const bucket = byKind[loanKind(item.loan).key];
+    bucket.count += 1;
+    bucket.monthly += item.dueThisPeriod;
+    if (!item.status.finished) {
+      bucket.remaining += item.status.remaining;
+      bucket.openCount += 1;
+    }
+  }
+
   return {
     items: items.sort((a, b) => b.status.remaining - a.status.remaining),
     totalRemaining: openItems.reduce((sum, i) => sum + i.status.remaining, 0),
@@ -132,6 +193,7 @@ export function loansSummary(state, periodKey) {
     monthlyTotal: items.reduce((sum, i) => sum + i.dueThisPeriod, 0),
     openCount: openItems.length,
     count: items.length,
+    byKind,
   };
 }
 

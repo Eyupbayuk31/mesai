@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   loanTotal, periodDiff, loanDueInPeriod, loanStatus, loansSummary, loanExpensesForPeriod,
+  loanKind, isOpenDebt, DEBT_KINDS,
 } from '../js/loans.js';
 import { budgetSummary } from '../js/budget.js';
 
@@ -160,4 +161,102 @@ test('loanExpensesForPeriod - ayın gününe göre tarihlenir', () => {
   assert.equal(e.date, '2026-09-15');
   assert.equal(e.amount, 10000);
   assert.equal(e.virtual, true);
+});
+
+// --- Açık (taksitsiz) borç: kişiye borç, kart bakiyesi -------------------
+// 20.000 ₺ borç; taksit yok, eline geçtikçe ödüyor.
+const ahmet = {
+  id: 'd1', kind: 'kisi', label: 'Ahmet', amount: 20000, installments: 0,
+  firstPeriod: '2026-08', day: 1, category: 'diger', active: true,
+};
+const ödeme = (date, amount, loanId = 'd1') => ({ id: 'p' + date, date, amount, category: 'diger', loanId });
+
+test('isOpenDebt / loanKind - tür ve taksitsizlik', () => {
+  assert.equal(isOpenDebt(ahmet), true);
+  assert.equal(isOpenDebt(araba), false);
+  assert.equal(isOpenDebt({ amount: 500 }), true, 'taksit alanı yoksa açık borç');
+  assert.equal(loanKind(ahmet).key, 'kisi');
+  assert.equal(loanKind(araba).key, 'kredi');
+  assert.equal(loanKind({}).key, 'kredi', 'tür yoksa kredi sayılır (eski kayıtlar)');
+  assert.equal(loanKind({ kind: 'uydurma' }).key, 'kredi');
+  assert.equal(DEBT_KINDS.length, 4);
+});
+
+test('açık borç - toplam doğrudan tutardır, aylık taksit düşmez', () => {
+  assert.equal(loanTotal(ahmet), 20000);
+  assert.equal(loanDueInPeriod(ahmet, '2026-08', []), 0);
+  assert.equal(loanDueInPeriod(ahmet, '2026-12', []), 0);
+});
+
+test('açık borç - kalan = toplam − ödemeler', () => {
+  const s0 = loanStatus(ahmet, [], '2026-08');
+  assert.equal(s0.total, 20000);
+  assert.equal(s0.paid, 0);
+  assert.equal(s0.remaining, 20000);
+  assert.equal(s0.open, true);
+  assert.equal(s0.finished, false);
+
+  const s1 = loanStatus(ahmet, [ödeme('2026-08-20', 5000)], '2026-08');
+  assert.equal(s1.paid, 5000);
+  assert.equal(s1.remaining, 15000);
+  assert.equal(s1.progress, 0.25);
+
+  // Sonraki ayın ödemesi bu ayın durumuna girmez.
+  const s2 = loanStatus(ahmet, [ödeme('2026-08-20', 5000), ödeme('2026-09-05', 3000)], '2026-08');
+  assert.equal(s2.remaining, 15000);
+  assert.equal(loanStatus(ahmet, [ödeme('2026-08-20', 5000), ödeme('2026-09-05', 3000)], '2026-09').remaining, 12000);
+});
+
+test('açık borç - fazla ödemede kalan sıfırın altına inmez', () => {
+  const s = loanStatus(ahmet, [ödeme('2026-08-20', 25000)], '2026-08');
+  assert.equal(s.paid, 20000);
+  assert.equal(s.remaining, 0);
+  assert.equal(s.finished, true);
+  assert.equal(s.endPeriod, null, 'açık borçta bitiş tahmini yapılmaz');
+});
+
+test('açık borç bütçeye sanal taksit yazmaz', () => {
+  const state = { loans: [ahmet], expenses: [], recurring: [], settings: {} };
+  assert.deepEqual(loanExpensesForPeriod(state, '2026-08'), []);
+});
+
+test('taksitli kişi borcu kredi ile birebir aynı hesaplanır', () => {
+  const taksitli = { ...ahmet, id: 'd2', installments: 4, amount: 5000 };
+  const kredi = { ...araba, id: 'l9', installments: 4, amount: 5000, firstPeriod: '2026-08' };
+  const a = loanStatus(taksitli, [], '2026-09');
+  const b = loanStatus(kredi, [], '2026-09');
+  assert.equal(a.total, b.total);
+  assert.equal(a.paid, b.paid);
+  assert.equal(a.remaining, b.remaining);
+  assert.equal(a.paidInstallments, b.paidInstallments);
+});
+
+test('loansSummary - tür süzgeci ve byKind kırılımı', () => {
+  const state = { loans: [araba, ahmet], expenses: [ödeme('2026-08-20', 5000)], recurring: [], settings: {} };
+
+  const hepsi = loansSummary(state, '2026-08');
+  assert.equal(hepsi.count, 2);
+  assert.equal(hepsi.totalRemaining, 350000 + 15000);
+  assert.equal(hepsi.monthlyTotal, 10000, 'yalnız kredinin taksiti');
+
+  const krediler = loansSummary(state, '2026-08', { kind: 'kredi' });
+  assert.equal(krediler.count, 1);
+  assert.equal(krediler.totalRemaining, 350000);
+
+  const borclar = loansSummary(state, '2026-08', { kind: ['kisi', 'kart', 'diger'] });
+  assert.equal(borclar.count, 1);
+  assert.equal(borclar.totalRemaining, 15000);
+  assert.equal(borclar.monthlyTotal, 0);
+
+  assert.equal(hepsi.byKind.kredi.remaining, 350000);
+  assert.equal(hepsi.byKind.kredi.monthly, 10000);
+  assert.equal(hepsi.byKind.kisi.remaining, 15000);
+  assert.equal(hepsi.byKind.kart.count, 0);
+});
+
+test('loansSummary - eski kayıt (kind yok) kredi süzgecine girer', () => {
+  const eski = { id: 'l0', label: 'Eski', amount: 1000, installments: 10, firstPeriod: '2026-08', active: true };
+  const state = { loans: [eski], expenses: [], recurring: [], settings: {} };
+  assert.equal(loansSummary(state, '2026-08', { kind: 'kredi' }).count, 1);
+  assert.equal(loansSummary(state, '2026-08', { kind: 'kisi' }).count, 0);
 });

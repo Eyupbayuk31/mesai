@@ -27,6 +27,7 @@ export const NAV_TREE = [
     icon: '<path d="M12 4v15" stroke-linecap="round"/><path d="M6 13l6 6 6-6" stroke-linecap="round" stroke-linejoin="round"/>',
     children: [
       { page: 'loans', label: 'Krediler' },
+      { page: 'debts', label: 'Borçlar' },
     ],
   },
   {

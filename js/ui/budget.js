@@ -116,7 +116,10 @@ export function renderBudget(container, state, ctx) {
 
   container.querySelector('#addExpense').addEventListener('click', () => ctx.openExpense());
 
-  container.querySelector('#loansRow').addEventListener('click', () => ctx.navigate({ tab: 'expense', page: 'loans' }));
+  container.querySelector('#loansRow')?.addEventListener('click', () => ctx.navigate({ tab: 'expense', page: 'loans' }));
+  container.querySelectorAll('[data-debt-row]').forEach((row) => {
+    row.addEventListener('click', () => ctx.navigate({ tab: 'expense', page: row.dataset.debtRow }));
+  });
 
   container.querySelector('#monthChart')?.addEventListener('click', (e) => {
     const col = e.target.closest('[data-period]');
@@ -149,22 +152,52 @@ export function renderBudget(container, state, ctx) {
 // Geçen dönemle kıyas — ayın aynı gününe kadarki harcamalar karşılaştırılır.
 // Borç özeti + Borçlar sayfasına giriş. Hiç kredi yoksa da görünür ki
 // kullanıcı özelliğin varlığını fark etsin.
+// Krediler ve diğer borçlar ayrı satırda: ikisi de aynı toplamda erirse
+// "bankaya mı, kişiye mi borçluyum" görünmüyordu.
 function loansSectionHTML(summary) {
   const loans = summary.loans;
+  const byKind = loans?.byKind || {};
+  const krediler = byKind.kredi || { remaining: 0, monthly: 0, openCount: 0, count: 0 };
+  const digerKeys = ['kisi', 'kart', 'diger'];
+  const diger = digerKeys.reduce((acc, key) => {
+    const b = byKind[key] || { remaining: 0, monthly: 0, openCount: 0, count: 0 };
+    return {
+      remaining: acc.remaining + b.remaining,
+      monthly: acc.monthly + b.monthly,
+      openCount: acc.openCount + b.openCount,
+      count: acc.count + b.count,
+    };
+  }, { remaining: 0, monthly: 0, openCount: 0, count: 0 });
+
   const has = loans && loans.count > 0;
+  if (!has) {
+    return `
+    <div class="section-header"><span class="section-title" style="margin:0;">Borçlar</span></div>
+    <div class="card">
+      <div class="link-row" id="loansRow" role="button" tabindex="0">
+        <span>Kredi veya borç ekle
+          <span class="link-row__sub">Krediler, kişiye borç ve kart bakiyesi buradan takip edilir.</span></span>
+        <span class="link-row__chevron">›</span>
+      </div>
+    </div>`;
+  }
+
+  const row = (id, label, bucket, hint) => `
+      <div class="link-row" data-debt-row="${id}" role="button" tabindex="0">
+        <span>${label}
+          <span class="link-row__sub">${bucket.count === 0 ? hint : `${bucket.openCount} açık${bucket.monthly > 0 ? ` · bu ay ${formatMoney(bucket.monthly, { decimals: false })}` : ''}`}</span></span>
+        <span class="link-row__value ${bucket.remaining > 0 ? 'is-negative' : ''}">${bucket.remaining > 0 ? formatMoney(bucket.remaining, { decimals: false }) : '—'}</span>
+        <span class="link-row__chevron">›</span>
+      </div>`;
+
   return `
     <div class="section-header">
       <span class="section-title" style="margin:0;">Borçlar</span>
-      ${has ? `<span class="section-header__meta">${loans.openCount} açık kredi</span>` : ''}
+      <span class="section-header__meta">toplam ${formatMoney(loans.totalRemaining, { decimals: false })}</span>
     </div>
     <div class="card">
-      <div class="link-row" id="loansRow" role="button" tabindex="0">
-        <span>${has ? 'Kalan borç' : 'Kredi ekle'}
-          ${has ? `<span class="link-row__sub">bu ay ödenecek ${formatMoney(loans.monthlyTotal, { decimals: false })}</span>`
-    : '<span class="link-row__sub">Taksitli borcun varsa ekle, bütçeden otomatik düşsün.</span>'}</span>
-        <span class="link-row__value ${has ? 'is-negative' : ''}">${has ? formatMoney(loans.totalRemaining, { decimals: false }) : ''}</span>
-        <span class="link-row__chevron">›</span>
-      </div>
+      ${row('loans', 'Krediler', krediler, 'Taksitli kredin yok')}
+      ${row('debts', 'Kişi · kart · diğer', diger, 'Kayıtlı borcun yok')}
     </div>
   `;
 }

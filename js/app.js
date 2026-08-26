@@ -240,6 +240,7 @@ function boot(profileId) {
     else if (tab === 'report') renderReport(screenEl, state, ctx);
     else if (tab === 'expense') {
       if (page === 'loans') loansPage.render(screenEl, state, ctx);
+      else if (page === 'debts') loansPage.renderDebts(screenEl, state, ctx);
       else renderBudget(screenEl, state, ctx);
     }
     else if (tab === 'invest') {
