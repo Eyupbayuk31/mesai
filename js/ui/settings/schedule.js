@@ -1,4 +1,6 @@
 import { timeSelectHTML } from '../timeSelect.js';
+import { seniority, entitlementFor } from '../../leave.js';
+import { todayISO } from '../../format.js';
 import { WEEKDAY_LABELS_FULL, WEEKDAY_JS_VALUES } from './shared.js';
 
 export const title = 'Çalışma programı';
@@ -28,6 +30,22 @@ export function render(container, state, ctx) {
     <div class="card" id="weeklyScheduleCard">
       <p class="field__hint" style="margin-top:-4px; margin-bottom:14px;">"Giriş-Çıkış" ile mesai girerken, buradaki normal saatlerin üstündeki kısım otomatik mesai sayılır.</p>
       ${WEEKDAY_JS_VALUES.map((dayNum, i) => dayScheduleRowHTML(dayNum, WEEKDAY_LABELS_FULL[i], settings.weeklySchedule[dayNum])).join('')}
+    </div>
+
+    <div class="section-title">Kıdem ve izin</div>
+    <div class="card" id="hireCard">
+      <div class="field">
+        <label class="field__label">İşe giriş tarihi</label>
+        <input class="input" type="date" id="hireDateInput" value="${settings.hireDate || ''}" />
+      </div>
+      <p class="field__hint" id="seniorityLine" style="margin:-4px 0 14px;">${seniorityLineHTML(settings)}</p>
+      <div class="switch-row" style="border-top:1px solid var(--divider); padding-bottom:0;">
+        <div>
+          <div class="switch-row__label">18 yaş altı / 50 yaş üstü</div>
+          <div class="switch-row__hint">Bu durumda yıllık izin en az 20 gündür (İş Kanunu md. 53).</div>
+        </div>
+        <button class="switch ${settings.leaveMinimum20 ? 'is-on' : ''}" id="minimum20Switch" type="button" aria-label="18 yaş altı / 50 yaş üstü"></button>
+      </div>
     </div>
 
     <div class="section-title">Resmi tatiller</div>
@@ -96,6 +114,13 @@ export function render(container, state, ctx) {
     });
   });
 
+  container.querySelector('#hireDateInput').addEventListener('change', (e) => {
+    ctx.store.updateSettings({ hireDate: e.target.value || '' });
+  });
+  container.querySelector('#minimum20Switch').addEventListener('click', () => {
+    ctx.store.updateSettings({ leaveMinimum20: !settings.leaveMinimum20 });
+  });
+
   container.querySelector('#halfDayEvesSwitch').addEventListener('click', () => {
     ctx.store.updateSettings({ halfDayEves: !settings.halfDayEves });
   });
@@ -118,4 +143,17 @@ export function render(container, state, ctx) {
     const key = part === 'Start' ? 'start' : 'end';
     ctx.store.updateSettings({ breakWindow: { ...settings.breakWindow, [key]: timeValue } });
   });
+}
+
+// "3 yıl 2 ay kıdem · yılda 14 gün izin hakkı" — tarih girilince görünür.
+function seniorityLineHTML(settings) {
+  const s = seniority(settings.hireDate, todayISO());
+  if (!s) return 'Tarihi girince kıdemin ve yıllık izin hakkın hesaplanır.';
+  const kidem = s.years > 0
+    ? `${s.years} yıl${s.months > 0 ? ` ${s.months} ay` : ''} kıdem`
+    : `${s.months} ay kıdem`;
+  const hak = entitlementFor(s.years, { minimum20: settings.leaveMinimum20 });
+  return hak > 0
+    ? `<b>${kidem}</b> · yılda <b>${hak} gün</b> izin hakkı`
+    : `<b>${kidem}</b> · yıllık izin hakkı 1 yılı doldurunca doğar`;
 }

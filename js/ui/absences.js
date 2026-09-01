@@ -8,7 +8,8 @@ import { currentPeriodKey, periodLabel, shiftPeriod } from '../period.js';
 import { workdaysForPeriod, workdayBreakdown } from '../payroll.js';
 import { isHoliday, holidayName } from '../holidays.js';
 import { ABSENCE_KINDS, absenceKind, absenceOn, absencesInPeriod, absenceDatesInPeriod, absenceStats } from '../absences.js';
-import { formatDayMonth, todayISO } from '../format.js';
+import { formatDayMonth, formatFullDate, todayISO } from '../format.js';
+import { leaveLedger } from '../leave.js';
 import { mountPeriodNav } from './periodNav.js';
 import { openSheet, closeSheet } from './sheet.js';
 import { showToast } from './toast.js';
@@ -26,6 +27,7 @@ export function render(container, state, ctx) {
   const stats = absenceStats(state, year);
   const breakdown = workdayBreakdown(periodKey, settings, absenceDatesInPeriod(state, periodKey));
   const today = todayISO();
+  const ledger = leaveLedger(state, settings, today);
 
   const cells = calendarMonthGrid(year, month);
   const ozet = `${workdays} iş günü${rows.length ? ` · ${rows.length} gün gelinmedi · yan ödeme ${payDays} gün` : ''}`;
@@ -51,6 +53,8 @@ export function render(container, state, ctx) {
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
       </button>
     </div>
+
+    ${leaveCardHTML(ledger)}
 
     <div class="stat-strip stat-strip--kpi">
       <div class="stat-strip__item">
@@ -137,24 +141,100 @@ export function render(container, state, ctx) {
   container.querySelector('#prevMonth').addEventListener('click', () => { ctx.absencePeriodKey = shiftPeriod(periodKey, -1); ctx.rerender(); });
   container.querySelector('#nextMonth').addEventListener('click', () => { ctx.absencePeriodKey = shiftPeriod(periodKey, 1); ctx.rerender(); });
 
+  container.querySelector('#setHireDate')?.addEventListener('click', () => {
+    ctx.navigate({ tab: 'settings', page: 'schedule' });
+  });
+
   container.querySelector('#absenceGrid').addEventListener('click', (e) => {
     const cell = e.target.closest('[data-date]');
     if (!cell || cell.disabled) return;
-    openKindSheet(ctx, cell.dataset.date, absenceOn(state, cell.dataset.date));
+    openKindSheet(ctx, cell.dataset.date, absenceOn(state, cell.dataset.date), ledger);
   });
   container.addEventListener('click', (e) => {
     const row = e.target.closest('[data-edit]');
-    if (row) openKindSheet(ctx, row.dataset.edit, absenceOn(state, row.dataset.edit));
+    if (row) openKindSheet(ctx, row.dataset.edit, absenceOn(state, row.dataset.edit), ledger);
   });
 }
 
-function openKindSheet(ctx, dateISO, existing) {
+// Yıllık izin hakkı: "kaç günüm kaldı?" sorusunun cevabı. İşe giriş tarihi
+// girilmemişse hesap yapılmaz, yalnız davet gösterilir.
+function leaveCardHTML(ledger) {
+  if (!ledger.hasHireDate) {
+    return `
+      <div class="card">
+        <div class="link-row" id="setHireDate" role="button" tabindex="0">
+          <span>Yıllık izin hakkın
+            <span class="link-row__sub">İşe giriş tarihini gir, kaç günün kaldığını hesaplayayım.</span></span>
+          <span class="link-row__chevron">›</span>
+        </div>
+      </div>`;
+  }
+
+  if (ledger.notEarnedYet) {
+    return `
+      <div class="card">
+        <div class="link-row" id="setHireDate" role="button" tabindex="0">
+          <span>Yıllık izin hakkın
+            <span class="link-row__sub">${formatFullDate(ledger.firstRightDate)} tarihinde doğuyor — ${ledger.daysToFirstRight} gün kaldı.</span></span>
+          <span class="link-row__chevron">›</span>
+        </div>
+      </div>`;
+  }
+
+  const pct = ledger.totalEntitled > 0
+    ? Math.min(100, Math.round((ledger.totalUsed / ledger.totalEntitled) * 100))
+    : 0;
+  const son = [...ledger.years].reverse().slice(0, 3);
+
+  return `
+    <div class="card income-hero">
+      <div class="income-hero__main">
+        <div class="income-hero__label">Kalan yıllık izin</div>
+        <div class="income-hero__value ${ledger.remaining > 0 ? '' : 'is-negative'}">${ledger.remaining} gün</div>
+        <div class="income-hero__meta">
+          ${ledger.totalEntitled} gün hak · ${ledger.totalUsed} gün kullanıldı
+          ${ledger.over > 0 ? `<br><b class="is-negative">${ledger.over} gün fazla kullanılmış</b>` : ''}
+        </div>
+        <div class="goal__track" style="margin-top:14px;"><div class="goal__fill ${pct >= 100 ? 'is-done' : ''}" style="width:${pct}%"></div></div>
+        <div class="income-hero__facts">
+          ${fact('Kıdem', `${ledger.seniority.years} yıl${ledger.seniority.months > 0 ? ` ${ledger.seniority.months} ay` : ''}`, '')}
+          ${fact('Bu yılın hakkı', `${ledger.years[ledger.years.length - 1].entitled} gün`, '')}
+          ${fact('Sonraki hak', formatFullDate(ledger.seniority.nextAnniversary), `${ledger.seniority.daysToNext} gün`)}
+        </div>
+      </div>
+      <div class="income-hero__mix">
+        <div class="year-strip__label">İzin yılları</div>
+        <div class="rows rows--receipt">
+          ${son.map((y) => `
+            <div class="row">
+              <span class="row__label">${y.start.slice(0, 4)} – ${y.end.slice(0, 4)}</span>
+              <span class="row__leader"></span>
+              <span class="row__value">${y.used} / ${y.entitled}</span>
+            </div>`).join('')}
+        </div>
+        <p class="field__hint" style="margin:10px 0 0;">
+          Hafta tatiline ve resmi tatile denk gelen izin günleri hakkından düşmez.
+        </p>
+      </div>
+    </div>`;
+}
+
+function fact(label, value, sub) {
+  return `
+    <div class="income-fact">
+      <div class="income-fact__label">${label}</div>
+      <div class="income-fact__value">${value}</div>
+      ${sub ? `<div class="income-fact__sub">${sub}</div>` : ''}
+    </div>`;
+}
+
+function openKindSheet(ctx, dateISO, existing, ledger) {
   openSheet({
     title: formatDayMonth(dateISO),
     footerHTML: existing ? '<button class="btn btn--danger btn--sm" id="clearAbsence" type="button">İşareti kaldır</button>' : '',
     build(bodyEl, footerEl) {
       bodyEl.innerHTML = `
-        <p class="field__hint" style="margin:-4px 0 14px;">Bu gün neden gelinmedi?</p>
+        <p class="field__hint" style="margin:-4px 0 14px;">Bu gün neden gelinmedi?${ledger?.hasHireDate && !ledger.notEarnedYet ? ` Yıllık izinden <b>${ledger.remaining} gün</b> kaldı.` : ''}</p>
         <div class="cat-chips" id="kindChips">
           ${ABSENCE_KINDS.map((k) => `
             <button class="cat-chip ${existing?.kind === k.key ? 'is-active' : ''}" type="button" data-kind="${k.key}" style="--cat-color:${k.color};">

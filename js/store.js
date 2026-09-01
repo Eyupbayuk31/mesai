@@ -52,6 +52,12 @@ const DEFAULT_SETTINGS = {
   // Varsayılanı değiştirmek geçmiş ayların beklenen tutarlarını sessizce
   // kaydırırdı — bu yüzden kullanıcı açana kadar bugünkü davranış korunur.
   halfDayEves: false,
+  // İşe giriş tarihi ('YYYY-MM-DD'). Yıllık izin hakkı kıdemden hesaplanır;
+  // boşken izin kartı yalnız davet gösterir, hiçbir hesap değişmez.
+  hireDate: '',
+  // İş Kanunu md. 53: 18 yaşından küçük / 50 yaşından büyük işçiye en az
+  // 20 gün izin.
+  leaveMinimum20: false,
 };
 
 function defaultState() {
