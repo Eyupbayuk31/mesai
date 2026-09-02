@@ -1589,7 +1589,7 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
 .cal-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 14px;
+  gap: 5px 11px;
   margin-bottom: 12px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--divider);
@@ -1597,6 +1597,26 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
   color: var(--text-tertiary);
 }
 .cal-legend__item { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Yıllık izin — boş hâl daveti: ortalanmış, dar, gerçek düğmeli. */
+.leave-empty { text-align: center; padding: 26px 20px; }
+.leave-empty__icon {
+  width: 48px; height: 48px;
+  margin: 0 auto 12px;
+  border-radius: 15px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+.leave-empty__title { font-size: 16px; font-weight: 750; letter-spacing: -0.01em; }
+.leave-empty__body {
+  margin: 6px auto 16px;
+  max-width: 420px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.leave-empty .btn--inline { margin-inline: auto; }
 .cal-cell[disabled] { pointer-events: none; }
 
 /* ===== Ayarlar kategori menüsü ===== */
@@ -2621,6 +2641,7 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
 
   /* --- Ana ızgara: iki denk sütun --- */
   .screen--home .panes,
+  .screen--income-absences .panes,
   .screen--budget .panes { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 
   /* Fiş katlama çizgisi yalnız mobilde anlamlı (hero'nun altında). İki
@@ -3093,6 +3114,8 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
 /* Takvim geniş ekranda sayfa boyunca esneyip devasa hücrelere dönüşmesin. */
 @media (min-width: 900px) {
   .cal, .cal-card { max-width: 640px; margin-inline: auto; }
+  /* Sütun içindeyken kısıt anlamsız: takvim havada durmasın, sütunu doldursun. */
+  .pane .cal-card { max-width: none; margin-inline: 0; }
 }
 
 /* Son alımlar: tarih · varlık · miktar × fiyat · tutar */

@@ -73,6 +73,12 @@ export function render(container, state, ctx) {
       </div>
     </div>
 
+    <div class="panes">
+    <div class="pane">
+    <div class="section-header">
+      <span class="section-title" style="margin:0;">Takvim</span>
+      <span class="section-header__meta">${periodLabel(periodKey)}</span>
+    </div>
     <div class="card cal-card">
       <div class="cal-legend">
         ${ABSENCE_KINDS.map((k) => `<span class="cal-legend__item"><i class="dot" style="background:${k.color};"></i>${k.label}</span>`).join('')}
@@ -101,14 +107,21 @@ export function render(container, state, ctx) {
   }).join('')}
       </div>
       <p class="field__hint" style="margin:12px 0 0;">
-        Gelmediğin güne dokun, türünü seç. Yemek ve yol parası beklentisi o gün için düşer — maaşa dokunulmaz.
+        Gelmediğin güne dokun, türünü seç — yemek ve yol parası beklentisi o gün için düşer.
         <br><b>${breakdown.summaryLine}</b>
       </p>
     </div>
+    </div>
 
-    ${rows.length === 0 ? '' : `
-    <div class="section-header"><span class="section-title" style="margin:0;">Bu ay</span></div>
+    <div class="pane">
+    <div class="section-header">
+      <span class="section-title" style="margin:0;">Bu ay</span>
+      ${rows.length ? `<span class="section-header__meta">${rows.length} gün</span>` : ''}
+    </div>
     <div class="card">
+      ${rows.length === 0
+    ? '<p class="field__hint" style="margin:0;">Bu ay gelinmeyen gün işaretlenmedi.</p>'
+    : `
       <div class="rows">
         ${rows.map((a) => {
     const kind = absenceKind(a.kind);
@@ -118,8 +131,8 @@ export function render(container, state, ctx) {
             <span class="row__value" style="color:var(--text-secondary);">${kind.label}</span>
           </div>`;
   }).join('')}
-      </div>
-    </div>`}
+      </div>`}
+    </div>
 
     <div class="section-header"><span class="section-title" style="margin:0;">${year} özeti</span></div>
     <div class="card">
@@ -135,6 +148,8 @@ export function render(container, state, ctx) {
           </div>`).join('')}
         <div class="row row--total"><span class="row__label">Toplam</span><span class="row__leader"></span><span class="row__value">${stats.total} gün</span></div>
       </div>`}
+    </div>
+    </div>
     </div>
   `;
 
@@ -160,25 +175,20 @@ export function render(container, state, ctx) {
 // girilmemişse hesap yapılmaz, yalnız davet gösterilir.
 function leaveCardHTML(ledger) {
   if (!ledger.hasHireDate) {
-    return `
-      <div class="card">
-        <div class="link-row" id="setHireDate" role="button" tabindex="0">
-          <span>Yıllık izin hakkın
-            <span class="link-row__sub">İşe giriş tarihini gir, kaç günün kaldığını hesaplayayım.</span></span>
-          <span class="link-row__chevron">›</span>
-        </div>
-      </div>`;
+    return leaveEmptyHTML({
+      title: 'Yıllık izin hakkını hesaplayayım',
+      body: 'İşe giriş tarihini gir; kıdemine göre kaç gün hakkın olduğunu ve kaç gün kaldığını burada göstereyim.',
+      action: 'İşe giriş tarihini gir',
+    });
   }
 
   if (ledger.notEarnedYet) {
-    return `
-      <div class="card">
-        <div class="link-row" id="setHireDate" role="button" tabindex="0">
-          <span>Yıllık izin hakkın
-            <span class="link-row__sub">${formatFullDate(ledger.firstRightDate)} tarihinde doğuyor — ${ledger.daysToFirstRight} gün kaldı.</span></span>
-          <span class="link-row__chevron">›</span>
-        </div>
-      </div>`;
+    return leaveEmptyHTML({
+      title: 'Yıllık izin hakkın henüz doğmadı',
+      body: `Hak <b>${formatFullDate(ledger.firstRightDate)}</b> tarihinde doğuyor — <b>${ledger.daysToFirstRight} gün</b> kaldı. Yasada yıllık izin, işe girişten bir yıl sonra başlar.`,
+      action: 'İşe giriş tarihini değiştir',
+      quiet: true,
+    });
   }
 
   const pct = ledger.totalEntitled > 0
@@ -216,6 +226,21 @@ function leaveCardHTML(ledger) {
           Hafta tatiline ve resmi tatile denk gelen izin günleri hakkından düşmez.
         </p>
       </div>
+    </div>`;
+}
+
+// Boş hâl: tam genişlikte gerilmiş bir satır yerine ortalanmış davet.
+// Eskiden ham bir link-row'du; başlık solda, "›" ekranın öbür ucunda kalıyor,
+// tıklanabilir olduğu bile anlaşılmıyordu.
+function leaveEmptyHTML({ title, body, action, quiet = false }) {
+  return `
+    <div class="card leave-empty">
+      <span class="leave-empty__icon">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="M9 15.5l2 2 4-4"/></svg>
+      </span>
+      <div class="leave-empty__title">${title}</div>
+      <p class="leave-empty__body">${body}</p>
+      <button class="btn ${quiet ? 'btn--secondary' : 'btn--primary'} btn--inline" id="setHireDate" type="button">${action}</button>
     </div>`;
 }
 
