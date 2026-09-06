@@ -469,8 +469,33 @@ export class Store {
     this.update(() => migrate(newState));
   }
 
-  reset() {
-    this.update(() => defaultState());
+  /**
+   * Her şeyi siler.
+   *
+   * Sıfırlama da bir silme işlemidir: her kayıt için mezar taşı bırakılmazsa
+   * senkron bir sonraki turda hepsini buluttan geri getirir — silindiğini
+   * bilmediği için "karşı cihazda yeni eklenmiş" sayar. Ayarlar toptan LWW
+   * olduğundan o da damgalanır; damgasız kalırsa buluttaki eski ayarlar
+   * (maaş, program…) geri döner.
+   *
+   * @param {{syncDeletion?: boolean}} opts syncDeletion=false ise iz bırakmadan
+   *   siler: bulut yedeği olduğu gibi kalır, tekrar bağlanınca veriler geri
+   *   gelir. "Yalnız bu cihazdan sil" bunu kullanır.
+   */
+  reset({ syncDeletion = true } = {}) {
+    this.update((s) => {
+      if (!syncDeletion) return defaultState();
+      const at = new Date().toISOString();
+      const tombstones = emptyTombstones();
+      for (const coll of TOMBSTONE_COLLECTIONS) {
+        const marks = { ...(s.tombstones?.[coll] || {}) };
+        for (const rec of Array.isArray(s[coll]) ? s[coll] : []) {
+          if (rec && rec.id != null) marks[String(rec.id)] = at;
+        }
+        tombstones[coll] = marks;
+      }
+      return { ...defaultState(), tombstones, settingsUpdatedAt: at };
+    });
   }
 
   exportJSON() {

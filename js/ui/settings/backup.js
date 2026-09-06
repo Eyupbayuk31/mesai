@@ -138,14 +138,54 @@ export function render(container, state, ctx) {
   });
 
   container.querySelector('#resetAllRow').addEventListener('click', () => {
+    // Bulut bağlıyken tek başına yerel silme işe yaramıyordu: bir sonraki
+    // senkron turu her şeyi yedekten geri getiriyordu. Artık kapsam soruluyor.
+    const cloudOn = !!getSyncConfig().token;
+    const SCOPES = {
+      all: 'Bu cihazdaki veriler <b style="color:var(--text);">ve buluttaki yedek</b> silinir. Aynı hesaba bağlı diğer cihazların da ilk açılışta temizlenir.',
+      device: 'Yalnız bu cihaz temizlenir, <b style="color:var(--text);">bulut yedeği durur</b>. Senkron bağlantısı kesilir; sonra aynı token\'la bağlanıp verileri geri getirebilirsin.',
+    };
+
     openSheet({
       title: 'Tüm veriyi sil',
       footerHTML: `<button class="btn btn--danger" id="confirmResetBtn" type="button">Evet, hepsini sil</button>`,
       build(bodyEl, footerEl) {
-        bodyEl.innerHTML = `<p style="font-size:14.5px; color:var(--text-secondary); line-height:1.5;">Tüm mesai kayıtların, ek kalemlerin ve ayarların silinecek. Bu işlem geri alınamaz. Önce yedek almanı öneririz.</p>`;
+        bodyEl.innerHTML = `
+          <p style="font-size:14.5px; color:var(--text-secondary); line-height:1.5;">
+            Tüm mesai kayıtların, ek kalemlerin ve ayarların silinecek.
+            Bu işlem geri alınamaz. Önce yedek almanı öneririz.
+          </p>
+          ${cloudOn ? `
+          <div class="segmented" id="resetScope" style="margin-top:14px;">
+            <button class="segmented__item is-active" data-scope="all" type="button">Her yerden</button>
+            <button class="segmented__item" data-scope="device" type="button">Yalnız bu cihaz</button>
+          </div>
+          <p class="field__hint" id="resetScopeHint" style="margin:10px 0 0;">${SCOPES.all}</p>
+          ` : ''}
+        `;
+
+        let scope = 'all';
+        bodyEl.querySelector('#resetScope')?.addEventListener('click', (e) => {
+          const btn = e.target.closest('[data-scope]');
+          if (!btn) return;
+          scope = btn.dataset.scope;
+          for (const el of bodyEl.querySelectorAll('.segmented__item')) el.classList.toggle('is-active', el === btn);
+          bodyEl.querySelector('#resetScopeHint').innerHTML = SCOPES[scope];
+        });
+
         footerEl.querySelector('#confirmResetBtn').addEventListener('click', () => {
-          ctx.store.reset();
-          showToast('Tüm veriler silindi');
+          if (cloudOn && scope === 'device') {
+            // Önce bağlantı kesilir ki silme buluta gitmesin; iz de bırakmayız,
+            // böylece tekrar bağlanınca yedek olduğu gibi geri gelir.
+            clearSyncConfig();
+            ctx.sync?.restart();
+            ctx.store.reset({ syncDeletion: false });
+            showToast('Bu cihazdaki veriler silindi, bulut yedeği duruyor');
+          } else {
+            ctx.store.reset();
+            if (cloudOn) ctx.syncNow('sıfırlama');
+            showToast('Tüm veriler silindi');
+          }
           closeSheet();
           ctx.setTab('home');
         });

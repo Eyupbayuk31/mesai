@@ -165,3 +165,39 @@ test('merge - silinen alım diğer cihazda geri gelmez', () => {
   const { merged } = mergeStates(local, remote, NOW);
   assert.deepEqual(merged.investments, []);
 });
+
+// --- Sıfırlama buluttan geri gelmemeli ---------------------------------
+//
+// Yaşanan hata: "Tüm veriyi sil" dedikten sonra veriler geri geliyordu.
+// Sebep, sıfırlamanın iz bırakmaması: merge, yerelde olmayan uzak kayıtları
+// "karşı cihazda yeni eklenmiş" sayıp geri getiriyordu.
+
+test('merge - sıfırlama izsizse veriler buluttan GERİ GELİR (eski hata)', () => {
+  const remote = state({ entries: [entry('a', 3, T(9))], settingsUpdatedAt: T(9) });
+  const izsizSifirlama = state();  // her şey boş, mezar taşı yok
+  const { merged } = mergeStates(izsizSifirlama, remote, NOW);
+  assert.equal(merged.entries.length, 1, 'izsiz sıfırlamada kayıt geri geliyor');
+  assert.equal(merged.settings.monthlySalary, 35000);
+});
+
+test('merge - mezar taşlı sıfırlamada kayıtlar geri GELMEZ ve bulut da temizlenir', () => {
+  const remote = state({ entries: [entry('a', 3, T(9))], settingsUpdatedAt: T(9) });
+  const sifirlanmis = state({ tombstones: { entries: { a: T(12) }, expenses: {}, recurring: {}, adjustments: {} } });
+  sifirlanmis.settingsUpdatedAt = T(12);
+
+  const { merged, changedRemote } = mergeStates(sifirlanmis, remote, NOW);
+  assert.equal(merged.entries.length, 0, 'kayıt silinmiş kalmalı');
+  assert.ok(changedRemote, 'silme buluta da yazılmalı');
+  assert.equal(merged.settingsUpdatedAt, T(12), 'yerel ayar damgası kazanmalı');
+});
+
+test('merge - sıfırlamadan SONRA girilen yeni kayıt silinmez', () => {
+  // Mezar taşı sıfırlama anına ait; ondan sonra eklenen kayıt daha yeni.
+  const remote = state({ entries: [entry('a', 3, T(9))] });
+  const yerel = state({
+    entries: [entry('b', 2, T(14))],
+    tombstones: { entries: { a: T(12) }, expenses: {}, recurring: {}, adjustments: {} },
+  });
+  const { merged } = mergeStates(yerel, remote, NOW);
+  assert.deepEqual(merged.entries.map((e) => e.id), ['b']);
+});

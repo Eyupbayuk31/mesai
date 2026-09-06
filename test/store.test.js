@@ -287,3 +287,35 @@ test('Store - yeni varlıkta tür kaydedilir', () => {
   assert.equal(store.getState().assets[0].kind, 'doviz');
   assert.equal(a.unit, 'euro');
 });
+
+// --- Sıfırlama + senkron -----------------------------------------------
+//
+// Buradaki hata gerçekten yaşandı: "Tüm veriyi sil" yerelde temizliyor ama
+// senkronun bir sonraki turu her şeyi buluttan geri getiriyordu. Silme izi
+// (mezar taşı) bırakılmadığı için merge, kayıtları "karşı cihazda yeni
+// eklenmiş" sanıyordu.
+
+test('Store.reset - silinen her kayıt için mezar taşı bırakır', () => {
+  const store = freshStore();
+  const e = store.addEntry({ date: '2026-08-14', hours: 3, type: 'normal' });
+  const x = store.addExpense({ date: '2026-08-15', amount: 500, category: 'market' });
+  store.updateSettings({ monthlySalary: 45000 });
+
+  store.reset();
+  const s = store.getState();
+  assert.equal(s.entries.length, 0);
+  assert.equal(s.expenses.length, 0);
+  assert.ok(s.tombstones.entries[e.id], 'mesai kaydının mezar taşı olmalı');
+  assert.ok(s.tombstones.expenses[x.id], 'harcamanın mezar taşı olmalı');
+  assert.ok(s.settingsUpdatedAt, 'ayarlar da damgalanmalı');
+});
+
+test('Store.reset({syncDeletion:false}) - iz bırakmaz (bulut yedeği korunur)', () => {
+  const store = freshStore();
+  const e = store.addEntry({ date: '2026-08-14', hours: 3, type: 'normal' });
+  store.reset({ syncDeletion: false });
+  const s = store.getState();
+  assert.equal(s.entries.length, 0);
+  assert.equal(s.tombstones.entries[e.id], undefined);
+  assert.equal(s.settingsUpdatedAt, null);
+});
