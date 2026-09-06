@@ -9,7 +9,7 @@ import { openSheet } from './sheet.js';
 import { mountPeriodInfo } from './periodNav.js';
 import {
   periodProgress, projectPeriod, overtimeShare,
-  weeklyBuckets, periodRecord, busiestWeekday, todayNudge,
+  weeklyBuckets, periodRecord, busiestWeekday, todayNudge, payslipNudge,
 } from '../homeStats.js';
 import { readStatus, relativeTime } from '../sync/engine.js';
 import { loansSummary } from '../loans.js';
@@ -18,6 +18,9 @@ import { lifetimeByCategory } from '../budget.js';
 
 // Hatırlatmayı kapatma bilgisi cihaza özeldir; senkronlanan veriye karışmaz.
 const NUDGE_KEY = 'mesai.nudge.dismissed';
+// Bordro hatırlatması dönem bazında kapatılır: kapatınca o ay için susar,
+// ertesi ay maaş yatınca yeniden çıkar.
+const SLIP_NUDGE_KEY = 'mesai.payslipNudge.dismissed';
 const WEEK_COUNT = 6;
 
 const RECENT_COUNT = 5;
@@ -61,6 +64,7 @@ export function renderHome(container, state, ctx) {
   const projection = hasSalary && summary.entryCount > 0 ? projectPeriod(summary, progress) : null;
   const share = hasSalary && summary.totalHours > 0 ? overtimeShare(summary) : null;
   const nudge = nudgeState(state);
+  const slipNudge = payslipNudgeState(state);
 
   container.innerHTML = `
     ${syncPillHTML()}
@@ -73,6 +77,7 @@ export function renderHome(container, state, ctx) {
       <div style="width:34px;"></div>
     </div>
 
+    ${slipNudge.show ? payslipNudgeHTML(slipNudge) : ''}
     ${nudge.show ? nudgeHTML() : ''}
 
     ${hasSalary ? `
@@ -187,6 +192,18 @@ export function renderHome(container, state, ctx) {
   // Senkron rozeti → Yedekleme sayfası (durum ve tanılama orada).
   container.querySelector('#syncPill')?.addEventListener('click', () => {
     ctx.navigate({ tab: 'settings', page: 'backup' });
+  });
+
+  // Bordroyu aç: o ayın satırı odaklanmış hâlde gelsin diye dönem iletilir.
+  container.querySelector('#slipNudgeOpen')?.addEventListener('click', () => {
+    ctx.payslipYear = Number(slipNudge.periodKey.slice(0, 4));
+    ctx.payslipFocus = slipNudge.periodKey;
+    ctx.navigate({ tab: 'income', page: 'payslip' });
+  });
+
+  container.querySelector('#slipNudgeClose')?.addEventListener('click', () => {
+    try { localStorage.setItem(SLIP_NUDGE_KEY, slipNudge.periodKey); } catch {}
+    container.querySelector('#slipNudge')?.remove();
   });
 
   container.querySelector('#nudgeAdd')?.addEventListener('click', () => {
@@ -341,6 +358,30 @@ function nudgeState(state) {
     if (localStorage.getItem(NUDGE_KEY) === result.date) return { show: false, reason: 'kapatildi' };
   } catch {}
   return result;
+}
+
+function payslipNudgeState(state) {
+  const result = payslipNudge(state);
+  if (!result.show) return result;
+  try {
+    if (localStorage.getItem(SLIP_NUDGE_KEY) === result.periodKey) return { show: false, reason: 'kapatildi' };
+  } catch {}
+  return result;
+}
+
+// Maaş yattı ama bordro girilmedi: tek dokunuşla o ayın satırına götürür.
+function payslipNudgeHTML(nudge) {
+  const month = periodLabel(nudge.periodKey);
+  return `
+    <div class="nudge nudge--pay" id="slipNudge">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nudge__icon"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>
+      <span class="nudge__text"><b>${month}</b> maaşın yattı — bordronu gir</span>
+      <button class="nudge__add" id="slipNudgeOpen" type="button">Gir</button>
+      <button class="nudge__close" id="slipNudgeClose" type="button" aria-label="Kapat">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+  `;
 }
 
 function nudgeHTML() {

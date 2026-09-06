@@ -1,9 +1,10 @@
 // Özet ekranının türetilmiş sayıları. Hepsi saf: DOM'a dokunmaz, tarihi
 // dışarıdan alır. Böylece hesaplar testlenebilir ve UI yalnız çizimle uğraşır.
 
-import { periodRange, isDateInPeriod } from './period.js';
+import { periodRange, isDateInPeriod, periodKeyForDate, shiftPeriod, payDateForPeriod } from './period.js';
 import { toISODate } from './format.js';
 import { isHoliday } from './holidays.js';
+import { payslipFor, hasPayslipData } from './payslip.js';
 
 // Rekor ve "en yoğun gün" için alt sınır: az kayıtla kalıp çıkarmak yanıltır.
 const MIN_ENTRIES = 5;
@@ -147,6 +148,39 @@ export function todayNudge(state, now = new Date()) {
   if (hasEntry) return { show: false, reason: 'kayit-var' };
 
   return { show: true, reason: 'eksik', date: todayStr };
+}
+
+/**
+ * Maaşı yatan ama bordrosu girilmemiş dönem var mı?
+ *
+ * "Ele geçecek para" tahmini yerine bu var: ödeme günü gelince gerçek tutarı
+ * bordrodan öğreniyoruz. Bu yüzden ödeme gününden itibaren, o ayın bordrosu
+ * girilene kadar hatırlatılır.
+ *
+ * Hangi dönem? Ödeme günü GEÇMİŞ en yeni dönem. Ayarlardaki `payDay` ve
+ * `payMonthOffset` neyse ona uyar; varsayılanla (her ayın 10'u, bir sonraki
+ * ay) 10 Eylül'de Ağustos'u, 10 Ekim'de Eylül'ü sorar.
+ */
+export function payslipNudge(state, now = new Date()) {
+  const settings = state?.settings || {};
+  const todayStr = toISODate(now);
+
+  // Hiç veri yokken (kurulum ekranı) hatırlatacak bir şey yok.
+  const hasData = Number(settings.monthlySalary) > 0 || (state?.entries || []).length > 0;
+  if (!hasData) return { show: false, reason: 'veri-yok' };
+
+  // Bu aydan geriye doğru: ödeme tarihi bugünü geçmiş ilk dönem.
+  let periodKey = periodKeyForDate(now);
+  let payISO = null;
+  for (let i = 0; i < 24; i += 1) {
+    const iso = toISODate(payDateForPeriod(periodKey, settings));
+    if (iso <= todayStr) { payISO = iso; break; }
+    periodKey = shiftPeriod(periodKey, -1);
+  }
+  if (payISO === null) return { show: false, reason: 'odeme-gunu-gelmedi' };
+
+  if (hasPayslipData(payslipFor(state, periodKey))) return { show: false, reason: 'bordro-var' };
+  return { show: true, reason: 'bordro-eksik', periodKey, payISO };
 }
 
 export { MIN_ENTRIES };

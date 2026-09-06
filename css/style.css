@@ -2342,6 +2342,31 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
   padding: 4px;
 }
 
+/* Bordro hatırlatması: maaş yattı, gerçek tutarı gir. Mesai hatırlatmasından
+   daha önemli olduğu için vurgulu — düğmesi de dolu, tıklanacağı belli. */
+.nudge--pay {
+  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+  background: var(--accent-soft);
+}
+
+.nudge--pay .nudge__text { color: var(--text-primary); }
+
+.nudge--pay .nudge__add {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-weight: 800;
+}
+
+/* Geniş ekranda şerit tüm satırı kapladığı için "Gir" metinden metrelerce
+   uzağa düşüyordu. Düğme yazının hemen yanında kalır; köşede yalnız kapatma
+   çarpısı durur — orası zaten beklenen yeri. */
+@media (min-width: 900px) {
+  .nudge--pay .nudge__text { flex: 0 1 auto; }
+  .nudge--pay .nudge__close { margin-left: auto; }
+}
+
 /* --- Özet: hero rozet satırı --- */
 .hero__badges {
   display: flex;

@@ -153,9 +153,11 @@ export function budgetTips(s, todayStr = todayISO()) {
       tips.push(`Şu anki hızla ayı ${money(projected)} harcamayla kapatırsın — bütçeyi aşarsın. Kalan ${s.daysLeft} günde günde ${money(s.dailyAllowance)} ile sınırla.`);
     } else if (projected > s.expectedTotal && s.remaining < 0) {
       tips.push(`Bütçe ${money(-s.remaining)} aşıldı ve hız düşmüyor. Kalan ${s.daysLeft} günde yeni büyük gideri erteleyip günde ${money(s.dailyAllowance)} hedefine dön.`);
-    } else if (s.remaining > 0) {
-      tips.push(`Bu hızla ay sonunda ~${money(s.remaining)} elinde kalır; yarısını (${money(s.remaining / 2)}) ay bitmeden bir kenara ayır.`);
     }
+    // "Bu hızla ay sonunda ~X elinde kalır" satırı kaldırıldı: ele geçecek
+    // parayı tahmin etmek gereksiz, ödeme günü bordro girilince gerçek tutar
+    // zaten Bordro ve Rapor'da görünüyor. Aşım uyarısı kalır — o, ay bitmeden
+    // davranış değiştirmek için işe yarıyor.
   }
 
   const top = s.byCategory[0];

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 const {
   periodProgress, projectPeriod, overtimeShare,
-  weeklyBuckets, periodRecord, busiestWeekday, todayNudge,
+  weeklyBuckets, periodRecord, busiestWeekday, todayNudge, payslipNudge,
 } = await import('../js/homeStats.js');
 
 const WEEKLY = {
@@ -230,4 +230,54 @@ test('todayNudge - cumartesi programı erken bittiği için öğleden sonra hat�
   // 2026-08-22 Cumartesi, program 12:45'te biter
   assert.equal(todayNudge(stateWith(), at('2026-08-22', 13, 0)).show, true);
   assert.equal(todayNudge(stateWith(), at('2026-08-22', 11, 0)).show, false);
+});
+
+// --- Bordro hatırlatması ---------------------------------------------------
+
+// Varsayılan ödeme kuralı: her ayın 10'u, dönem bittikten bir ay sonra.
+// Yani 10 Eylül'de Ağustos maaşı yatar.
+const paySettings = { monthlySalary: 35000, payDay: 10, payMonthOffset: 1 };
+const payState = (payslips = [], settings = paySettings) => ({ settings, entries: [], payslips });
+
+test('payslipNudge - ödeme günü geldi, bordro girilmemiş → hatırlat', () => {
+  const res = payslipNudge(payState(), at('2026-09-10', 9, 0));
+  assert.equal(res.show, true);
+  assert.equal(res.periodKey, '2026-08');
+  assert.equal(res.payISO, '2026-09-10');
+});
+
+test('payslipNudge - ödeme gününden önce Ağustos sorulmaz, bir önceki ay sorulur', () => {
+  // 6 Eylül: Ağustos maaşı henüz yatmadı. Ödeme günü geçmiş en yeni dönem Temmuz.
+  const res = payslipNudge(payState(), at('2026-09-06', 9, 0));
+  assert.equal(res.show, true);
+  assert.equal(res.periodKey, '2026-07');
+  assert.equal(res.payISO, '2026-08-10');
+});
+
+test('payslipNudge - bordro girilmişse hatırlatmaz', () => {
+  const res = payslipNudge(payState([{ periodKey: '2026-08', amount: 35000 }]), at('2026-09-10', 9, 0));
+  assert.equal(res.show, false);
+  assert.equal(res.reason, 'bordro-var');
+});
+
+test('payslipNudge - boş bordro kaydı girilmiş sayılmaz', () => {
+  const res = payslipNudge(payState([{ periodKey: '2026-08', status: 'acik' }]), at('2026-09-10', 9, 0));
+  assert.equal(res.show, true);
+});
+
+test('payslipNudge - ödeme günü ayarı değişince o güne uyar', () => {
+  const settings = { monthlySalary: 35000, payDay: 5, payMonthOffset: 1 };
+  assert.equal(payslipNudge(payState([], settings), at('2026-09-04', 9, 0)).periodKey, '2026-07');
+  assert.equal(payslipNudge(payState([], settings), at('2026-09-05', 9, 0)).periodKey, '2026-08');
+});
+
+test('payslipNudge - hiç veri yokken (kurulum) çıkmaz', () => {
+  const res = payslipNudge({ settings: { payDay: 10 }, entries: [], payslips: [] }, at('2026-09-10', 9, 0));
+  assert.equal(res.show, false);
+  assert.equal(res.reason, 'veri-yok');
+});
+
+test('payslipNudge - maaş yok ama kayıt varsa yine hatırlatır', () => {
+  const state = { settings: { payDay: 10, payMonthOffset: 1 }, entries: [entry('2026-08-03', 2)], payslips: [] };
+  assert.equal(payslipNudge(state, at('2026-09-10', 9, 0)).show, true);
 });

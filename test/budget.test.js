@@ -168,7 +168,7 @@ test('budgetTips - hız bütçeyi aşınca uyarı ve günlük limit verir', () =
   assert.ok(tips[0].includes('aşarsın') || tips[0].includes('aşıldı'));
 });
 
-test('budgetTips - sakin hızda birikim önerisi verir', () => {
+test('budgetTips - sakin hızda ele kalacak para tahmini YAPMAZ', () => {
   const state = {
     settings: baseSettings,
     entries: [],
@@ -177,7 +177,11 @@ test('budgetTips - sakin hızda birikim önerisi verir', () => {
   };
   const s = budgetSummary(state, '2026-08', '2026-08-21');
   const tips = budgetTips(s, '2026-08-21');
-  assert.ok(tips.some((t) => t.includes('elinde kalır')));
+  // Ay sonunda cebinde ne kalacağını tahmin etmiyoruz: gerçek tutar ödeme
+  // günü bordro girilince belli oluyor. Bütçe aşılmadıysa yalnız genel
+  // tavsiye kalır.
+  assert.ok(!tips.some((t) => t.includes('elinde kalır')));
+  assert.ok(!tips.some((t) => t.includes('ay sonunda')));
 });
 
 test('categoryOf - bilinmeyen anahtar Diğer kategorisine düşer', () => {

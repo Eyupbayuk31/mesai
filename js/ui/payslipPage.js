@@ -135,6 +135,21 @@ export function render(container, state, ctx) {
     input.focus({ preventScroll: true });
   });
 
+  // Özet'teki "bordronu gir" hatırlatmasından gelindiyse doğrudan o ayın
+  // tutar alanına in. Tek seferlik: sayfa her yeniden çizildiğinde tekrar
+  // zıplamasın diye bayrak hemen temizlenir.
+  if (ctx.payslipFocus) {
+    const index = periodKeys.indexOf(ctx.payslipFocus);
+    ctx.payslipFocus = null;
+    if (index >= 0) {
+      const input = container.querySelector(`[data-row="${index}"][data-field="amount"]`);
+      if (input) requestAnimationFrame(() => {
+        input.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        input.focus({ preventScroll: true });
+      });
+    }
+  }
+
   container.querySelector('#prevYear').addEventListener('click', () => { ctx.payslipYear = year - 1; ctx.rerender(); });
   container.querySelector('#nextYear').addEventListener('click', () => { ctx.payslipYear = year + 1; ctx.rerender(); });
 
