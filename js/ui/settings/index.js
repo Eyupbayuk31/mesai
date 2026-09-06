@@ -1,6 +1,6 @@
 // Ayarlar sekmesinin kökü (kategori menüsü) ve alt sayfa yönlendirmesi.
 
-import { formatMoney } from '../../format.js';
+import { formatMoney, withSuffix } from '../../format.js';
 import { hourlyRate } from '../../payroll.js';
 import { profileName } from '../../profile.js';
 import * as salaryPage from './salary.js';
@@ -52,7 +52,7 @@ function scheduleSummary(settings) {
 
 function periodSummaryLabel(settings) {
   const when = settings.payMonthOffset === 0 ? 'aynı ay' : settings.payMonthOffset === 1 ? 'sonraki ay' : `${settings.payMonthOffset} ay sonra`;
-  return `Her ayın ${settings.payDay}'i, ${when}`;
+  return `Her ayın ${withSuffix(settings.payDay)}, ${when}`;
 }
 
 function themeSummary(settings) {

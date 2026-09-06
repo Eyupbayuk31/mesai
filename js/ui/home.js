@@ -1,7 +1,7 @@
 import { currentPeriodKey, periodLabel, payDateForPeriod, daysUntilPay, shiftPeriod } from '../period.js';
 import { periodSummary, scheduledWeeklyHours } from '../payroll.js';
 import { holidayListForYear, nextHoliday } from '../holidays.js';
-import { formatMoney, formatHours, formatFullDate, formatDayMonthShort, formatWeekdayShort, toISODate, todayISO } from '../format.js';
+import { formatMoney, formatHours, formatFullDate, formatDayMonthShort, formatWeekdayShort, toISODate, todayISO, withSuffix } from '../format.js';
 import { entryRowHTML } from './entryRow.js';
 import { enableSwipeToDelete } from './swipe.js';
 import { showToast } from './toast.js';
@@ -403,7 +403,7 @@ function shareHTML(share) {
   const pct = share * 100;
   // %1'in altındaki oranlar "%0" görünmesin diye tek ondalık.
   const text = pct > 0 && pct < 10 ? pct.toFixed(1).replace('.', ',') : String(Math.round(pct));
-  return `<div class="hero__compare is-neutral">Maaşın %${text}'i kadar ek</div>`;
+  return `<div class="hero__compare is-neutral">Maaşın ${withSuffix(`%${text}`)} kadar ek</div>`;
 }
 
 // --- Ay sonu tahmini ------------------------------------------------------

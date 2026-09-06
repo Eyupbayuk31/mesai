@@ -1,7 +1,7 @@
 import { formatMoney, parseLocaleNumber } from '../../format.js';
 import { hourlyRate, workdaysForPeriod, addSalaryChange } from '../../payroll.js';
 import { currentPeriodKey } from '../../period.js';
-import { formatMonthYear } from '../../format.js';
+import { formatMonthYear, numberAblative } from '../../format.js';
 import { showToast } from '../toast.js';
 import { commitNumberOnChange } from './shared.js';
 
@@ -160,7 +160,7 @@ function salaryHistoryHTML(settings) {
         <div class="rows" style="margin-bottom:12px;">
           ${history.map((h) => `
             <div class="row">
-              <span class="row__label">${h.initial ? 'Başlangıçtan itibaren' : `${formatMonthYear(h.fromPeriod)}'dan itibaren`}</span>
+              <span class="row__label">${h.initial ? 'Başlangıçtan itibaren' : `${formatMonthYear(h.fromPeriod).replace(/(\d+)$/, (y) => numberAblative(y))} itibaren`}</span>
               <span class="row__value">${formatMoney(h.amount, { decimals: false })}
                 <button class="row__remove" data-remove-salary="${h.id}" type="button" aria-label="Sil">×</button>
               </span>

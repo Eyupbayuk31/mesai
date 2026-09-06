@@ -2,7 +2,7 @@
 // kategorilerini (ad + renk) ekleyip sildiği sayfa.
 
 import { allCategories } from '../../budget.js';
-import { formatMoney } from '../../format.js';
+import { formatMoney, withSuffix } from '../../format.js';
 import { showToast } from '../toast.js';
 
 export const title = 'Bütçe kategorileri';
@@ -27,7 +27,7 @@ export function render(container, state, ctx) {
         <div class="rows">
           ${recurring.map((r) => `
           <div class="row">
-            <span class="row__label"><span class="dot" style="background:${catColor(r.category, settings)};"></span>${escapeHTML(r.label || 'Sürekli gider')} <span style="color:var(--text-tertiary);">her ayın ${r.day}'i</span></span>
+            <span class="row__label"><span class="dot" style="background:${catColor(r.category, settings)};"></span>${escapeHTML(r.label || 'Sürekli gider')} <span style="color:var(--text-tertiary);">her ayın ${withSuffix(r.day)}</span></span>
             <span style="display:flex; align-items:center; gap:10px;">
               <span class="row__value">${formatMoneyLocal(r.amount)}</span>
               <button class="cat-del" data-del-recurring="${r.id}" type="button" aria-label="Sürekli gideri kaldır">

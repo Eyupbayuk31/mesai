@@ -4,7 +4,7 @@
 import { periodSummary } from './payroll.js';
 import { periodRange, shiftPeriod } from './period.js';
 import { loanExpensesForPeriod, loansSummary } from './loans.js';
-import { parseISODate, formatMoney, todayISO } from './format.js';
+import { parseISODate, formatMoney, todayISO, withSuffix } from './format.js';
 import { investedInPeriod } from './investments.js';
 
 // Harcama kategorileri — renkler CSS değişkenlerinden bağımsız sabit hex,
@@ -163,7 +163,7 @@ export function budgetTips(s, todayStr = todayISO()) {
   const top = s.byCategory[0];
   if (top && top.amount >= 500 && top.amount / s.spent >= 0.35) {
     const share = Math.round((top.amount / s.spent) * 100);
-    tips.push(`Bu ayın giderinin %${share}'i ${top.label}: ${money(top.amount)}. Buradan %10 kısarsan ~${money(top.amount * 0.1)} cebinde kalır.`);
+    tips.push(`Bu ayın giderinin ${withSuffix(`%${share}`)} ${top.label}: ${money(top.amount)}. Buradan %10 kısarsan ~${money(top.amount * 0.1)} cebinde kalır.`);
   }
 
   if (s.expenseCount === 0) tips.push('Harcamalarını girdikçe öneriler sana özelleşir.');
