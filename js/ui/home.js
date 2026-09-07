@@ -1,7 +1,7 @@
 import { currentPeriodKey, periodLabel, payDateForPeriod, daysUntilPay, shiftPeriod } from '../period.js';
 import { periodSummary, scheduledWeeklyHours } from '../payroll.js';
 import { holidayListForYear, nextHoliday } from '../holidays.js';
-import { formatMoney, formatHours, formatFullDate, formatDayMonthShort, formatWeekdayShort, toISODate, todayISO, withSuffix } from '../format.js';
+import { formatMoney, formatHours, formatFullDate, formatDayMonthShort, formatWeekdayShort, toISODate, todayISO, withSuffix, numberSuffix } from '../format.js';
 import { entryRowHTML } from './entryRow.js';
 import { enableSwipeToDelete } from './swipe.js';
 import { showToast } from './toast.js';
@@ -14,7 +14,7 @@ import {
 import { readStatus, relativeTime } from '../sync/engine.js';
 import { loansSummary } from '../loans.js';
 import { portfolioSummary } from '../investments.js';
-import { lifetimeByCategory } from '../budget.js';
+import { budgetSummary } from '../budget.js';
 import { receivedInPeriod } from '../received.js';
 import { openAdjustmentSheet } from './income.js';
 
@@ -153,7 +153,7 @@ export function renderHome(container, state, ctx) {
         : ''}
     </div>
     ${recentEntries.length === 0 ? emptyStateHTML() : `<ul class="list" id="recentList">${recentEntries.map((e) => entryRowHTML(e, settings)).join('')}</ul>`}
-    ${lifetimeHTML(state)}
+    ${monthSpendHTML(state, periodKey)}
     </div>
     </div>
   `;
@@ -171,6 +171,7 @@ export function renderHome(container, state, ctx) {
   container.querySelector('.lifetime')?.addEventListener('click', (e) => {
     if (e.target.closest('[data-lifetime]')) ctx.setTab('expense');
   });
+  container.querySelector('#spendAll')?.addEventListener('click', () => ctx.setTab('expense'));
 
   mountPeriodInfo(ctx, {
     label: periodLabel(periodKey),
@@ -697,30 +698,56 @@ function netWorthHTML(state) {
 
 // --- Kümülatif: bugüne kadar nereye ne gitti ------------------------------
 
-const LIFETIME_ROWS = 5;
+const SPEND_ROWS = 5;
 
-function lifetimeHTML(state) {
-  const res = lifetimeByCategory(state);
-  if (res.total <= 0) return '';
-  const rows = res.categories.slice(0, LIFETIME_ROWS);
-  return `
-    <div class="section-header" style="margin-top:6px;">
-      <span class="section-title" style="margin:0;">Bugüne kadar nereye gitti</span>
-    </div>
+// Bu ay para nereye gitti? Eskiden burada "bugüne kadar" toplamı vardı —
+// aylar geçtikçe büyüyen, bu ayla ilgisi olmayan bir sayı. Özet "şu an"
+// ekranı olduğu için o kartın yerini içinde bulunulan dönemin gideri aldı.
+function monthSpendHTML(state, periodKey) {
+  const budget = budgetSummary(state, periodKey);
+  const title = `<div class="section-header" style="margin-top:6px;">
+      <span class="section-title" style="margin:0;">Bu ay nereye gitti</span>
+      <button class="section-header__link" id="spendAll" type="button">Gider ›</button>
+    </div>`;
+
+  if (budget.spent <= 0) {
+    return `${title}
+    <div class="card empty">
+      <div class="empty__title">Bu ay henüz harcama yok</div>
+      <div class="empty__sub">Gider sekmesinden harcama ekledikçe dökümü burada görürsün.</div>
+    </div>`;
+  }
+
+  const rows = budget.byCategory.slice(0, SPEND_ROWS);
+  const rest = budget.byCategory.slice(SPEND_ROWS);
+  const restTotal = rest.reduce((sum, c) => sum + c.amount, 0);
+  const pct = (amount) => Math.round((amount / budget.spent) * 100);
+  const count = budget.expenseCount + budget.virtualCount;
+
+  return `${title}
     <div class="card">
-      <div class="hero__value" style="font-size:24px;">${formatMoney(res.total, { decimals: false })}</div>
-      <div class="hero__sub" style="text-align:left;margin-top:2px;">${res.months} aylık toplam harcama</div>
+      <div class="hero__value" style="font-size:24px;">${formatMoney(budget.spent, { decimals: false })}</div>
+      <div class="hero__sub" style="text-align:left;margin-top:2px;">${periodLabel(periodKey)} · ${count} kalem</div>
       <div class="lifetime" style="margin-top:10px;">
         ${rows.map((c) => `
           <button class="lifetime__row" type="button" data-lifetime="${c.key}">
             <span class="lifetime__dot" style="background:${c.color}"></span>
             <span>
               <span class="lifetime__label">${c.label}</span>
-              <span class="lifetime__avg">ayda ${formatMoney(c.monthlyAvg, { decimals: false })}</span>
+              <span class="lifetime__avg">giderin %${pct(c.amount)}'${numberSuffix(pct(c.amount))}</span>
             </span>
             <span class="lifetime__total">${formatMoney(c.amount, { decimals: false })}</span>
           </button>
         `).join('')}
+        ${restTotal > 0 ? `
+          <button class="lifetime__row" type="button" data-lifetime="diger">
+            <span class="lifetime__dot" style="background:var(--text-tertiary)"></span>
+            <span>
+              <span class="lifetime__label">${rest.length} kategori daha</span>
+              <span class="lifetime__avg">giderin %${pct(restTotal)}'${numberSuffix(pct(restTotal))}</span>
+            </span>
+            <span class="lifetime__total">${formatMoney(restTotal, { decimals: false })}</span>
+          </button>` : ''}
       </div>
     </div>
   `;
