@@ -43,6 +43,10 @@ export const NAV_TREE = [
     tab: 'report',
     label: 'Rapor',
     icon: '<rect x="4" y="4" width="16" height="17" rx="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 13v4M12 10v7M16 15v2" stroke-linecap="round"/>',
+    children: [
+      { page: 'income', label: 'Gelir raporu' },
+      { page: 'expense', label: 'Gider raporu' },
+    ],
   },
   {
     tab: 'settings',

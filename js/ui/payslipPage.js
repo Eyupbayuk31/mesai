@@ -8,16 +8,17 @@
 // de girer.
 
 import { periodSummary, workdayBreakdown } from '../payroll.js';
-import { currentPeriodKey } from '../period.js';
-import { formatMoney, formatHours, formatDayMonthShort, locative, parseLocaleNumber } from '../format.js';
+import { currentPeriodKey, periodLabel, shiftPeriod, payDateForPeriod, daysUntilPay } from '../period.js';
+import { formatMoney, formatHours, formatDayMonthShort, formatFullDate, toISODate, locative, parseLocaleNumber } from '../format.js';
 import {
-  PAYSLIP_LINES, comparePayslip, payslipFor, hasPayslipData, payslipStats, payslipLineTotals,
-  payslipRows, openBalance, hoursCheck,
+  PAYSLIP_LINES, comparePayslip, explainPayslipDiff, payslipFor, hasPayslipData,
+  payslipStats, payslipLineTotals, payslipRows, openBalance, hoursCheck,
 } from '../payslip.js';
 import { mountPeriodNav } from './periodNav.js';
 import { absenceDatesInPeriod } from '../absences.js';
 import { openSheet, closeSheet } from './sheet.js';
 import { showToast } from './toast.js';
+import { payslipPeriodFor } from '../received.js';
 
 const MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 const EXTRA_LINES = PAYSLIP_LINES.filter((l) => l.key !== 'amount' && l.key !== 'transport');
@@ -40,6 +41,151 @@ function nextStatus(key) {
 const FIELDS = ['amount', 'transport', 'days', 'hours'];
 
 export function render(container, state, ctx) {
+  // Günlük kullanımda ilgilendiğin tek ay var: 10'unda yatacak olan.
+  // 12 aylık tablo "yılda bir otur hepsini gir" akışı için; ikinci sekmede.
+  if (ctx.payslipFocus) ctx.payslipView = 'month';
+  if (ctx.payslipView !== 'year') { renderMonth(container, state, ctx); return; }
+  renderYear(container, state, ctx);
+}
+
+function viewSwitchHTML(active) {
+  return `
+    <div class="segmented" id="payslipView" style="margin-bottom:12px;">
+      <button class="segmented__item ${active === 'month' ? 'is-active' : ''}" data-view="month" type="button">Bu ay</button>
+      <button class="segmented__item ${active === 'year' ? 'is-active' : ''}" data-view="year" type="button">Yıllık giriş</button>
+    </div>`;
+}
+
+function wireViewSwitch(container, ctx) {
+  container.querySelector('#payslipView')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-view]');
+    if (!btn) return;
+    ctx.payslipView = btn.dataset.view;
+    ctx.rerender();
+  });
+}
+
+// --- Tek ay görünümü ------------------------------------------------------
+function renderMonth(container, state, ctx) {
+  const settings = state.settings;
+  // Odak: ayardaki ödeme kaydırmasına göre "parası şimdi yatacak/yatmış" ay.
+  const periodKey = ctx.payslipMonth || ctx.payslipFocus || payslipPeriodFor(settings, currentPeriodKey());
+  ctx.payslipMonth = periodKey;
+  ctx.payslipFocus = null;
+
+  const summary = periodSummary(state, periodKey);
+  const slip = payslipFor(state, periodKey) || {};
+  const filled = hasPayslipData(slip);
+  const cmp = filled ? comparePayslip(summary, slip, settings) : null;
+  const explanation = cmp ? explainPayslipDiff(summary, cmp, settings) : '';
+  const breakdown = workdayBreakdown(periodKey, settings, absenceDatesInPeriod(state, periodKey));
+  const payDate = payDateForPeriod(periodKey, settings);
+  const left = daysUntilPay(periodKey, settings);
+  const whenText = left > 0 ? `${left} gün kaldı` : left === 0 ? 'bugün' : `${Math.abs(left)} gün önce yattı`;
+
+  const durum = cmp && {
+    match: { cls: 'is-positive', baslik: 'Tutuyor ✓', not: 'Ödenen tutar hesapla aynı.' },
+    short: { cls: 'is-negative', baslik: `${formatMoney(Math.abs(cmp.diff))} eksik`, not: 'Ödenen tutar hesabın altında.' },
+    over: { cls: 'is-positive', baslik: `${formatMoney(cmp.diff)} fazla`, not: 'Ödenen tutar hesabın üstünde.' },
+  }[cmp.status];
+
+  mountPeriodNav(ctx, {
+    label: periodLabel(periodKey),
+    sub: `${formatFullDate(toISODate(payDate))} · ${whenText}`,
+    onPrev: () => { ctx.payslipMonth = shiftPeriod(periodKey, -1); ctx.rerender(); },
+    onNext: () => { ctx.payslipMonth = shiftPeriod(periodKey, 1); ctx.rerender(); },
+  });
+
+  container.innerHTML = `
+    ${viewSwitchHTML('month')}
+
+    <div class="period-card">
+      <button class="period-card__nav" id="prevMonth" type="button" aria-label="Önceki ay">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+      </button>
+      <div class="period-card__body">
+        <div class="period-card__label">${periodLabel(periodKey)}</div>
+        <div class="period-card__sub"><b>${formatFullDate(toISODate(payDate))}</b> · ${whenText}</div>
+      </div>
+      <button class="period-card__nav" id="nextMonth" type="button" aria-label="Sonraki ay">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+      </button>
+    </div>
+
+    ${durum ? `
+    <div class="card card--bordro">
+      <div class="hero">
+        <div class="hero__label">${periodLabel(periodKey)} bordrosu</div>
+        <div class="hero__value ${durum.cls}">${durum.baslik}</div>
+        <div class="hero__sub">hesaba göre ${formatMoney(cmp.expected, { decimals: false })} · yatan ${formatMoney(cmp.paid, { decimals: false })}</div>
+        ${explanation ? `<p class="hero__note">${explanation}</p>` : ''}
+      </div>
+    </div>` : ''}
+
+    <div class="section-header">
+      <span class="section-title" style="margin:0;">Cebine ne geçti</span>
+      <span class="section-header__note">hesaba göre ${formatMoney(summary.payoutTotal, { decimals: false })}</span>
+    </div>
+    <div class="card">
+      <p class="field__hint" style="margin:-2px 0 14px;">
+        Bordroda yazan tutarları gir; boş bıraktığın kalem karşılaştırmaya girmez.
+      </p>
+      ${lineFieldsHTML(PAYSLIP_LINES, summary, slip)}
+      <div class="input-row">
+        <div class="field">
+          <label class="field__label">Çalışılan gün <span style="font-weight:500;color:var(--text-tertiary);">hesaba göre ${breakdown.workdays}</span></label>
+          <input class="input input--amount" type="text" inputmode="decimal" id="monthDays" value="${numValue(slip.days)}" placeholder="0" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label class="field__label">Mesai saati <span style="font-weight:500;color:var(--text-tertiary);">hesaba göre ${formatHours(summary.totalHours)}</span></label>
+          <input class="input input--amount" type="text" inputmode="decimal" id="monthHours" value="${numValue(slip.hours)}" placeholder="0" autocomplete="off" />
+        </div>
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label class="field__label">Not <span style="font-weight:500;color:var(--text-tertiary);">(opsiyonel)</span></label>
+        <input class="input" type="text" id="monthNote" value="${(slip.note || '').replace(/"/g, '&quot;')}" placeholder="ör. ikramiye ayrı yattı" />
+      </div>
+      <div class="table-foot">
+        ${filled ? '<button class="btn btn--ghost btn--inline" id="monthClear" type="button">Bu ayı sil</button>' : '<span class="table-foot__hint">Kaydedene kadar tutulmaz.</span>'}
+        <button class="btn btn--primary btn--inline" id="monthSave" type="button">Kaydet</button>
+      </div>
+    </div>
+
+    <div class="section-header"><span class="section-title" style="margin:0;">Gün hesabı</span></div>
+    <div class="card">${dayBreakdownHTML(breakdown)}</div>
+  `;
+
+  wireViewSwitch(container, ctx);
+  container.querySelector('#prevMonth').addEventListener('click', () => { ctx.payslipMonth = shiftPeriod(periodKey, -1); ctx.rerender(); });
+  container.querySelector('#nextMonth').addEventListener('click', () => { ctx.payslipMonth = shiftPeriod(periodKey, 1); ctx.rerender(); });
+
+  container.querySelector('#monthSave').addEventListener('click', () => {
+    const payload = {};
+    for (const line of PAYSLIP_LINES) {
+      const raw = container.querySelector(`[data-line="${line.key}"]`).value.trim();
+      payload[line.key] = raw === '' ? undefined : parseLocaleNumber(raw);
+    }
+    const num = (id) => {
+      const raw = container.querySelector(id).value.trim();
+      return raw === '' ? undefined : parseLocaleNumber(raw);
+    };
+    payload.days = num('#monthDays');
+    payload.hours = num('#monthHours');
+    payload.note = container.querySelector('#monthNote').value.trim();
+    ctx.store.setPayslip(periodKey, payload);
+    showToast(`${periodLabel(periodKey)} bordrosu kaydedildi`);
+  });
+
+  container.querySelector('#monthClear')?.addEventListener('click', () => {
+    ctx.store.removePayslip(periodKey);
+    showToast('Bordro kaydı silindi');
+  });
+
+  requestAnimationFrame(() => container.querySelector('[data-line="amount"]')?.focus({ preventScroll: true }));
+}
+
+// --- Yıllık giriş ---------------------------------------------------------
+function renderYear(container, state, ctx) {
   const year = ctx.payslipYear || Number((ctx.reportPeriodKey || currentPeriodKey()).slice(0, 4));
   ctx.payslipYear = year;
 
@@ -62,6 +208,8 @@ export function render(container, state, ctx) {
   });
 
   container.innerHTML = `
+    ${viewSwitchHTML('year')}
+
     <div class="period-card">
       <button class="period-card__nav" id="prevYear" type="button" aria-label="Önceki yıl">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
@@ -150,6 +298,7 @@ export function render(container, state, ctx) {
     }
   }
 
+  wireViewSwitch(container, ctx);
   container.querySelector('#prevYear').addEventListener('click', () => { ctx.payslipYear = year - 1; ctx.rerender(); });
   container.querySelector('#nextYear').addEventListener('click', () => { ctx.payslipYear = year + 1; ctx.rerender(); });
 
@@ -358,7 +507,10 @@ function lineFieldsHTML(lines, summary, slip) {
   return lines.map((line) => `
     <div class="field">
       <label class="field__label">${line.label} (₺)
-        <span style="font-weight:500;color:var(--text-tertiary);">hesaba göre ${formatMoney(line.expectedOf(summary), { decimals: false })}</span>
+        ${/* "Net maaş" artık-toplam kalemi: beklenen tutarı diğer kalemlere
+             bağlı olduğu için tek başına yazmak yanıltır. Onun beklentisi
+             kartın başındaki "hesaba göre" satırında duruyor. */''}
+        ${line.remainder ? '' : `<span style="font-weight:500;color:var(--text-tertiary);">hesaba göre ${formatMoney(line.expectedOf(summary), { decimals: false })}</span>`}
       </label>
       <input class="input input--amount" type="text" inputmode="decimal" data-line="${line.key}"
         value="${numValue(slip[line.key])}" placeholder="0" autocomplete="off" />

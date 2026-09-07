@@ -31,6 +31,26 @@ const state = {
   recurring: [], loans: [], adjustments: [], payslips: [],
 };
 
+// Gelir artık ELE GEÇEN paradan geliyor. Dikkat: bir yılın geliri o yılın
+// AYLARINDA ele geçen paradır — offset 1 ile 2026'nın geliri
+// 2025-12 … 2026-11 bordrolarıdır.
+const bordrolu = (from, to, amount) => {
+  const out = [];
+  let k = from;
+  while (k <= to) {
+    out.push({ id: `p_${k}`, periodKey: k, amount });
+    const [y, m] = k.split('-').map(Number);
+    k = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+  }
+  return out;
+};
+
+// 2025 geliri 12×30000, 2026 geliri 12×40000 olacak şekilde.
+const doluState = () => ({
+  ...state,
+  payslips: [...bordrolu('2024-12', '2025-11', 30000), ...bordrolu('2025-12', '2026-11', 40000)],
+});
+
 test('pctChange - taban sıfırsa yüzde uydurulmaz', () => {
   assert.equal(pctChange(0, 500), null);
   assert.equal(pctChange(100, 150), 50);
@@ -66,18 +86,40 @@ test('compareYears - satırlar, farklar ve yüzdeler', () => {
   assert.equal(yatirim.pct, null, '2025 yatırımı yok, yüzde anlamsız');
 });
 
-test('compareYears - gelir maaş geçmişini kullanır (zam yansır)', () => {
+test('compareYears - gelir satırı ELE GEÇEN paradır', () => {
+  const res = compareYears(doluState(), 2025, 2026, '2026-08-24');
+  const gelir = res.rows.find((r) => r.key === 'income');
+  assert.equal(gelir.from, 12 * 30000);
+  assert.equal(gelir.to, 12 * 40000);
+  assert.ok(gelir.pct > 32 && gelir.pct < 34, `beklenen ~%33, gelen %${gelir.pct}`);
+  assert.equal(res.fromIncomeMonths, 12);
+  assert.equal(res.toIncomeMonths, 12);
+  assert.equal(res.incomeComparable, true);
+});
+
+test('compareYears - bordro yoksa gelir 0 ve yüzde basılmaz', () => {
   const res = compareYears(state, 2025, 2026, '2026-08-24');
   const gelir = res.rows.find((r) => r.key === 'income');
-  assert.ok(gelir.to > gelir.from, 'zam sonrası gelir artmalı');
-  assert.ok(gelir.pct > 30 && gelir.pct < 34, `beklenen ~%33, gelen %${gelir.pct}`);
+  assert.equal(gelir.from, 0, 'maaş ayarından gelir uydurulmaz');
+  assert.equal(gelir.to, 0);
+  assert.equal(gelir.pct, null);
+  assert.equal(res.incomeComparable, false);
+  // Harcama satırı bordrodan bağımsız, yüzdesi durmalı.
+  assert.equal(res.rows.find((r) => r.key === 'spent').pct, 75);
 });
 
 test('realChange - gelir mi harcama mı hızlı arttı', () => {
-  const res = realChange(state, 2025, 2026, '2026-08-24');
+  const res = realChange(doluState(), 2025, 2026, '2026-08-24');
   assert.ok(res.spentPct > res.incomePct, 'harcama daha hızlı arttı');
   assert.equal(res.better, false);
   assert.equal(Math.round(res.gapPoints), Math.round(res.incomePct - res.spentPct));
+});
+
+test('realChange - taban yılda bordro yoksa yorum yok', () => {
+  // Harcama iki yılda da var ama gelir yalnız 2026'da: taban gelir 0 →
+  // pctChange null → uydurma oran üretilmez.
+  const s2 = { ...state, payslips: bordrolu('2025-12', '2026-11', 40000) };
+  assert.equal(realChange(s2, 2025, 2026, '2026-08-24'), null);
 });
 
 test('realChange - taban yıl boşsa yorum yok', () => {
@@ -106,15 +148,22 @@ test('categoryTrend - sürekli gider ve kredi taksiti de sayılır, tek kez', ()
   assert.ok(kira.months.every((m) => m === 0 || m === 10000), 'her ay tek taksit');
 });
 
-test('overtimeShareByYear - mesai gelirinin toplam gelire oranı', () => {
+test('overtimeShareByYear - oran HESAPLANAN kazanca göre, bordroya göre değil', () => {
   const rows = overtimeShareByYear(state, [2026, 2025], '2026-08-24');
   assert.equal(rows.length, 2);
+  assert.equal(rows[0].basis, 'earned');
   assert.ok(rows[0].share > 0 && rows[0].share < 100);
   assert.equal(rows[0].hours, 8);
   assert.equal(rows[1].hours, 4);
+  // Pay mesai kayıtlarından, payda hesaplanan kazançtan geliyor: bordro
+  // girmek bu oranı DEĞİŞTİRMEMELİ. (Payda ele geçen para olsaydı, birkaç
+  // bordrolu yılda "%210 mesai" gibi saçma oran çıkardı.)
+  const bordroluRows = overtimeShareByYear(doluState(), [2026, 2025], '2026-08-24');
+  assert.equal(bordroluRows[0].share, rows[0].share);
+  assert.equal(bordroluRows[1].share, rows[1].share);
 });
 
-test('overtimeShareByYear - geliri olmayan yılda sıfıra bölme yok', () => {
+test('overtimeShareByYear - kazancı olmayan yılda sıfıra bölme yok', () => {
   const bos = { ...state, settings: { ...settings, monthlySalary: 0, salaryHistory: [] } };
   const [row] = overtimeShareByYear(bos, [2024], '2026-08-24');
   assert.equal(row.share, 0);
@@ -126,20 +175,40 @@ test('monthsWithData - yılda kaç ay veri var', () => {
   assert.equal(monthsWithData(state, 2024), 0);
 });
 
+test('monthsWithData - bordro girilen ay da veri sayılır', () => {
+  const s2 = { ...state, payslips: bordrolu('2025-01', '2025-12', 30000) };
+  assert.equal(monthsWithData(s2, 2025), 12, '12 bordro → dolu yıl');
+});
+
 test('monthsWithData - sürekli gider varsa yıl dolu sayılır', () => {
   const s = { ...state, recurring: [{ id: 'r1', since: '2025-01', amount: 100, category: 'kira', day: 5, active: true }] };
   assert.equal(monthsWithData(s, 2025), 12);
 });
 
 test('realChange - yarım veriyle kıyas güvenilir sayılmaz', () => {
-  const res = realChange(state, 2025, 2026, '2026-08-24');
-  assert.equal(res.reliable, false, '2025 yalnız 2 ay');
-  assert.equal(res.baseMonths, 2);
+  const s2 = { ...doluState(), payslips: [...bordrolu('2025-01', '2025-02', 30000), ...bordrolu('2025-12', '2026-11', 40000)] };
+  const res = realChange(s2, 2025, 2026, '2026-08-24');
+  assert.equal(res.reliable, false, '2025 yalnız 2 bordro ayı');
+  assert.equal(res.basePayslipMonths, 2);
   assert.ok(Number.isFinite(res.incomePct), 'hesap yine de yapılır');
 });
 
-test('realChange - dolu yılla kıyas güvenilir', () => {
-  const dolu = { ...state, recurring: [{ id: 'r1', since: '2024-01', amount: 5000, category: 'kira', day: 5, active: true }] };
-  const res = realChange(dolu, 2025, 2026, '2026-08-24');
+test('realChange - sürekli gider tek başına yılı kıyaslanabilir YAPMAZ', () => {
+  // monthsWithData sürekli gider görünce sert 12 döndürüyor ama bordroya
+  // bakmıyor; gelir artık bordrodan geldiği için bu yetmez.
+  const s2 = {
+    ...doluState(),
+    payslips: [...bordrolu('2025-01', '2025-02', 30000), ...bordrolu('2025-12', '2026-11', 40000)],
+    recurring: [{ id: 'r1', since: '2024-01', amount: 5000, category: 'kira', day: 5, active: true }],
+  };
+  const res = realChange(s2, 2025, 2026, '2026-08-24');
+  assert.equal(res.baseMonths, 12, 'monthsWithData dolu diyor');
+  assert.equal(res.reliable, false, 'ama 2 bordro ayı var');
+});
+
+test('realChange - iki yıl da bordro doluysa kıyas güvenilir', () => {
+  const res = realChange(doluState(), 2025, 2026, '2026-08-24');
+  assert.equal(res.basePayslipMonths, 12);
+  assert.equal(res.targetPayslipMonths, 12);
   assert.equal(res.reliable, true);
 });

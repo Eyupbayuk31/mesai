@@ -16,12 +16,17 @@ export function pctChange(from, to) {
   return ((b - a) / Math.abs(a)) * 100;
 }
 
-// Bir yılda kaç ayda gerçekten harcama/mesai verisi var? Yarım yıllık veriyle
-// tam yılı kıyaslamak "%4.920 arttı" gibi saçma sonuçlar üretiyor.
+// Bir yılda kaç ayda gerçekten veri var? Yarım yıllık veriyle tam yılı
+// kıyaslamak "%4.920 arttı" gibi saçma sonuçlar üretiyor.
+//
+// Bordro da veri sayılır: gelir artık ele geçen paradan hesaplanıyor, 12 ay
+// bordro girilmiş bir yıl harcama kaydı seyrek olsa da dolu bir yıldır.
 export function monthsWithData(state, year) {
   const months = new Set();
-  for (const e of state?.expenses || []) if (e?.date?.slice(0, 4) === String(year)) months.add(e.date.slice(5, 7));
-  for (const e of state?.entries || []) if (e?.date?.slice(0, 4) === String(year)) months.add(e.date.slice(5, 7));
+  const inYear = (d) => d?.slice(0, 4) === String(year);
+  for (const e of state?.expenses || []) if (inYear(e?.date)) months.add(e.date.slice(5, 7));
+  for (const e of state?.entries || []) if (inYear(e?.date)) months.add(e.date.slice(5, 7));
+  for (const p of state?.payslips || []) if (inYear(p?.periodKey)) months.add(p.periodKey.slice(5, 7));
   for (const r of state?.recurring || []) {
     // Sürekli gider tanım ayından sonra her ay üretir.
     if (r?.active !== false && r?.since && r.since.slice(0, 4) <= String(year)) return 12;
@@ -51,16 +56,33 @@ export function compareYears(state, fromYear, toYear, todayStr) {
   const ay = yearSummary(state, fromYear);
   const by = yearSummary(state, toYear);
 
+  // Para satırları ELE GEÇEN paradan okunur. İki yılın bordro doluluğu
+  // birbirini tutmuyorsa yüzde yalan söyler (2 bordrolu yıl ile 11 bordrolu
+  // yıl "+%933" verir), o yüzden oran gizlenir — changeCell null'da gri "—"
+  // basıyor, arayüzde ek iş yok.
+  const incomeComparable = a.incomeMonths >= MIN_COMPARE_MONTHS && b.incomeMonths >= MIN_COMPARE_MONTHS;
+
   const rows = [
-    { key: 'income', label: 'Gelir', from: a.income, to: b.income, money: true },
+    { key: 'income', label: 'Eline geçen', from: a.received, to: b.received, money: true, needsIncome: true },
     { key: 'spent', label: 'Harcama', from: a.spent, to: b.spent, money: true, lowerIsBetter: true },
-    { key: 'remaining', label: 'Gelir − harcama', from: a.remaining, to: b.remaining, money: true },
+    { key: 'remaining', label: 'Eline geçen − harcama', from: a.remaining, to: b.remaining, money: true, needsIncome: true },
     { key: 'invested', label: 'Yatırım', from: investedInYear(state, fromYear), to: investedInYear(state, toYear), money: true },
     { key: 'hours', label: 'Mesai saati', from: ay.totalHours, to: by.totalHours, money: false },
     { key: 'overtimePay', label: 'Mesai ücreti', from: ay.totalOvertimePay, to: by.totalOvertimePay, money: true },
-  ].map((r) => ({ ...r, diff: r.to - r.from, pct: pctChange(r.from, r.to) }));
+  ].map((r) => ({
+    ...r,
+    diff: r.to - r.from,
+    pct: r.needsIncome && !incomeComparable ? null : pctChange(r.from, r.to),
+  }));
 
-  return { from: fromYear, to: toYear, rows };
+  return {
+    from: fromYear,
+    to: toYear,
+    rows,
+    fromIncomeMonths: a.incomeMonths,
+    toIncomeMonths: b.incomeMonths,
+    incomeComparable,
+  };
 }
 
 /**
@@ -71,12 +93,16 @@ export function compareYears(state, fromYear, toYear, todayStr) {
 export function realChange(state, fromYear, toYear, todayStr) {
   const a = yearFinance(state, fromYear, todayStr);
   const b = yearFinance(state, toYear, todayStr);
-  const incomePct = pctChange(a.income, b.income);
+  const incomePct = pctChange(a.received, b.received);
   const spentPct = pctChange(a.spent, b.spent);
   if (incomePct === null || spentPct === null) return null;
 
   // Taban yıl yarım kalmışsa yüzde büyür ve yalan söyler: hesabı veriyoruz
   // ama "güvenilir değil" diye işaretliyoruz, arayüz cümle kurmuyor.
+  //
+  // monthsWithData tek başına yetmez: harcama/mesai aylarını sayıyor ve
+  // sürekli gider varsa sert 12 döndürüyor — bordroya hiç bakmıyor. Gelir
+  // artık bordrodan geldiği için bordro ayı sayısı da şart.
   const baseMonths = monthsWithData(state, fromYear);
   return {
     incomePct,
@@ -84,7 +110,11 @@ export function realChange(state, fromYear, toYear, todayStr) {
     gapPoints: incomePct - spentPct,
     better: incomePct >= spentPct,
     baseMonths,
-    reliable: baseMonths >= MIN_COMPARE_MONTHS,
+    basePayslipMonths: a.incomeMonths,
+    targetPayslipMonths: b.incomeMonths,
+    reliable: baseMonths >= MIN_COMPARE_MONTHS
+      && a.incomeMonths >= MIN_COMPARE_MONTHS
+      && b.incomeMonths >= MIN_COMPARE_MONTHS,
   };
 }
 
@@ -144,12 +174,16 @@ export function overtimeShareByYear(state, years, todayStr) {
   return years.map((year) => {
     const fin = yearFinance(state, year, todayStr);
     const pay = yearSummary(state, year);
+    // Payda HESAPLANAN kazanç kalır, ele geçen para değil. Pay (mesai ücreti)
+    // mesai kayıtlarından hesaplanıyor; paydayı bordroya çevirmek 3 bordrolu
+    // yılda "%210 mesai" gibi saçma bir oran üretir.
     return {
       year,
-      income: fin.income,
+      earned: fin.earned,
       overtimePay: pay.totalOvertimePay,
-      share: fin.income > 0 ? (pay.totalOvertimePay / fin.income) * 100 : 0,
+      share: fin.earned > 0 ? (pay.totalOvertimePay / fin.earned) * 100 : 0,
       hours: pay.totalHours,
+      basis: 'earned',
     };
   });
 }

@@ -34,6 +34,15 @@ export function payslipTotal(slip) {
 }
 
 /**
+ * `periodKey` içinde ele geçen para hangi dönemin bordrosundan gelir?
+ * Kaydırma 1 ise Eylül'ün parası Ağustos bordrosu, 2 ise Temmuz.
+ * Tek tanım burada dursun diye dışa açık — Bordro sayfası da bunu kullanır.
+ */
+export function payslipPeriodFor(settings, periodKey) {
+  return shiftPeriod(periodKey, -((settings?.payMonthOffset) ?? 1));
+}
+
+/**
  * Dönemde ele geçen para.
  *
  * @returns {{
@@ -44,8 +53,7 @@ export function payslipTotal(slip) {
  */
 export function receivedInPeriod(state, periodKey) {
   const settings = state?.settings || {};
-  const offset = settings.payMonthOffset ?? 1;
-  const payslipPeriod = shiftPeriod(periodKey, -offset);
+  const payslipPeriod = payslipPeriodFor(settings, periodKey);
   const slip = payslipFor(state, payslipPeriod);
   const payslip = payslipTotal(slip);
 

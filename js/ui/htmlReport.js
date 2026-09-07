@@ -162,6 +162,12 @@ export function buildHtmlReport({ profileName, periodKey, summary, settings, sco
       finance: rangeFinance(state, periodKey, RANGE_MONTHS),
     });
   }
+  if ((scope === 'income' || scope === 'expense') && ySummary && state) {
+    return buildSideReport({
+      profileName, yearSummary: ySummary, settings, portfolio, state, year, side: scope,
+      finance: yearFinance(state, year),
+    });
+  }
   if (scope === 'year' && ySummary) {
     return buildYearReport({
       profileName, yearSummary: ySummary, settings, portfolio, state, year,
@@ -177,10 +183,60 @@ export function buildHtmlReport({ profileName, periodKey, summary, settings, sco
   });
 }
 
+// Yalnız gelir ya da yalnız gider tarafı. Bölüm üreticileri ortak; hangi
+// bölümlerin basılacağını `side` seçer.
+function buildSideReport({ profileName, yearSummary, settings, finance, portfolio, state, year, side }) {
+  const gelir = side === 'income';
+  const allKeys = finance.months.map((m) => m.periodKey);
+  const withMeal = Number(settings.mealAllowance) > 0;
+  const withTransport = Number(settings.transportAllowance) > 0;
+  const baslik = gelir ? 'Gelir raporu' : 'Gider raporu';
+
+  return htmlShell({
+    title: `${baslik} — ${escapeHTML(profileName)} — ${year}`,
+    headerTitle: `${escapeHTML(profileName)} — ${year} ${baslik.toLocaleLowerCase('tr-TR')}`,
+    metaRight: `Oluşturulma: <b>${todayLabel()}</b><br />Kapsam: <b>${year}</b>`,
+    body: gelir ? `
+      <div class="stats">
+        ${statCard('Eline geçen', formatMoney(finance.received, { decimals: false }), '#12946b')}
+        ${statCard('Bordro girilen ay', `${finance.incomeMonths} / 12`)}
+        ${statCard('Yıllık mesai', formatHours(yearSummary.totalHours))}
+        ${statCard('Mesai ücreti', formatMoney(yearSummary.totalOvertimePay), '#12946b')}
+      </div>
+
+      <h2>Aylık mesai dağılımı</h2>
+      <div class="chart">${yearChartSVG(yearSummary)}</div>
+      <table class="table">
+        <thead><tr><th>Ay</th><th class="num">Saat</th><th class="num">Tutar</th>${withMeal ? '<th class="num">Yemek</th>' : ''}${withTransport ? '<th class="num">Yol</th>' : ''}</tr></thead>
+        <tbody>${yearTableRows(yearSummary, withMeal, withTransport)}</tbody>
+      </table>
+
+      ${payslipSection(state, allKeys, `${year} bordro karşılaştırması`)}
+      ${analysisSection(state, year)}
+    ` : `
+      <div class="stats">
+        ${statCard('Toplam harcama', formatMoney(finance.spent, { decimals: false }), '#c9402f')}
+        ${finance.invested > 0 ? statCard('Yatırıma ayrılan', formatMoney(finance.invested, { decimals: false })) : ''}
+        ${profitCard(portfolio)}
+      </div>
+
+      ${categoryTable(finance.byCategory, finance.spent, `${year} harcama kırılımı`)}
+      ${debtSection(state, allKeys, `${year} borç durumu`)}
+      ${/* expenseListTable bir dönem özeti bekliyor; yılın harcamalarını
+           tek listede toplayıp aynı biçimi kullanıyoruz. */''}
+      ${expenseListTable({
+    expenses: allKeys.flatMap((k) => budgetSummary(state, k).expenses),
+    byCategory: finance.byCategory,
+  })}
+    `,
+  });
+}
+
 function buildYearReport({ profileName, yearSummary, settings, finance, portfolio, state, year }) {
   // Yan ödeme girilmişse aylık tabloya ilgili kolonlar da eklenir.
   const withMeal = Number(settings.mealAllowance) > 0;
   const withTransport = Number(settings.transportAllowance) > 0;
+  const allKeys = finance ? finance.months.map((m) => m.periodKey) : [];
   return htmlShell({
     title: `Mesai Raporu — ${escapeHTML(profileName)} — ${yearSummary.year}`,
     headerTitle: `${escapeHTML(profileName)} — ${yearSummary.year} yılı`,
@@ -189,7 +245,8 @@ function buildYearReport({ profileName, yearSummary, settings, finance, portfoli
       <div class="stats">
         ${statCard('Yıllık mesai', formatHours(yearSummary.totalHours))}
         ${statCard('Yıllık mesai ücreti', formatMoney(yearSummary.totalOvertimePay), '#12946b')}
-        ${finance ? statCard('Toplam gelir', formatMoney(finance.income, { decimals: false }), '#12946b') : statCard('Aylık ortalama', formatHours(yearSummary.totalHours / 12))}
+        ${finance ? statCard('Eline geçen', formatMoney(finance.received, { decimals: false }), '#12946b') : statCard('Aylık ortalama', formatHours(yearSummary.totalHours / 12))}
+        ${finance ? statCard('Bordro girilen ay', `${finance.incomeMonths} / 12`) : ''}
         ${finance ? statCard('Toplam harcama', formatMoney(finance.spent, { decimals: false }), '#c9402f') : statCard('Saat ücreti', formatMoney(settings.monthlySalary / (settings.hoursDivisor || 225)))}
         ${finance && finance.invested > 0 ? statCard('Yatırıma ayrılan', formatMoney(finance.invested, { decimals: false })) : ''}
         ${profitCard(portfolio)}
@@ -213,9 +270,12 @@ function buildYearReport({ profileName, yearSummary, settings, finance, portfoli
       </table>
 
       ${financeTable(finance, yearSummary)}
-      ${payslipSection(state, finance ? finance.months.map((m) => m.periodKey) : [], `${year} bordro karşılaştırması`)}
+      ${/* Bordro ve borç bölümleri SÜZÜLMEMİŞ 12 ayı ister: kendi içlerinde
+           veri olmayan ayı zaten atlıyorlar, süzülmüş liste onları sessizce
+           küçültür. */''}
+      ${payslipSection(state, allKeys, `${year} bordro karşılaştırması`)}
       ${categoryTable(finance ? finance.byCategory : [], finance ? finance.spent : 0, 'Harcama kırılımı')}
-      ${debtSection(state, finance ? finance.months.map((m) => m.periodKey) : [], `${year} borç durumu`)}
+      ${debtSection(state, allKeys, `${year} borç durumu`)}
       ${analysisSection(state, year)}
       ${portfolioTable(portfolio)}
     `,
@@ -436,38 +496,44 @@ function profitCard(portfolio) {
   );
 }
 
-// Ay ay gelir / harcama / yatırım. Ekrandaki tabloyla aynı sayılar.
+// Ay ay eline geçen / harcama / yatırım. Ekrandaki tabloyla aynı sayılar.
+//
+// Verisi olmayan ve gelecek aylar hiç basılmaz. Bordrosu girilmemiş ama
+// harcaması olan ay basılır — ancak gelir ve kalan hücreleri "—" olur:
+// kalan'a −harcama yazmak olmayan bir açık icat etmek olurdu.
 function financeTable(finance, yearSummary) {
   if (!finance) return '';
-  const rows = finance.months.filter((m) => m.income > 0 || m.spent > 0 || m.invested > 0);
+  const rows = finance.months.filter((m) => m.hasData && !m.isFuture);
   if (rows.length === 0) return '';
   const hoursOf = (periodKey) => yearSummary.months.find((m) => m.periodKey === periodKey)?.hours || 0;
+  const eksik = finance.months.filter((m) => !m.hasIncome && !m.isFuture).length;
 
   return `
     <h2>Aylık finans dökümü</h2>
     <table class="table">
-      <thead><tr><th>Ay</th><th class="num">Mesai</th><th class="num">Gelir</th><th class="num">Harcama</th><th class="num">Yatırım</th><th class="num">Kalan</th></tr></thead>
+      <thead><tr><th>Ay</th><th class="num">Mesai</th><th class="num">Eline geçen</th><th class="num">Harcama</th><th class="num">Yatırım</th><th class="num">Kalan</th></tr></thead>
       <tbody>
         ${rows.map((m) => `
           <tr>
             <td>${MONTH_NAMES[m.month - 1]}</td>
             <td class="num">${formatHours(hoursOf(m.periodKey))}</td>
-            <td class="num">${formatMoney(m.income, { decimals: false })}</td>
+            <td class="num">${m.hasIncome ? formatMoney(m.received, { decimals: false }) : '—'}</td>
             <td class="num">${formatMoney(m.spent, { decimals: false })}</td>
             <td class="num">${m.invested > 0 ? formatMoney(m.invested, { decimals: false }) : '—'}</td>
-            <td class="num">${formatMoney(m.remaining, { decimals: false })}</td>
+            <td class="num">${m.hasIncome ? formatMoney(m.remaining, { decimals: false }) : '—'}</td>
           </tr>
         `).join('')}
         <tr class="total-row">
           <td>Toplam</td>
           <td class="num">${formatHours(yearSummary.totalHours)}</td>
-          <td class="num">${formatMoney(finance.income, { decimals: false })}</td>
+          <td class="num">${formatMoney(finance.received, { decimals: false })}</td>
           <td class="num">${formatMoney(finance.spent, { decimals: false })}</td>
           <td class="num">${formatMoney(finance.invested, { decimals: false })}</td>
           <td class="num">${formatMoney(finance.remaining, { decimals: false })}</td>
         </tr>
       </tbody>
     </table>
+    ${eksik > 0 ? `<p style="color:#9aa2b1;font-size:12px;margin-top:-8px;">${eksik} ayın bordrosu girilmedi; o aylar gelir olarak sayılmadı.</p>` : ''}
   `;
 }
 
@@ -670,7 +736,7 @@ function buildRangeReport({ profileName, settings, finance, portfolio, state }) 
       <div class="stats">
         ${statCard('Toplam mesai', formatHours(finance.hours))}
         ${statCard('Mesai ücreti', formatMoney(finance.overtimePay), '#12946b')}
-        ${statCard('Toplam gelir', formatMoney(finance.income, { decimals: false }), '#12946b')}
+        ${statCard('Eline geçen', formatMoney(finance.received, { decimals: false }), '#12946b')}
         ${statCard('Toplam harcama', formatMoney(finance.spent, { decimals: false }), '#c9402f')}
         ${statCard('Gelir − harcama', formatMoney(finance.remaining, { decimals: false }))}
         ${finance.invested > 0 ? statCard('Yatırıma ayrılan', formatMoney(finance.invested, { decimals: false })) : ''}
@@ -680,22 +746,22 @@ function buildRangeReport({ profileName, settings, finance, portfolio, state }) 
 
       <h2>Ay ay döküm</h2>
       <table class="table">
-        <thead><tr><th>Ay</th><th class="num">Mesai</th><th class="num">Gelir</th><th class="num">Harcama</th><th class="num">Yatırım</th><th class="num">Kalan</th></tr></thead>
+        <thead><tr><th>Ay</th><th class="num">Mesai</th><th class="num">Eline geçen</th><th class="num">Harcama</th><th class="num">Yatırım</th><th class="num">Kalan</th></tr></thead>
         <tbody>
-          ${finance.months.map((m) => `
+          ${finance.months.filter((m) => m.hasData && !m.isFuture).map((m) => `
             <tr>
               <td>${MONTH_NAMES[m.month - 1]} ${m.year}</td>
               <td class="num">${formatHours(m.hours)}</td>
-              <td class="num">${formatMoney(m.income, { decimals: false })}</td>
+              <td class="num">${m.hasIncome ? formatMoney(m.received, { decimals: false }) : '—'}</td>
               <td class="num">${formatMoney(m.spent, { decimals: false })}</td>
               <td class="num">${m.invested > 0 ? formatMoney(m.invested, { decimals: false }) : '—'}</td>
-              <td class="num">${formatMoney(m.remaining, { decimals: false })}</td>
+              <td class="num">${m.hasIncome ? formatMoney(m.remaining, { decimals: false }) : '—'}</td>
             </tr>
           `).join('')}
           <tr class="total-row">
             <td>Toplam</td>
             <td class="num">${formatHours(finance.hours)}</td>
-            <td class="num">${formatMoney(finance.income, { decimals: false })}</td>
+            <td class="num">${formatMoney(finance.received, { decimals: false })}</td>
             <td class="num">${formatMoney(finance.spent, { decimals: false })}</td>
             <td class="num">${formatMoney(finance.invested, { decimals: false })}</td>
             <td class="num">${formatMoney(finance.remaining, { decimals: false })}</td>

@@ -344,7 +344,10 @@ export function lifetimeByCategory(state, todayStr = todayISO()) {
 export function periodsFinance(state, periodKeys, todayStr = todayISO()) {
   const months = [];
   const byCategory = new Map();
-  let income = 0;
+  let received = 0;
+  let earned = 0;
+  let incomeMonths = 0;
+  let dataMonths = 0;
   let spent = 0;
   let invested = 0;
   let hours = 0;
@@ -354,21 +357,39 @@ export function periodsFinance(state, periodKeys, todayStr = todayISO()) {
     const budget = budgetSummary(state, periodKey, todayStr);
     const pay = periodSummary(state, periodKey);
     const monthInvested = investedInPeriod(state, periodKey);
+    // Ay ELE GEÇEN parayla anlatılır. Eskiden hesaplanan kazanç (maaş ayarı +
+    // mesai + yan ödeme) kullanılıyordu; bordrosu girilmemiş ay bile gelirli
+    // görünüyordu — çalışılmamış Ocak'a hesap uyduruyordu. Hesaplanan tutar
+    // `earned` olarak durur: bordro denetimi ve "gelirinin ne kadarı mesai"
+    // oranı onu kullanır.
+    const r = budget.received;
+    const hasIncome = r.total > 0;
     months.push({
       periodKey,
       month: Number(periodKey.slice(5, 7)),
       year: Number(periodKey.slice(0, 4)),
-      // Yıllık analiz HESAPLANAN kazancı kullanır. Ele geçen paraya
-      // çevrilirse bordro girilmemiş geçmiş aylar 0 gelir gösterir ve yıl
-      // kıyasları anlamsızlaşır. Özet ve Gider ele geçen parayı kullanır.
-      income: budget.earnedTotal,
+      received: r.total,
+      payslip: r.payslip,
+      manual: r.manual,
+      advances: r.advances,
+      // Paranın geldiği bordro dönemi. payMonthOffset 0 ise periodKey'in kendisi.
+      payslipPeriod: r.payslipPeriod,
+      hasPayslip: r.hasPayslip,
+      hasIncome,
+      earned: budget.earnedTotal,
       spent: budget.spent,
       invested: monthInvested,
-      remaining: budget.earnedTotal - budget.spent,
+      // Sayı olarak kalır; "bordro yoksa gizle" kararını çizen taraf verir.
+      remaining: r.total - budget.spent,
       hours: pay.totalHours,
       overtimePay: pay.overtimePay,
+      isFuture: periodKey > todayStr.slice(0, 7),
+      hasData: hasIncome || budget.spent > 0 || monthInvested > 0 || pay.totalHours > 0,
     });
-    income += budget.earnedTotal;
+    received += r.total;
+    earned += budget.earnedTotal;
+    if (hasIncome) incomeMonths += 1;
+    if (months[months.length - 1].hasData) dataMonths += 1;
     spent += budget.spent;
     invested += monthInvested;
     hours += pay.totalHours;
@@ -382,10 +403,13 @@ export function periodsFinance(state, periodKeys, todayStr = todayISO()) {
     months,
     from: periodKeys[0],
     to: periodKeys[periodKeys.length - 1],
-    income,
+    received,
+    earned,
+    incomeMonths,
+    dataMonths,
     spent,
     invested,
-    remaining: income - spent,
+    remaining: received - spent,
     hours,
     overtimePay,
     byCategory: [...byCategory.entries()]

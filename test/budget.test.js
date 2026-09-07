@@ -536,7 +536,10 @@ const lifetimeState = () => ({
     weekendDays: [0], mealAllowance: 0, transportAllowance: 0, payDay: 10, payMonthOffset: 1,
     weeklySchedule: {}, customCategories: [],
   },
-  entries: [], adjustments: [], payslips: [], assets: [], investments: [],
+  entries: [], adjustments: [],
+  // Mayıs ve Haziran bordroları → Haziran ve Temmuz'da ele geçer (offset 1).
+  payslips: [...yatan(30000, '2026-05'), ...yatan(30000, '2026-06')],
+  assets: [], investments: [],
   expenses: [
     { id: 'e1', date: '2026-06-15', amount: 1200, category: 'market' },
     { id: 'e2', date: '2026-07-15', amount: 800, category: 'market' },
@@ -585,12 +588,15 @@ test('yearFinance - 12 ay, aylık toplamlar yıl toplamına eşit', () => {
     { id: 'i2', assetId: 'a1', date: '2026-07-12', quantity: 1, unitCost: 7400 },
   ];
   const res = yearFinance(state, 2026, '2026-08-24');
-  assert.equal(res.months.length, 12);
+  assert.equal(res.months.length, 12, '12 aylık şekil sözleşme: htmlReport tam listeye dayanıyor');
   assert.equal(res.months.reduce((t, m) => t + m.spent, 0), res.spent);
-  assert.equal(res.months.reduce((t, m) => t + m.income, 0), res.income);
+  assert.equal(res.months.reduce((t, m) => t + m.received, 0), res.received);
   assert.equal(res.months.reduce((t, m) => t + m.invested, 0), res.invested);
   assert.equal(res.invested, 14500);
-  assert.equal(res.remaining, res.income - res.spent);
+  assert.equal(res.remaining, res.received - res.spent);
+  // İki bordro girildi → iki ay gelirli.
+  assert.equal(res.received, 60000);
+  assert.equal(res.incomeMonths, 2);
 });
 
 test('yearFinance - yatırım doğru aya düşer', () => {
@@ -624,14 +630,15 @@ test('budgetSummary - toplam bütçe ELE GEÇEN paradır, hesaplanan kazanç de�
   assert.equal(s.payoutTotal, s.earnedTotal - 10000, 'ödeme günü tahmini ayrı durur');
 });
 
-test('yearFinance - avans yılın gelirini küçültmez', () => {
-  const temiz = lifetimeState();
-  const avansli = lifetimeState();
-  avansli.adjustments = [{ id: 'a1', periodKey: '2026-08', kind: 'advance', amount: 10000 }];
-  assert.equal(
-    yearFinance(avansli, 2026, '2026-08-24').income,
-    yearFinance(temiz, 2026, '2026-08-24').income,
-  );
+test('yearFinance - avans ele geçen paraya eklenir, hesaplanan kazancı değiştirmez', () => {
+  const temiz = yearFinance(lifetimeState(), 2026, '2026-08-24');
+  const avansliState = lifetimeState();
+  avansliState.adjustments = [{ id: 'a1', periodKey: '2026-08', kind: 'advance', amount: 10000 }];
+  const avansli = yearFinance(avansliState, 2026, '2026-08-24');
+  // Avans erken alınmış nakittir: ele geçen parayı BÜYÜTÜR.
+  assert.equal(avansli.received, temiz.received + 10000);
+  // Hesaplanan kazanç (bordro denetiminin dayanağı) etkilenmez.
+  assert.equal(avansli.earned, temiz.earned);
 });
 
 test('rangeFinance - seçili dönemle biten son 6 ay', () => {
@@ -643,9 +650,9 @@ test('rangeFinance - seçili dönemle biten son 6 ay', () => {
   assert.equal(r.to, '2026-08');
   assert.equal(r.monthCount, 6);
   assert.equal(r.months.reduce((t, m) => t + m.spent, 0), r.spent);
-  assert.equal(r.months.reduce((t, m) => t + m.income, 0), r.income);
+  assert.equal(r.months.reduce((t, m) => t + m.received, 0), r.received);
   assert.equal(r.invested, 7400);
-  assert.equal(r.remaining, r.income - r.spent);
+  assert.equal(r.remaining, r.received - r.spent);
 });
 
 test('rangeFinance - kategori toplamı dönem harcamasına eşit', () => {
@@ -662,6 +669,74 @@ test('yearFinance ile rangeFinance aynı dönemde aynı sonucu verir', () => {
   const state = lifetimeState();
   const yil = yearFinance(state, 2026, '2026-08-24');
   const araliksiz = rangeFinance(state, '2026-12', 12, '2026-08-24');
-  assert.equal(araliksiz.income, yil.income);
+  assert.equal(araliksiz.received, yil.received);
   assert.equal(araliksiz.spent, yil.spent);
+});
+
+// --- Ele geçen para: uydurma gelir yok --------------------------------
+//
+// Yaşanan hata: Eylül'deyken 2026 ay ay dökümünde Ocak satırı ₺38.771
+// gelirle duruyordu — Ocak'ın bordrosu hiç girilmemişken. Sebep periodsFinance'in
+// hesaplanan kazancı (maaş ayarı + mesai + yan ödeme) gelir sayması.
+
+const bordrosuzState = () => ({
+  settings: {
+    monthlySalary: 45000, hoursDivisor: 225, multipliers: { normal: 1.5, weekend: 2, holiday: 2 },
+    weekendDays: [0], mealAllowance: 250, transportAllowance: 65, payDay: 10, payMonthOffset: 1,
+    weeklySchedule: {}, customCategories: [],
+  },
+  entries: [{ id: 'e1', date: '2026-01-14', hours: 3, type: 'normal' }],
+  adjustments: [], payslips: [], expenses: [], recurring: [], loans: [], assets: [], investments: [],
+});
+
+test('periodsFinance - bordro girilmemiş ay gelir UYDURMAZ', () => {
+  const res = yearFinance(bordrosuzState(), 2026, '2026-09-15');
+  const ocak = res.months[0];
+  assert.equal(ocak.received, 0, 'ele geçen para yok');
+  assert.equal(ocak.hasIncome, false);
+  assert.equal(ocak.hasPayslip, false);
+  assert.ok(ocak.earned > 0, 'hesaplanan kazanç ayrıca durur — bordro denetimi onu kullanıyor');
+  assert.equal(ocak.hasData, true, 'mesai kaydı gerçek veri: satır listede kalır');
+  assert.equal(res.received, 0);
+  assert.equal(res.incomeMonths, 0);
+});
+
+test('periodsFinance - eline geçen para bir önceki ayın bordrosundan gelir', () => {
+  const state = bordrosuzState();
+  state.payslips = [{ id: 'p1', periodKey: '2026-08', amount: 52960, transport: 1430 }];
+  const res = yearFinance(state, 2026, '2026-09-15');
+  const agustos = res.months[7];
+  const eylul = res.months[8];
+  assert.equal(agustos.received, 0, 'Ağustos bordrosu Ağustos içinde ele geçmez');
+  assert.equal(eylul.received, 54390, '10 Eylül’de yatar');
+  assert.equal(eylul.payslipPeriod, '2026-08');
+  assert.equal(eylul.hasPayslip, true);
+  assert.equal(res.incomeMonths, 1);
+});
+
+test('periodsFinance - payMonthOffset 0 ise ayın kendi bordrosu', () => {
+  const state = bordrosuzState();
+  state.settings.payMonthOffset = 0;
+  state.payslips = [{ id: 'p1', periodKey: '2026-08', amount: 40000 }];
+  const eylul = yearFinance(state, 2026, '2026-09-15').months[7];
+  assert.equal(eylul.payslipPeriod, '2026-08', 'kaydırma yoksa ayın kendisi');
+  assert.equal(eylul.received, 40000);
+});
+
+test('periodsFinance - gelecek ay isFuture, "veri yok" ile karıştırılmaz', () => {
+  const res = yearFinance(bordrosuzState(), 2026, '2026-09-15');
+  assert.equal(res.months[10].isFuture, true, 'Kasım henüz olmadı');
+  assert.equal(res.months[8].isFuture, false, 'Eylül içindeyiz');
+  assert.equal(res.months[0].isFuture, false);
+});
+
+test('periodsFinance - harcaması olan bordrosuz ay veri sayılır ama gelirli sayılmaz', () => {
+  const state = bordrosuzState();
+  state.expenses = [{ id: 'x1', date: '2026-03-04', amount: 1200, category: 'market' }];
+  const mart = yearFinance(state, 2026, '2026-09-15').months[2];
+  assert.equal(mart.hasData, true);
+  assert.equal(mart.hasIncome, false);
+  assert.equal(mart.spent, 1200);
+  // remaining sayı olarak -1200; gizleme kararını çizen taraf verir (monthRowState).
+  assert.equal(mart.remaining, -1200);
 });

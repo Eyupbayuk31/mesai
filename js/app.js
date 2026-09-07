@@ -8,7 +8,7 @@ import * as payslipPage from './ui/payslipPage.js';
 import * as absencesPage from './ui/absences.js';
 import { NAV_TREE, QUICK_TABS, navLabel, navListHTML } from './ui/nav.js';
 import { wireDrawer, toggleDrawer, closeDrawer } from './ui/drawer.js';
-import { renderReport } from './ui/report.js';
+import { renderReportRoute } from './ui/report/index.js';
 import { renderBudget } from './ui/budget.js';
 import * as loansPage from './ui/loans.js';
 import * as investPage from './ui/investments.js';
@@ -65,11 +65,15 @@ function boot(profileId) {
     store,
     profileId,
     reportPeriodKey: currentPeriodKey(),
+    // Rapor sayfaları yıl kapsamlı; kendi imleçleri var. reportPeriodKey
+    // Gelir sekmesiyle paylaşıldığı için ona dokunulmuyor.
+    reportYear: Number(currentPeriodKey().slice(0, 4)),
     // Bütçe sekmesinin görüntülediği dönem sekmeler arası korunur.
     budgetPeriodKey: currentPeriodKey(),
     // Kayıtlar sekmesinin görünüm/filtre/sayfa durumu sekmeler arası korunur.
     entriesView: { mode: 'list', periodKey: currentPeriodKey(), allTime: false, type: 'all', page: 1, sort: { key: 'date', dir: 'desc' } },
     setReportPeriod(key) { ctx.reportPeriodKey = key; render(); },
+    setReportYear(year) { ctx.reportYear = year; render(); },
     setBudgetPeriod(key) { ctx.budgetPeriodKey = key; render(); },
     openExpense: async (expense = null, opts = {}) => {
       const { openExpenseSheet } = await import('./ui/expenseSheet.js');
@@ -237,7 +241,7 @@ function boot(profileId) {
       else if (page === 'absences') absencesPage.render(screenEl, state, ctx);
       else renderIncome(screenEl, state, ctx);
     }
-    else if (tab === 'report') renderReport(screenEl, state, ctx);
+    else if (tab === 'report') renderReportRoute(screenEl, state, ctx, page);
     else if (tab === 'expense') {
       if (page === 'loans') loansPage.render(screenEl, state, ctx);
       else if (page === 'debts') loansPage.renderDebts(screenEl, state, ctx);

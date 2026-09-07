@@ -2697,6 +2697,8 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
   /* --- Ana ızgara: iki denk sütun --- */
   .screen--home .panes,
   .screen--income-absences .panes,
+  .screen--report-income .panes,
+  .screen--report-expense .panes,
   .screen--budget .panes { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 
   /* Fiş katlama çizgisi yalnız mobilde anlamlı (hero'nun altında). İki
@@ -3119,6 +3121,8 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
   color: var(--text-tertiary);
 }
 
+/* Bordrosu girilmemiş ay: satır durur ama para hücreleri soluk "—". */
+.year-table tr.is-partial td { color: var(--text-secondary); }
 .year-table tbody tr[data-year-month] { cursor: pointer; }
 .year-table tbody tr[data-year-month]:active { background: var(--divider); }
 
