@@ -15,6 +15,8 @@ import { readStatus, relativeTime } from '../sync/engine.js';
 import { loansSummary } from '../loans.js';
 import { portfolioSummary } from '../investments.js';
 import { lifetimeByCategory } from '../budget.js';
+import { receivedInPeriod } from '../received.js';
+import { openAdjustmentSheet } from './income.js';
 
 // Hatırlatmayı kapatma bilgisi cihaza özeldir; senkronlanan veriye karışmaz.
 const NUDGE_KEY = 'mesai.nudge.dismissed';
@@ -65,6 +67,9 @@ export function renderHome(container, state, ctx) {
   const share = hasSalary && summary.totalHours > 0 ? overtimeShare(summary) : null;
   const nudge = nudgeState(state);
   const slipNudge = payslipNudgeState(state);
+  // Bu dönem GERÇEKTEN ele geçen para. Maaş/yemek/yol artık burada tahmin
+  // olarak gösterilmiyor: hepsi maaş yatınca bordroya giriliyor.
+  const received = receivedInPeriod(state, periodKey);
 
   container.innerHTML = `
     ${syncPillHTML()}
@@ -83,8 +88,8 @@ export function renderHome(container, state, ctx) {
     ${hasSalary ? `
     <div class="stat-strip stat-strip--kpi">
       <div class="stat-strip__item stat-strip__item--wide">
-        <div class="stat-strip__label">Bu dönem kazancın</div>
-        <div class="stat-strip__value">${formatMoney(summary.earnedTotal, { decimals: false })}</div>
+        <div class="stat-strip__label">Bu dönem eline geçen</div>
+        <div class="stat-strip__value">${received.total > 0 ? formatMoney(received.total, { decimals: false }) : '—'}</div>
       </div>
       <div class="stat-strip__divider"></div>
       <div class="stat-strip__item">
@@ -119,19 +124,7 @@ export function renderHome(container, state, ctx) {
         </div>
         <div class="card__detail">
         ${typeChipsHTML(summary)}
-        <div class="rows rows--receipt">
-          ${receiptRow('Maaş', formatMoney(summary.baseSalary, { decimals: false }))}
-          ${receiptRow('Mesai ücreti', `+ ${formatMoney(summary.overtimePay, { decimals: false })}`, { valueCls: 'is-positive' })}
-          ${summary.mealPay > 0 ? receiptRow(`Yemek parası <span style="color:var(--text-tertiary);">(${summary.allowanceDays} gün)</span>`, `+ ${formatMoney(summary.mealPay, { decimals: false })}`, { valueCls: 'is-positive' }) : ''}
-          ${summary.transportPay > 0 ? receiptRow(`Yol parası <span style="color:var(--text-tertiary);">(${summary.allowanceDays} gün)</span>`, `+ ${formatMoney(summary.transportPay, { decimals: false })}`, { valueCls: 'is-positive' }) : ''}
-          ${summary.extraIncome + summary.bonuses > 0 ? receiptRow('Para girişi', `+ ${formatMoney(summary.extraIncome + summary.bonuses, { decimals: false })}`, { valueCls: 'is-positive' }) : ''}
-          ${summary.deductions > 0 ? receiptRow('Kesinti', `− ${formatMoney(summary.deductions, { decimals: false })}`, { valueCls: 'is-negative' }) : ''}
-          ${receiptRow('Bu dönem kazancın', formatMoney(summary.earnedTotal), { rowCls: 'row--total' })}
-          ${summary.advances > 0 ? receiptRow('Avans olarak aldın', `− ${formatMoney(summary.advances, { decimals: false })}`, { valueCls: 'is-negative' }) : ''}
-          ${summary.advances > 0 ? receiptRow('Ödeme günü yatacak', formatMoney(summary.payoutTotal), { rowCls: 'row--subtotal' }) : ''}
-        </div>
-        ${summary.advances > 0 ? `
-        <p class="hero__note" style="text-align:left;">Avans ayrı bir para değil — kazancının erken ödenmiş parçası. Bütçedeki <b>kalan</b> da bu kazançtan hesaplanır.</p>` : ''}
+        ${receivedHTML(received)}
         </div>
       </div>
 
@@ -164,6 +157,15 @@ export function renderHome(container, state, ctx) {
     </div>
     </div>
   `;
+
+  container.querySelector('#receivedIncome')?.addEventListener('click', () => {
+    openAdjustmentSheet(ctx.store, periodKey, 'income');
+  });
+  container.querySelector('#receivedPayslip')?.addEventListener('click', () => {
+    ctx.payslipYear = Number(received.payslipPeriod.slice(0, 4));
+    ctx.payslipFocus = received.payslipPeriod;
+    ctx.navigate({ tab: 'income', page: 'payslip' });
+  });
 
   container.querySelector('#netWorthCard')?.addEventListener('click', () => ctx.setTab('invest'));
   container.querySelector('.lifetime')?.addEventListener('click', (e) => {
@@ -395,6 +397,42 @@ function nudgeHTML() {
       </button>
     </div>
   `;
+}
+
+// --- Bu dönem eline geçen para --------------------------------------------
+//
+// Eskiden burada maaş + yemek + yol tahmini yazıyordu; para daha yatmadan
+// cepte varmış gibi görünüyordu. Artık yalnız gerçekten giren para: maaş
+// yatınca girilen bordro, avans ve elle eklenen para girişleri.
+function receivedHTML(received) {
+  const month = periodLabel(received.payslipPeriod);
+  if (received.total === 0) {
+    return `
+      <div class="received-empty">
+        <div class="received-empty__title">Bu dönem henüz para girişi yok</div>
+        <p class="received-empty__body">
+          Maaşın yattığında <b>${month}</b> bordrosunu gir; net maaş, yol ve yemek
+          oradan gelsin. Yan bir gelir olduysa para girişi olarak ekle.
+        </p>
+        <div class="received-empty__actions">
+          <button class="btn btn--secondary btn--inline" id="receivedPayslip" type="button">Bordroyu gir</button>
+          <button class="btn btn--secondary btn--inline" id="receivedIncome" type="button">Para girişi ekle</button>
+        </div>
+      </div>`;
+  }
+  const label = { payslip: `Bordro <span style="color:var(--text-tertiary);">(${month})</span>`, advance: 'Avans', manual: 'Para girişi' };
+  return `
+    <div class="rows rows--receipt">
+      ${received.lines.map((l, i) => receiptRow(
+        label[l.key],
+        `${i === 0 ? '' : '+ '}${formatMoney(l.amount, { decimals: false })}`,
+        { valueCls: i === 0 ? '' : 'is-positive' },
+      )).join('')}
+      ${receiptRow('Bu dönem eline geçen', formatMoney(received.total), { rowCls: 'row--total' })}
+    </div>
+    <div class="table-foot">
+      <button class="btn btn--secondary btn--inline" id="receivedIncome" type="button">Para girişi ekle</button>
+    </div>`;
 }
 
 // --- Mesai / maaş oranı ---------------------------------------------------

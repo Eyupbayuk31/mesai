@@ -3,6 +3,7 @@ import { hourlyRate, workdaysForPeriod, addSalaryChange } from '../../payroll.js
 import { currentPeriodKey } from '../../period.js';
 import { formatMonthYear, numberAblative } from '../../format.js';
 import { showToast } from '../toast.js';
+import { openSheet, closeSheet } from '../sheet.js';
 import { commitNumberOnChange } from './shared.js';
 
 export const title = 'Maaş ve ücret';
@@ -97,8 +98,21 @@ export function render(container, state, ctx) {
   salaryInput.addEventListener('input', livePreview);
   divisorInput.addEventListener('input', livePreview);
 
-  commitNumberOnChange(salaryInput, (v) => ctx.store.updateSettings({ monthlySalary: v }));
-  commitNumberOnChange(divisorInput, (v) => ctx.store.updateSettings({ hoursDivisor: v || 225 }));
+  // Maaşı silmek: alanı boşaltmak yetmiyordu. Ayarı sıfırlasak bile maaş
+  // geçmişi duruyorsa salaryForPeriod oradan okuyup eski tutarı geri
+  // getiriyordu ("en başta ne girdiysek onu yazıyor"). Geçmiş varsa onay
+  // istenir, sonra ikisi birden temizlenir.
+  commitNumberOnChange(salaryInput, (v) => {
+    if (v > 0) { ctx.store.updateSettings({ monthlySalary: v }); return; }
+    const history = ctx.store.getState().settings.salaryHistory || [];
+    if (history.length === 0) {
+      ctx.store.updateSettings({ monthlySalary: 0 });
+      showToast('Maaş silindi');
+      return;
+    }
+    confirmClearSalary(ctx, history.length, () => { salaryInput.value = String(ctx.store.getState().settings.monthlySalary || ''); });
+  }, { emptyValue: 0 });
+  commitNumberOnChange(divisorInput, (v) => ctx.store.updateSettings({ hoursDivisor: v || 225 }), { emptyValue: 0 });
 
   // Hedef boş bırakılırsa kapatılabilir olmalı (commitNumberOnChange NaN'ı atlar)
   const goalInput = container.querySelector('#goalInput');
@@ -125,8 +139,8 @@ export function render(container, state, ctx) {
   mealInput.addEventListener('input', updateAllowancePreviews);
   transportInput.addEventListener('input', updateAllowancePreviews);
   updateAllowancePreviews();
-  commitNumberOnChange(mealInput, (v) => ctx.store.updateSettings({ mealAllowance: v }));
-  commitNumberOnChange(transportInput, (v) => ctx.store.updateSettings({ transportAllowance: v }));
+  commitNumberOnChange(mealInput, (v) => ctx.store.updateSettings({ mealAllowance: v }), { emptyValue: 0 });
+  commitNumberOnChange(transportInput, (v) => ctx.store.updateSettings({ transportAllowance: v }), { emptyValue: 0 });
 
   const map = { multNormal: 'normal', multWeekend: 'weekend', multHoliday: 'holiday' };
   for (const [id, key] of Object.entries(map)) {
@@ -203,5 +217,32 @@ function wireSalaryHistory(container, ctx) {
     const history = (settings.salaryHistory || []).filter((h) => h.id !== btn.dataset.removeSalary);
     ctx.store.updateSettings({ salaryHistory: history });
     showToast('Maaş kaydı silindi');
+  });
+}
+
+// Maaş alanı boşaltıldığında maaş geçmişi de silinecekse önce sorulur:
+// geçmiş, zam tarihleriyle birlikte gerçek veri, sessizce gitmemeli.
+function confirmClearSalary(ctx, count, onCancel) {
+  let confirmed = false;
+  openSheet({
+    title: 'Maaşı sil',
+    footerHTML: `<button class="btn btn--danger" id="confirmClearSalaryBtn" type="button">Evet, maaşı sil</button>`,
+    // Vazgeçilirse alan eski değerine döner; onaylandıysa sayfa zaten
+    // yeniden çizildiği için dokunulmaz.
+    onClose: () => { if (!confirmed) onCancel(); },
+    build(bodyEl, footerEl) {
+      bodyEl.innerHTML = `<p style="font-size:14.5px; color:var(--text-secondary); line-height:1.5;">
+        Maaş geçmişinde <b style="color:var(--text);">${count} kayıt</b> var. Maaşı silmek için onlar da
+        temizlenmeli, yoksa geçmiş kayıt maaşı geri getirir.
+        Mesai tutarların saat ücretinden hesaplandığı için maaşsız <b style="color:var(--text);">₺0</b> görünür.
+      </p>`;
+      footerEl.querySelector('#confirmClearSalaryBtn').addEventListener('click', () => {
+        confirmed = true;
+        ctx.store.updateSettings({ monthlySalary: 0, salaryHistory: [] });
+        showToast('Maaş ve maaş geçmişi silindi');
+        closeSheet();
+        ctx.rerender();
+      });
+    },
   });
 }

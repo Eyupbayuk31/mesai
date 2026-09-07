@@ -5,6 +5,7 @@ import { periodSummary } from './payroll.js';
 import { periodRange, shiftPeriod } from './period.js';
 import { loanExpensesForPeriod, loansSummary } from './loans.js';
 import { parseISODate, formatMoney, todayISO, withSuffix } from './format.js';
+import { receivedInPeriod } from './received.js';
 import { investedInPeriod } from './investments.js';
 
 // Harcama kategorileri — renkler CSS değişkenlerinden bağımsız sabit hex,
@@ -79,11 +80,13 @@ export function budgetSummary(state, periodKey, todayStr = todayISO()) {
     byCategory.set(e.category, (byCategory.get(e.category) || 0) + amount);
   }
 
-  const hasSalary = pay.baseSalary > 0;
-  // Bütçenin dayanağı dönemin KAZANCI: avans o kazancın erken ödenmiş parçası,
-  // ayrı bir para değil. (Eskiden netTotal'a avans geri eklenerek bulunuyordu;
-  // aynı sayı, artık doğrudan.)
-  const expectedTotal = pay.earnedTotal;
+  // Bütçenin dayanağı GERÇEKTEN GİREN PARA. Eskiden ayarlardaki maaştan
+  // türetiliyordu; maaş daha yatmadan bütçe varmış gibi görünüyor, ay başında
+  // olmayan parayı harcanabilir gösteriyordu. Artık bordroya girilen tutar
+  // (bir önceki dönemin bordrosu — bu ay ele geçen para) + para girişleri.
+  const received = receivedInPeriod(state, periodKey);
+  const hasSalary = received.total > 0;
+  const expectedTotal = received.total;
   const remaining = expectedTotal - spent;
 
   // Günlük pay yalnızca içinde bulunulan dönem için anlamlı; ayın kalan günleri
@@ -115,7 +118,10 @@ export function budgetSummary(state, periodKey, todayStr = todayISO()) {
       .filter((r) => r.active !== false && (r.since || '') === periodKey)
       .reduce((sum, r) => sum + (Number(r.amount) || 0), 0),
     expectedTotal,
-    // Dönemin kazancı (avans dahil) ve ödeme günü yatacak tutar ayrı ayrı.
+    // Bu dönem ele geçen paranın dökümü (bordro / avans / para girişi).
+    received,
+    // Dönemin HESAPLANAN kazancı — bordro denetimi ve rapor için durur;
+    // bütçe artık buradan hesaplanmıyor.
     earnedTotal: pay.earnedTotal,
     payoutTotal: pay.payoutTotal,
     netTotal: pay.netTotal,
@@ -352,6 +358,9 @@ export function periodsFinance(state, periodKeys, todayStr = todayISO()) {
       periodKey,
       month: Number(periodKey.slice(5, 7)),
       year: Number(periodKey.slice(0, 4)),
+      // Yıllık analiz HESAPLANAN kazancı kullanır. Ele geçen paraya
+      // çevrilirse bordro girilmemiş geçmiş aylar 0 gelir gösterir ve yıl
+      // kıyasları anlamsızlaşır. Özet ve Gider ele geçen parayı kullanır.
       income: budget.earnedTotal,
       spent: budget.spent,
       invested: monthInvested,

@@ -2342,6 +2342,34 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
   padding: 4px;
 }
 
+/* Özet: bu dönem eline geçen para yokken çıkan davet. */
+.received-empty {
+  text-align: center;
+  padding: 6px 0 2px;
+}
+
+.received-empty__title {
+  font-size: 14.5px;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.received-empty__body {
+  margin: 0 auto 14px;
+  max-width: 380px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.received-empty__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
 /* Bordro hatırlatması: maaş yattı, gerçek tutarı gir. Mesai hatırlatmasından
    daha önemli olduğu için vurgulu — düğmesi de dolu, tıklanacağı belli. */
 .nudge--pay {

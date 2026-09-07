@@ -17,8 +17,14 @@ function makeMemoryLocalStorage() {
 const baseSettings = {
   monthlySalary: 30000,
   hoursDivisor: 225,
+  payDay: 10,
+  payMonthOffset: 1,
   multipliers: { normal: 1.5, weekend: 2, holiday: 2 },
 };
+
+// Bütçe artık ayarlardaki maaştan değil, ELE GEÇEN paradan hesaplanıyor:
+// Ağustos'ta harcadığın para Temmuz bordrosudur (10 Ağustos'ta yatar).
+const yatan = (amount, periodKey = '2026-07') => [{ id: `p_${periodKey}`, periodKey, amount }];
 
 test('budgetSummary - harcamalar toplanır, dönem dışı sayılmaz, kalan hesaplanır', () => {
   const state = {
@@ -32,6 +38,7 @@ test('budgetSummary - harcamalar toplanır, dönem dışı sayılmaz, kalan hesa
       { id: 'x5', date: '2026-07-31', amount: 9999, category: 'market' }, // farklı dönem
     ],
     adjustments: [],
+    payslips: yatan(30000),
   };
   const s = budgetSummary(state, '2026-08', '2026-08-21');
   assert.equal(s.expenseCount, 4);
@@ -60,7 +67,7 @@ test('budgetSummary - kategori kırılımı büyükten küçüğe sıralı', () 
 });
 
 test('budgetSummary - günlük pay: kalan / ayın kalan günü (bugün dahil)', () => {
-  const state = { settings: baseSettings, entries: [], expenses: [], adjustments: [] };
+  const state = { settings: baseSettings, entries: [], expenses: [], adjustments: [], payslips: yatan(30000) };
   // 21 Ağustos'ta ayın sonu 31 → 11 gün (bugün dahil); kalan 30000
   const s = budgetSummary(state, '2026-08', '2026-08-21');
   assert.equal(s.daysLeft, 11);
@@ -92,7 +99,7 @@ test('budgetSummary - maaş girilmemişse kalan yine hesaplanır (harcama kadar 
   assert.equal(s.remaining, -300);
 });
 
-test('budgetSummary - mesai ve yan ödemeler tahmini ödemeye dahil (bağlantı)', () => {
+test('budgetSummary - HESAPLANAN mesai/yemek bütçeye girmez, yalnız yatan para sayılır', () => {
   const state = {
     settings: {
       ...baseSettings,
@@ -105,44 +112,51 @@ test('budgetSummary - mesai ve yan ödemeler tahmini ödemeye dahil (bağlantı)
     entries: [{ id: 'e1', date: '2026-08-05', hours: 2, type: 'normal' }],
     expenses: [{ id: 'x1', date: '2026-08-06', amount: 1000, category: 'market' }],
     adjustments: [],
+    payslips: yatan(30000),
   };
   const s = budgetSummary(state, '2026-08', '2026-08-21');
-  // Ağustos 2026 Pzt-Cum: 21 iş günü x 250 = 5250 yemek; mesai 2 x 133.33 x 1.5 = 400
-  assert.equal(Math.round(s.expectedTotal), Math.round(30000 + 400 + 5250));
-  assert.equal(Math.round(s.remaining), Math.round(30000 + 400 + 5250 - 1000));
+  // Mesai (400) ve yemek (5250) hesaplanıyor ama daha ele geçmedi: bütçe
+  // yalnız yatan 30000. Hesaplanan tutar bordro denetimi için ayrı durur.
+  assert.equal(s.expectedTotal, 30000);
+  assert.equal(s.remaining, 29000);
+  assert.equal(Math.round(s.earnedTotal), Math.round(30000 + 400 + 5250), 'hesaplanan kazanç ayrıca durur');
 });
 
-test('budgetSummary - avans bütçeye geri eklenir (harcamada zaten görünür)', () => {
+test('budgetSummary - avans ele geçen paradır, bütçeye eklenir', () => {
   const state = {
     settings: baseSettings,
     entries: [],
     expenses: [{ id: 'x1', date: '2026-08-05', amount: 1000, category: 'fatura' }], // avansla ödenen fatura
     adjustments: [{ id: 'a1', periodKey: '2026-08', kind: 'advance', amount: 1000 }],
+    payslips: yatan(30000),
   };
   const s = budgetSummary(state, '2026-08', '2026-08-21');
-  // netTotal = 30000 - 1000 = 29000; bütçe avansı geri ekler → 30000
-  assert.equal(s.expectedTotal, 30000);
+  // Avans erken alınmış nakittir: Ağustos'ta elde 30000 + 1000 var.
+  assert.equal(s.expectedTotal, 31000);
   assert.equal(s.advances, 1000);
-  assert.equal(s.remaining, 29000); // 30000 - 1000 harcama (fatura bir kez sayılır)
+  assert.equal(s.remaining, 30000);
 });
 
-test('budgetSummary - kesinti geri eklenmez (hiç gelmeyen para)', () => {
+test('budgetSummary - kesinti bütçeden ayrıca düşülmez (bordro zaten net)', () => {
   const state = {
     settings: baseSettings,
     entries: [],
     expenses: [],
     adjustments: [{ id: 'd1', periodKey: '2026-08', kind: 'deduction', amount: 500 }],
+    payslips: yatan(29500),
   };
   const s = budgetSummary(state, '2026-08', '2026-08-21');
-  assert.equal(s.expectedTotal, 29500); // 30000 - 500
+  // Bordroya yazılan tutar zaten kesinti sonrasıdır; ikinci kez düşülmemeli.
+  assert.equal(s.expectedTotal, 29500);
 });
 
-test('budgetSummary - para girişi tahmini bütçeye dahil olur', () => {
+test('budgetSummary - para girişi bütçeye dahil olur', () => {
   const state = {
     settings: baseSettings,
     entries: [],
     expenses: [],
     adjustments: [{ id: 'i1', periodKey: '2026-08', kind: 'income', amount: 2000 }],
+    payslips: yatan(30000),
   };
   const s = budgetSummary(state, '2026-08', '2026-08-21');
   assert.equal(s.expectedTotal, 32000);
@@ -162,6 +176,7 @@ test('budgetTips - hız bütçeyi aşınca uyarı ve günlük limit verir', () =
     entries: [],
     expenses: [{ id: 'x1', date: '2026-08-01', amount: 25000, category: 'market' }],
     adjustments: [],
+    payslips: yatan(30000),
   };
   const s = budgetSummary(state, '2026-08', '2026-08-21');
   const tips = budgetTips(s, '2026-08-21');
@@ -258,6 +273,7 @@ test('budgetSummary - sürekli gider sonraki aylarda otomatik sanal harcama üre
     expenses: [{ id: 'x1', date: '2026-08-05', amount: 5000, category: 'kira' }], // ilk giriş anı
     recurring: [{ id: 'r1', label: 'Kira', amount: 5000, category: 'kira', day: 5, since: '2026-08' }],
     adjustments: [],
+    payslips: [...yatan(30000, '2026-07'), ...yatan(30000, '2026-08')],
   };
   // Girildiği ay: sanal üretilmez (gerçek harcama zaten var, çifte sayım olmasın)
   const aug = budgetSummary(state, '2026-08', '2026-08-21');
@@ -341,6 +357,7 @@ test('Store - sürekli gider ekle/güncelle/kaldır', async () => {
 const paceState = (expenses, recurring = []) => ({
   settings: { ...baseSettings, monthlySalary: 30000 },
   entries: [], adjustments: [], expenses, recurring,
+  payslips: [...yatan(30000, '2026-06'), ...yatan(30000, '2026-07')],
 });
 
 test('spendingPace - değişken harcama ay sonuna ileri sarılır', () => {
@@ -596,13 +613,15 @@ test('yearFinance - veri olmayan yılda her şey sıfır, tablo yine 12 ay', () 
   assert.equal(res.invested, 0);
 });
 
-test('budgetSummary - toplam bütçe dönemin kazancıdır (avans geri eklenmez)', () => {
+test('budgetSummary - toplam bütçe ELE GEÇEN paradır, hesaplanan kazanç değil', () => {
   const state = lifetimeState();
+  state.payslips = yatan(28000);
   state.adjustments = [{ id: 'a1', periodKey: '2026-08', kind: 'advance', amount: 10000 }];
   const s = budgetSummary(state, '2026-08', '2026-08-24');
-  assert.equal(s.expectedTotal, s.earnedTotal, 'bütçenin dayanağı kazanç');
-  assert.equal(s.remaining, s.earnedTotal - s.spent);
-  assert.equal(s.payoutTotal, s.earnedTotal - 10000, 'ödeme günü ayrı gösterilir');
+  assert.equal(s.expectedTotal, 38000, 'yatan bordro + avans');
+  assert.notEqual(s.expectedTotal, s.earnedTotal, 'hesaplanan kazançtan bağımsız');
+  assert.equal(s.remaining, 38000 - s.spent);
+  assert.equal(s.payoutTotal, s.earnedTotal - 10000, 'ödeme günü tahmini ayrı durur');
 });
 
 test('yearFinance - avans yılın gelirini küçültmez', () => {

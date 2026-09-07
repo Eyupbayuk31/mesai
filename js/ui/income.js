@@ -352,7 +352,7 @@ function previewEntries(entries) {
     .slice(0, PREVIEW_COUNT);
 }
 
-function openAdjustmentSheet(store, periodKey, kind) {
+export function openAdjustmentSheet(store, periodKey, kind) {
   openSheet({
     title: adjustmentLabel(kind),
     footerHTML: '<button class="btn btn--primary" id="saveAdjBtn" type="button">Ekle</button>',

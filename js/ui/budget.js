@@ -3,6 +3,7 @@
 import { currentPeriodKey, periodLabel, shiftPeriod } from '../period.js';
 import { budgetSummary, budgetTips, allCategories, spendingPace, comparePreviousPeriod, monthlySpendBuckets } from '../budget.js';
 import { openRecurringSheet } from './expenseSheet.js';
+import { openAdjustmentSheet } from './income.js';
 import { formatMoney, formatDayMonthShort, formatWeekdayShort, formatMonthYear, todayISO } from '../format.js';
 import { enableSwipeToDelete } from './swipe.js';
 import { mountPeriodNav } from './periodNav.js';
@@ -37,7 +38,7 @@ export function renderBudget(container, state, ctx) {
       <div class="hero">
         <div class="hero__label">Kalan bütçe</div>
         <div class="hero__value ${summary.remaining < 0 ? 'is-negative' : ''}">${formatMoney(summary.remaining, { decimals: false })}</div>
-        <div class="hero__sub">toplam bütçe ${formatMoney(summary.expectedTotal, { decimals: false })} − harcama ${formatMoney(summary.spent, { decimals: false })}</div>
+        <div class="hero__sub">eline geçen ${formatMoney(summary.expectedTotal, { decimals: false })} − harcama ${formatMoney(summary.spent, { decimals: false })}</div>
         <div class="hero__badges">
           ${summary.dailyAllowance !== null ? `
           <div class="hero__compare ${summary.remaining < 0 ? 'is-down' : 'is-up'}">
@@ -47,13 +48,17 @@ export function renderBudget(container, state, ctx) {
         </div>
         ${paceHTML(pace, summary)}
         ${summary.advances > 0 ? `
-        <p class="hero__note">Avans dahil: kazancının <b>${formatMoney(summary.advances, { decimals: false })}</b> kadarını erken aldın, ${formatMoney(summary.payoutTotal, { decimals: false })} ödeme günü yatacak.</p>` : ''}
+        <p class="hero__note">Bunun <b>${formatMoney(summary.advances, { decimals: false })}</b> kadarını avans olarak erken aldın.</p>` : ''}
       </div>
       <div class="card__detail">
       ${categoryBarHTML(summary)}
       ${fixedVariableHTML(summary)}
       <div class="rows rows--receipt">
-        ${receiptRow('Bu dönem kazancın', formatMoney(summary.earnedTotal, { decimals: false }))}
+        ${summary.received.lines.map((l) => receiptRow(
+          l.key === 'payslip' ? `Bordro <span style="color:var(--text-tertiary);">(${periodLabel(summary.received.payslipPeriod)})</span>` : l.label,
+          formatMoney(l.amount, { decimals: false }),
+        )).join('')}
+        ${receiptRow('Eline geçen', formatMoney(summary.expectedTotal, { decimals: false }), { rowCls: 'row--subtotal' })}
         ${receiptRow('Harcama', `− ${formatMoney(summary.spent, { decimals: false })}`, { valueCls: 'is-negative' })}
         ${summary.byCategory.map((c) => receiptRow(`<span style="color:var(--text-tertiary);"><span class="dot" style="background:${c.color};"></span>${c.label}</span>`, formatMoney(c.amount, { decimals: false }))).join('')}
         ${receiptRow('Kalan', formatMoney(summary.remaining, { decimals: false }), { rowCls: 'row--total' })}
@@ -72,8 +77,11 @@ export function renderBudget(container, state, ctx) {
         <div class="hero__sub">${summary.expenseCount} kayıt</div>
       </div>
       ${categoryBarHTML(summary)}
-      <div class="cta-note">Tahmini ödemenden düşerek kalan bütçeyi görmek için Ayarlar → Maaş ve ücret'ten maaşını gir.</div>
-      <button class="btn btn--ghost" id="goSalary" type="button" style="margin-top:8px;">Maaşımı gir</button>
+      <div class="cta-note">Kalan bütçeyi görmek için eline geçen parayı gir: maaşın yattığında <b>${periodLabel(shiftPeriod(periodKey, -(state.settings.payMonthOffset ?? 1)))}</b> bordrosunu yaz, yan gelirleri de para girişi olarak ekle.</div>
+      <div class="received-empty__actions" style="margin-top:10px;">
+        <button class="btn btn--secondary btn--inline" id="goPayslip" type="button">Bordroyu gir</button>
+        <button class="btn btn--secondary btn--inline" id="goIncome" type="button">Para girişi ekle</button>
+      </div>
     </div>`}
 
     <div class="panes">
@@ -112,7 +120,13 @@ export function renderBudget(container, state, ctx) {
   container.querySelector('#prevPeriod').addEventListener('click', () => ctx.setBudgetPeriod(shiftPeriod(periodKey, -1)));
   container.querySelector('#nextPeriod').addEventListener('click', () => ctx.setBudgetPeriod(shiftPeriod(periodKey, 1)));
 
-  container.querySelector('#goSalary')?.addEventListener('click', () => ctx.navigate({ tab: 'settings', page: 'salary' }));
+  container.querySelector('#goPayslip')?.addEventListener('click', () => {
+    const slipPeriod = shiftPeriod(periodKey, -(state.settings.payMonthOffset ?? 1));
+    ctx.payslipYear = Number(slipPeriod.slice(0, 4));
+    ctx.payslipFocus = slipPeriod;
+    ctx.navigate({ tab: 'income', page: 'payslip' });
+  });
+  container.querySelector('#goIncome')?.addEventListener('click', () => openAdjustmentSheet(ctx.store, periodKey, 'income'));
 
   container.querySelector('#addExpense').addEventListener('click', () => ctx.openExpense());
 

@@ -2,9 +2,25 @@
 
 import { parseLocaleNumber } from '../../format.js';
 
-export function commitNumberOnChange(input, onCommit) {
+/**
+ * Sayı alanını odak çıkışında kaydeder.
+ *
+ * Boş bırakmak "sıfırla" demektir — ama her alan için değil: çarpan alanını
+ * boşaltmak 0 çarpan anlamına gelmemeli (mesai bedava olurdu). Bu yüzden
+ * boşaltılabilen alanlar emptyValue vererek belirtilir; vermeyende eski değer
+ * korunur.
+ *
+ * Eskiden boş alan sessizce yok sayılıyordu: maaşı silip çıkınca kaydedilmiyor,
+ * ekran eski değeri geri yazıyordu.
+ */
+export function commitNumberOnChange(input, onCommit, { emptyValue = null } = {}) {
   input.addEventListener('change', () => {
-    const value = parseLocaleNumber(input.value);
+    const raw = input.value.trim();
+    if (raw === '') {
+      if (emptyValue !== null) onCommit(emptyValue);
+      return;
+    }
+    const value = parseLocaleNumber(raw);
     if (Number.isFinite(value) && value >= 0) onCommit(value);
   });
 }
