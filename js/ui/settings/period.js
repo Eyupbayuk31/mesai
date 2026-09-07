@@ -1,4 +1,6 @@
 import { WEEKDAY_LABELS, WEEKDAY_JS_VALUES } from './shared.js';
+import { currentPeriodKey, shiftPeriod, payDateForPeriod, periodLabel } from '../../period.js';
+import { formatFullDate, toISODate } from '../../format.js';
 
 export const title = 'Dönem ve ödeme';
 
@@ -30,6 +32,11 @@ export function render(container, state, ctx) {
           </select>
         </div>
       </div>
+      <div class="preview-strip" style="margin-top:14px; margin-bottom:0;">
+        <span class="preview-strip__label">Örnek</span>
+        <span class="preview-strip__value" id="payExample"></span>
+      </div>
+      <div class="field__hint" style="margin-top:8px;" id="payExampleHint"></div>
     </div>
 
     <div class="section-title">Hafta tatili günleri</div>
@@ -45,11 +52,35 @@ export function render(container, state, ctx) {
     </div>
   `;
 
-  container.querySelector('#payDaySelect').addEventListener('change', (e) => {
-    ctx.store.updateSettings({ payDay: Number(e.target.value) });
+  // Ayarın ne yaptığı "sonraki ay / 2 ay sonra" diye soyut kalıyordu. Somut
+  // örnek basılır: hangi ayın maaşı hangi gün yatıyor, ve bu ay eldeki para
+  // hangi bordrodan geliyor. Bütün gelir hesabı buna bağlı olduğu için
+  // yanlış seçim bütün sayıları kaydırır.
+  const daySelect = container.querySelector('#payDaySelect');
+  const offsetSelect = container.querySelector('#payOffsetSelect');
+  const exampleEl = container.querySelector('#payExample');
+  const hintEl = container.querySelector('#payExampleHint');
+
+  function updateExample(payDay, offset) {
+    const thisPeriod = currentPeriodKey();
+    // Ödeme günü geçmiş en yeni dönem = bu ay eldeki para.
+    const sample = shiftPeriod(thisPeriod, -offset);
+    exampleEl.textContent = `${periodLabel(sample)} maaşı → ${formatFullDate(toISODate(payDateForPeriod(sample, { payDay, payMonthOffset: offset })))}`;
+    hintEl.innerHTML = offset === 0
+      ? `Maaş, çalışılan ayın kendi içinde yatıyor.`
+      : `Yani <b>${periodLabel(thisPeriod)}</b> içinde harcadığın para <b>${periodLabel(sample)}</b> bordrosundan geliyor. Gider sekmesindeki bütçe de buna göre hesaplanır.`;
+  }
+  updateExample(settings.payDay, settings.payMonthOffset ?? 1);
+
+  daySelect.addEventListener('change', (e) => {
+    const payDay = Number(e.target.value);
+    ctx.store.updateSettings({ payDay });
+    updateExample(payDay, Number(offsetSelect.value));
   });
-  container.querySelector('#payOffsetSelect').addEventListener('change', (e) => {
-    ctx.store.updateSettings({ payMonthOffset: Number(e.target.value) });
+  offsetSelect.addEventListener('change', (e) => {
+    const payMonthOffset = Number(e.target.value);
+    ctx.store.updateSettings({ payMonthOffset });
+    updateExample(Number(daySelect.value), payMonthOffset);
   });
   container.querySelector('#weekendDaysChips').addEventListener('click', (e) => {
     const chip = e.target.closest('[data-day]');
