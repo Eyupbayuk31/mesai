@@ -5,7 +5,6 @@
 
 import { periodLabel, shiftPeriod, currentPeriodKey } from '../period.js';
 import { periodSummary } from '../payroll.js';
-import { comparePayslip, explainPayslipDiff, payslipFor, hasPayslipData } from '../payslip.js';
 import { budgetSummary } from '../budget.js';
 import { formatMoney, formatHours, parseLocaleNumber } from '../format.js';
 import { incomeMix } from '../incomeMix.js';
@@ -90,7 +89,7 @@ export function renderIncome(container, state, ctx) {
     : `
           <div class="rows" id="adjustmentRows" style="margin-top:14px;">
             ${summary.adjustments.map((a) => {
-      const plus = a.kind === 'bonus' || a.kind === 'income';
+      const plus = a.kind !== 'deduction';
       return `
               <div class="row" data-adj-id="${a.id}">
                 <span class="row__label"><span class="adj-tag adj-tag--${a.kind}">${adjustmentLabel(a.kind)}</span>${escapeHTML(a.label || '')}</span>
@@ -107,8 +106,6 @@ export function renderIncome(container, state, ctx) {
     </div>
 
     <div class="pane">
-      ${payslipCardHTML(state, summary, settings)}
-
       <div class="section-header">
         <span class="section-title" style="margin:0;">Bu dönemin mesaileri</span>
         ${summary.entryCount > 0
@@ -141,18 +138,6 @@ export function renderIncome(container, state, ctx) {
     if (btn) ctx.store.removeAdjustment(btn.dataset.removeAdj);
   });
 
-  container.querySelector('#payslipSaveBtn')?.addEventListener('click', () => {
-    const amount = parseLocaleNumber(container.querySelector('#payslipAmount').value);
-    const transport = parseLocaleNumber(container.querySelector('#payslipTransport').value);
-    if (!Number.isFinite(amount) || amount <= 0) { showToast('Cebine geçen net maaşı gir'); return; }
-    ctx.store.setPayslip(periodKey, { amount, transport: Number.isFinite(transport) ? transport : undefined });
-    showToast('Bordro kaydedildi');
-  });
-  container.querySelector('#payslipClearBtn')?.addEventListener('click', () => {
-    ctx.store.removePayslip(periodKey);
-    showToast('Bordro kaydı silindi');
-  });
-  container.querySelector('#payslipYearBtn')?.addEventListener('click', () => ctx.navigate({ tab: 'income', page: 'payslip' }));
   container.querySelector('#absenceLink')?.addEventListener('click', () => ctx.navigate({ tab: 'income', page: 'absences' }));
 }
 
@@ -224,9 +209,12 @@ function mixHTML(mix) {
     </div>`;
 }
 
+// Avans da artı: elde olan paradır (maaşın erken ödenmiş parçası). Ödeme
+// günü hesaba daha az yatar, o düşüm bordro sayfasındaki karşılaştırmada
+// ele alınıyor; burada gelir olarak görünür.
 const ADJ_ICON = {
   income: '<path d="M12 19V5M6 11l6-6 6 6"/>',
-  advance: '<path d="M12 5v14M6 13l6 6 6-6"/>',
+  advance: '<path d="M12 19V5M6 11l6-6 6 6"/>',
   deduction: '<path d="M5 12h14"/>',
 };
 
@@ -242,103 +230,7 @@ function adjButton(id, kind, label) {
 
 // --- Bordro karşılaştırma kartı ------------------------------------------
 
-function payslipCardHTML(state, summary, settings) {
-  const slip = payslipFor(state, summary.periodKey);
-  const yearLink = '<button class="section-header__link" id="payslipYearBtn" type="button">Yıllık giriş ›</button>';
-
-  if (!slip || !hasPayslipData(slip)) {
-    return `
-      <div class="section-header">
-        <span class="section-title" style="margin:0;">Bordro karşılaştırma</span>${yearLink}
-      </div>
-      <div class="card">
-        <p class="field__hint" style="margin:-2px 0 12px;">
-          Ödeme günü hesaba <b>${formatMoney(summary.payoutTotal)}</b> yatmalı. Cebine geçeni yaz, tutuyor mu bakalım.
-        </p>
-        <div class="input-row">
-          <div class="field">
-            <label class="field__label">Net maaş (₺)</label>
-            <input class="input input--amount" type="text" inputmode="decimal" id="payslipAmount" placeholder="0" autocomplete="off" />
-          </div>
-          <div class="field">
-            <label class="field__label">Yol parası (₺)</label>
-            <input class="input input--amount" type="text" inputmode="decimal" id="payslipTransport" placeholder="${summary.transportPay > 0 ? Math.round(summary.transportPay) : '0'}" autocomplete="off" />
-          </div>
-        </div>
-        <button class="btn btn--primary btn--sm" id="payslipSaveBtn" type="button">Karşılaştır</button>
-      </div>
-    `;
-  }
-
-  const cmp = comparePayslip(summary, slip, settings);
-  const explanation = explainPayslipDiff(summary, cmp, settings);
-  const durum = {
-    match: { cls: 'is-positive', baslik: 'Tutuyor ✓', not: 'Ödenen tutar hesapla aynı.' },
-    short: { cls: 'is-negative', baslik: `${formatMoney(Math.abs(cmp.diff))} eksik`, not: 'Ödenen tutar hesabın altında.' },
-    over: { cls: 'is-positive', baslik: `${formatMoney(cmp.diff)} fazla`, not: 'Ödenen tutar hesabın üstünde.' },
-  }[cmp.status];
-
-  return `
-    <div class="section-header">
-      <span class="section-title" style="margin:0;">Bordro karşılaştırma</span>${yearLink}
-    </div>
-    <div class="card payslip payslip--${cmp.status}">
-      <div class="payslip__head">
-        <span class="payslip__title ${durum.cls}">${durum.baslik}</span>
-        <button class="payslip__clear" id="payslipClearBtn" type="button">Sıfırla</button>
-      </div>
-      <div class="rows rows--receipt">
-        ${cmp.lines.map((l) => `
-          <div class="row">
-            <span class="row__label">${l.label}</span>
-            <span class="row__leader"></span>
-            <span class="row__value">
-              ${formatMoney(l.paid, { decimals: false })}
-              <span class="payslip-line__diff ${Math.abs(l.diff) <= 1 ? '' : l.diff < 0 ? 'is-negative' : 'is-positive'}">
-                ${Math.abs(l.diff) <= 1 ? '✓' : `${l.diff > 0 ? '+' : '−'}${formatMoney(Math.abs(l.diff), { decimals: false })}`}
-              </span>
-            </span>
-          </div>`).join('')}
-        <div class="row"><span class="row__label">Hesaba göre</span><span class="row__leader"></span><span class="row__value">${formatMoney(cmp.expected)}</span></div>
-        <div class="row row--total"><span class="row__label">Fark</span><span class="row__leader"></span><span class="row__value ${durum.cls}">${Math.abs(cmp.diff) <= 1 ? '—' : (cmp.diff > 0 ? '+' : '−') + formatMoney(Math.abs(cmp.diff))}</span></div>
-      </div>
-      ${checksHTML(cmp)}
-      <p class="field__hint" style="margin:12px 0 0;">
-        ${durum.not}${explanation ? ` <b style="color:var(--text-secondary);">${explanation}</b>` : ''}
-      </p>
-    </div>
-  `;
-}
-
-// Saat ve gün kontrolü: para farkının SEBEBİ. Bordroda yazmıyorsa satır çıkmaz.
-function checksHTML(cmp) {
-  const parts = [];
-
-  if (cmp.hours) {
-    const h = cmp.hours;
-    const cls = h.status === 'match' ? 'is-positive' : h.status === 'short' ? 'is-negative' : 'is-positive';
-    const text = h.status === 'match'
-      ? `Saat tutuyor: ${formatHours(h.appHours)}.`
-      : `Sen ${formatHours(h.appHours)} girmişsin, bordroda ${formatHours(h.slipHours)} yazıyor — <b class="${cls}">${formatHours(Math.abs(h.diff))} ${h.diff < 0 ? 'sayılmamış' : 'fazla sayılmış'}</b>${Math.abs(h.money) >= 1 ? ` (≈${formatMoney(Math.abs(h.money), { decimals: false })})` : ''}.`;
-    parts.push(`<div class="slip-check ${cls}"><span class="slip-check__key">Mesai saati</span><span>${text}</span></div>`);
-  }
-
-  if (cmp.dayCheck) {
-    const d = cmp.dayCheck;
-    const same = d.diff === 0;
-    const cls = same ? 'is-positive' : 'is-negative';
-    const text = same
-      ? `Çalışılan gün tutuyor: ${d.slipDays} gün.`
-      : `Uygulamaya göre ${d.appDays} gün, bordroda ${d.slipDays} gün — <b class="${cls}">${Math.abs(d.diff)} gün ${d.diff < 0 ? 'eksik' : 'fazla'}</b>. ${d.diff < 0 ? 'İzin ya da rapor işaretledin mi?' : ''}`;
-    parts.push(`<div class="slip-check ${cls}"><span class="slip-check__key">Çalışılan gün</span><span>${text}${same ? '' : ' <button class="slip-check__link" id="absenceLink" type="button">Gelinmeyen günler ›</button>'}</span></div>`);
-  }
-
-  return parts.length ? `<div class="slip-checks">${parts.join('')}</div>` : '';
-}
-
-// --- Ek kalem sayfası -----------------------------------------------------
-
-// 'bonus' artık eklenemiyor; eski kayıtlar para girişi olarak okunur.
+// "bonus" artık girilmiyor; eski kayıtlar para girişi olarak okunur.
 const ADJ_LABEL = { advance: 'Avans', deduction: 'Kesinti', bonus: 'Para girişi', income: 'Para girişi' };
 
 function adjustmentLabel(kind) {

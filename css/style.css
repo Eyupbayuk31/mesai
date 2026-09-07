@@ -873,8 +873,10 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
   justify-content: center;
   flex-shrink: 0;
 }
-.adj-btn--income .adj-btn__icon, .adj-btn--bonus .adj-btn__icon { background: var(--positive-soft); color: var(--positive); }
-.adj-btn--advance .adj-btn__icon, .adj-btn--deduction .adj-btn__icon { background: var(--negative-soft); color: var(--negative); }
+/* Avans da gelirdir (maaşın erken ödenmiş parçası) — yeşil. Yalnız kesinti
+   eksidir. */
+.adj-btn--income .adj-btn__icon, .adj-btn--bonus .adj-btn__icon, .adj-btn--advance .adj-btn__icon { background: var(--positive-soft); color: var(--positive); }
+.adj-btn--deduction .adj-btn__icon { background: var(--negative-soft); color: var(--negative); }
 
 .adj-tag {
   font-family: var(--font-mono);
@@ -888,7 +890,7 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
   color: var(--text-tertiary);
   flex-shrink: 0;
 }
-.adj-tag--bonus, .adj-tag--income { background: var(--positive-soft); color: var(--positive); }
+.adj-tag--bonus, .adj-tag--income, .adj-tag--advance { background: var(--positive-soft); color: var(--positive); }
 
 /* Borç kartındaki tür rozeti: kredi mi, kişiye borç mu, kart mı? */
 .loan__kind {
@@ -905,7 +907,7 @@ textarea.input { height: auto; min-height: 76px; padding-top: 12px; resize: vert
   white-space: nowrap;
   vertical-align: middle;
 }
-.adj-tag--advance, .adj-tag--deduction { background: var(--negative-soft); color: var(--negative); }
+.adj-tag--deduction { background: var(--negative-soft); color: var(--negative); }
 
 @media (min-width: 900px) {
   /* Geniş ekranda kahraman iki sütuna açılır: rakam solda, bileşim sağda. */
