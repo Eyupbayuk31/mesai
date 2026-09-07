@@ -3,10 +3,11 @@
 // Eskiden bu kartlar Rapor'un içindeydi; Rapor artık geriye dönük analiz
 // sayfası, dönemin kendi hesabı buraya taşındı.
 
-import { periodLabel, shiftPeriod, currentPeriodKey, payDateForPeriod, daysUntilPay } from '../period.js';
+import { periodLabel, shiftPeriod, currentPeriodKey } from '../period.js';
 import { periodSummary } from '../payroll.js';
 import { comparePayslip, explainPayslipDiff, payslipFor, hasPayslipData } from '../payslip.js';
-import { formatMoney, formatHours, formatFullDate, toISODate, parseLocaleNumber } from '../format.js';
+import { budgetSummary } from '../budget.js';
+import { formatMoney, formatHours, parseLocaleNumber } from '../format.js';
 import { incomeMix } from '../incomeMix.js';
 import { entryRowHTML } from './entryRow.js';
 import { mountPeriodNav } from './periodNav.js';
@@ -27,10 +28,9 @@ export function renderIncome(container, state, ctx) {
   const settings = state.settings;
 
   const mix = incomeMix(summary);
-  const payDate = payDateForPeriod(periodKey, settings);
-  const daysLeft = daysUntilPay(periodKey, settings);
-  const daysText = daysLeft === 0 ? 'bugün' : daysLeft === 1 ? 'yarın' : `${daysLeft} gün kaldı`;
-  const future = periodKey > currentPeriodKey();
+  // Sayfanın tepesinde artık "ödeme günü yatacak" tahmini yok: maaş daha
+  // yatmadan hesaplanan bir sayıydı. Yerine bu ay gerçekten elde kalan para.
+  const budget = budgetSummary(state, periodKey);
 
   container.innerHTML = `
     <div class="period-card">
@@ -48,15 +48,17 @@ export function renderIncome(container, state, ctx) {
 
     <div class="card income-hero">
       <div class="income-hero__main">
-        <div class="income-hero__label">${future ? 'Bu dönem beklenen' : 'Ödeme günü yatacak'}</div>
-        <div class="income-hero__value">${formatMoney(summary.payoutTotal, { decimals: false })}</div>
+        <div class="income-hero__label">Bu ay elinde kalan</div>
+        <div class="income-hero__value ${budget.remaining < 0 ? 'is-negative' : ''}">${formatMoney(budget.remaining, { decimals: false })}</div>
         <div class="income-hero__meta">
-          <b>${formatFullDate(toISODate(payDate))}</b>${future ? '' : ` · ${daysText}`}
+          ${budget.expectedTotal > 0
+    ? `eline geçen <b>${formatMoney(budget.expectedTotal, { decimals: false })}</b> − harcama <b>${formatMoney(budget.spent, { decimals: false })}</b>`
+    : `bu dönem henüz para girişi yok · harcama <b>${formatMoney(budget.spent, { decimals: false })}</b>`}
         </div>
         <div class="income-hero__facts">
           ${fact('Mesai', formatHours(summary.totalHours), summary.overtimePay > 0 ? formatMoney(summary.overtimePay, { decimals: false }) : '')}
           ${fact('Kayıt', String(summary.entryCount), '')}
-          ${summary.advances > 0 ? fact('Avans düşüldü', `− ${formatMoney(summary.advances, { decimals: false })}`, `kazanç ${formatMoney(summary.earnedTotal, { decimals: false })}`) : fact('Saat ücreti', formatMoney(summary.baseSalary / (settings.hoursDivisor || 225), { decimals: false }), '')}
+          ${fact('Saat ücreti', formatMoney(summary.baseSalary / (settings.hoursDivisor || 225), { decimals: false }), '')}
         </div>
       </div>
       <div class="income-hero__mix">${mixHTML(mix)}</div>
@@ -64,18 +66,15 @@ export function renderIncome(container, state, ctx) {
 
     <div class="panes">
     <div class="pane">
-      <div class="section-header"><span class="section-title" style="margin:0;">Kazanç dökümü</span></div>
+      <div class="section-header"><span class="section-title" style="margin:0;">Maaşın üstüne ne geldi</span></div>
       <div class="card">
         <div class="rows rows--receipt">
-          <div class="row"><span class="row__label"><span class="dot" style="background:var(--mix-salary);"></span>Maaş</span><span class="row__leader"></span><span class="row__value">${formatMoney(summary.baseSalary, { decimals: false })}</span></div>
           ${overtimeRowsHTML(summary, settings)}
           ${summary.mealPay > 0 ? `<div class="row row--detail"><span class="row__label"><span class="dot" style="background:var(--mix-allowance);"></span>Yemek parası <span class="row__detail">${summary.allowanceDays} gün</span></span><span class="row__leader"></span><span class="row__value is-positive">+ ${formatMoney(summary.mealPay, { decimals: false })}</span></div>` : ''}
           ${summary.transportPay > 0 ? `<div class="row row--detail"><span class="row__label"><span class="dot" style="background:var(--mix-allowance);"></span>Yol parası <span class="row__detail">${summary.allowanceDays} gün</span></span><span class="row__leader"></span><span class="row__value is-positive">+ ${formatMoney(summary.transportPay, { decimals: false })}</span></div>` : ''}
           ${summary.extraIncome + summary.bonuses > 0 ? `<div class="row"><span class="row__label"><span class="dot" style="background:var(--mix-extra);"></span>Para girişi</span><span class="row__leader"></span><span class="row__value is-positive">+ ${formatMoney(summary.extraIncome + summary.bonuses, { decimals: false })}</span></div>` : ''}
           ${summary.deductions > 0 ? `<div class="row"><span class="row__label">Kesinti</span><span class="row__leader"></span><span class="row__value is-negative">− ${formatMoney(summary.deductions, { decimals: false })}</span></div>` : ''}
-          <div class="row row--total"><span class="row__label">Dönem kazancın</span><span class="row__leader"></span><span class="row__value">${formatMoney(summary.earnedTotal)}</span></div>
-          ${summary.advances > 0 ? `<div class="row"><span class="row__label">Avans olarak aldın</span><span class="row__leader"></span><span class="row__value is-negative">− ${formatMoney(summary.advances, { decimals: false })}</span></div>` : ''}
-          ${summary.advances > 0 ? `<div class="row row--subtotal"><span class="row__label">Ödeme günü yatacak</span><span class="row__leader"></span><span class="row__value">${formatMoney(summary.payoutTotal)}</span></div>` : ''}
+          <div class="row row--total"><span class="row__label">Maaş dışı kazancın</span><span class="row__leader"></span><span class="row__value">${formatMoney(summary.earnedTotal - summary.baseSalary)}</span></div>
         </div>
       </div>
 

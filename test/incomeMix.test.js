@@ -7,25 +7,31 @@ const summary = (over = {}) => ({
   bonuses: 0, extraIncome: 0, ...over,
 });
 
-test('incomeMix - kalemler ve toplam', () => {
+test('incomeMix - maaş çubukta YOK, maaşın üstüne geleni gösterir', () => {
   const res = incomeMix(summary());
-  assert.equal(res.total, 45000 + 4200 + 3800 + 2185);
-  assert.deepEqual(res.parts.map((p) => p.key), ['salary', 'overtime', 'allowance']);
+  assert.equal(res.total, 4200 + 3800 + 2185, 'maaş toplama girmez');
+  assert.deepEqual(res.parts.map((p) => p.key), ['overtime', 'allowance']);
   const yanOdeme = res.parts.find((p) => p.key === 'allowance');
   assert.equal(yanOdeme.amount, 5985, 'yemek + yol tek kalemde toplanır');
 });
 
 test('incomeMix - yüzdeler tam 100 eder', () => {
-  for (const s of [summary(), summary({ overtimePay: 1 }), summary({ baseSalary: 3, overtimePay: 3, mealPay: 3, transportPay: 0 })]) {
+  for (const s of [summary(), summary({ overtimePay: 1 }), summary({ overtimePay: 3, mealPay: 3, transportPay: 0 })]) {
     const res = incomeMix(s);
     assert.equal(res.parts.reduce((sum, p) => sum + p.pct, 0), 100);
   }
 });
 
 test('incomeMix - sıfır kalem listeye girmez', () => {
-  const res = incomeMix(summary({ mealPay: 0, transportPay: 0, overtimePay: 0 }));
-  assert.deepEqual(res.parts.map((p) => p.key), ['salary']);
+  const res = incomeMix(summary({ mealPay: 0, transportPay: 0 }));
+  assert.deepEqual(res.parts.map((p) => p.key), ['overtime']);
   assert.equal(res.parts[0].pct, 100);
+});
+
+test('incomeMix - maaştan başka bir şey yoksa çubuk boş kalır', () => {
+  const res = incomeMix(summary({ mealPay: 0, transportPay: 0, overtimePay: 0 }));
+  assert.equal(res.total, 0);
+  assert.deepEqual(res.parts, []);
 });
 
 test('incomeMix - eski bonus kayıtları ek gelirle birleşir', () => {
@@ -42,7 +48,7 @@ test('incomeMix - hiç gelir yoksa boş döner', () => {
 });
 
 test('incomeMix - bozuk sayılar 0 sayılır', () => {
-  const res = incomeMix({ baseSalary: '45000', overtimePay: null, mealPay: undefined, transportPay: NaN });
-  assert.equal(res.total, 45000);
+  const res = incomeMix({ baseSalary: '45000', overtimePay: '4200', mealPay: undefined, transportPay: NaN });
+  assert.equal(res.total, 4200);
   assert.equal(res.parts.length, 1);
 });

@@ -1,12 +1,11 @@
-// Dönem gelirinin bileşimi: para nereden geliyor?
+// Dönem gelirinin bileşimi: maaşın ÜSTÜNE ne geliyor?
 //
-// "Maaşım 45 bin" demek kolay, ama cebe giren rakamın ne kadarı maaş, ne
-// kadarı mesai, ne kadarı yemek-yol? Gelir sayfasındaki yığın çubuğu bunu
-// tek bakışta gösteriyor. Saf hesap: yüzdeler tam 100 eder, sıfır kalemler
-// hiç listeye girmez.
+// Maaş bu çubukta yok: sabit ve zaten biliniyor, üstelik çubuğun %90'ını
+// kaplayıp diğer kalemleri görünmez yapıyordu. Asıl merak edilen, maaşın
+// dışında ay içinde ne kadar mesai/yan ödeme/ek gelir birikti. Saf hesap:
+// yüzdeler tam 100 eder, sıfır kalemler hiç listeye girmez.
 
 export const MIX_PARTS = [
-  { key: 'salary', label: 'Maaş', color: 'var(--mix-salary)', of: (s) => s.baseSalary },
   { key: 'overtime', label: 'Mesai', color: 'var(--mix-overtime)', of: (s) => s.overtimePay },
   { key: 'allowance', label: 'Yemek + yol', color: 'var(--mix-allowance)', of: (s) => num(s.mealPay) + num(s.transportPay) },
   { key: 'extra', label: 'Ek gelir', color: 'var(--mix-extra)', of: (s) => num(s.bonuses) + num(s.extraIncome) },
