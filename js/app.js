@@ -65,15 +65,21 @@ function boot(profileId) {
     store,
     profileId,
     reportPeriodKey: currentPeriodKey(),
-    // Rapor sayfaları yıl kapsamlı; kendi imleçleri var. reportPeriodKey
-    // Gelir sekmesiyle paylaşıldığı için ona dokunulmuyor.
-    reportYear: Number(currentPeriodKey().slice(0, 4)),
+    // Rapor sayfalarının kendi kapsam imleci. reportPeriodKey Gelir
+    // sekmesiyle paylaşıldığı için ona dokunulmuyor. kind değişse bile
+    // year ve periodKey birlikte saklanır: Ay'dan Yıl'a geçip geri dönünce
+    // kullanıcı kaldığı aya döner. Kapsam Gelir ve Gider raporları
+    // arasında ORTAK — sayfa değiştirmek seçimi bozmaz.
+    reportView: { kind: 'year', year: Number(currentPeriodKey().slice(0, 4)), periodKey: currentPeriodKey() },
     // Bütçe sekmesinin görüntülediği dönem sekmeler arası korunur.
     budgetPeriodKey: currentPeriodKey(),
     // Kayıtlar sekmesinin görünüm/filtre/sayfa durumu sekmeler arası korunur.
     entriesView: { mode: 'list', periodKey: currentPeriodKey(), allTime: false, type: 'all', page: 1, sort: { key: 'date', dir: 'desc' } },
     setReportPeriod(key) { ctx.reportPeriodKey = key; render(); },
-    setReportYear(year) { ctx.reportYear = year; render(); },
+    // entriesView kalıbı: parçalı birleştirme. Bir alanı değiştirirken
+    // ona bağlı imleci aynı çağrıda düzeltmek gerekir (yıl değişince ay da
+    // o yıla çekilir), yoksa "Eylül 2026" seçiliyken 2025'e geçilir.
+    setReportView(patch) { ctx.reportView = { ...ctx.reportView, ...patch }; render(); },
     setBudgetPeriod(key) { ctx.budgetPeriodKey = key; render(); },
     openExpense: async (expense = null, opts = {}) => {
       const { openExpenseSheet } = await import('./ui/expenseSheet.js');

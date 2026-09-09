@@ -2,17 +2,195 @@
 
 import { currentPeriodKey, periodLabel } from '../../period.js';
 import { periodSummary, yearSummary } from '../../payroll.js';
-import { yearFinance } from '../../budget.js';
-import { payslipRows, payslipStats, payslipLineTotals, openBalance } from '../../payslip.js';
+import { yearFinance, scopeFinance } from '../../budget.js';
+import {
+  payslipRows, payslipStats, payslipLineTotals, openBalance,
+  payslipFor, hasPayslipData, comparePayslip, explainPayslipDiff,
+} from '../../payslip.js';
+import { receivedInPeriod } from '../../received.js';
 import { yearsWithData, compareYears, overtimeShareByYear } from '../../analysis.js';
 import { formatMoney, formatHours, formatMonthYear, locative } from '../../format.js';
-import { yearCardHTML, wireYearNav, changeCell, escapeHTML, visibleMonths } from './shared.js';
+import { entryRowHTML } from '../entryRow.js';
+import {
+  scopeCardHTML, scopeSwitchHTML, wireScopeNav, readScope, scopeLabel,
+  changeCell, escapeHTML, visibleMonths,
+} from './shared.js';
 import { subExportHTML, wireSubExport } from './export.js';
 
 const MONTH_SHORT = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
 
 export function render(container, state, ctx) {
-  const year = ctx.reportYear || Number(currentPeriodKey().slice(0, 4));
+  const view = readScope(ctx);
+  if (view.kind === 'month') { renderMonth(container, state, ctx, view); return; }
+  renderYear(container, state, ctx, view);
+}
+
+// --- Ay kapsamı -----------------------------------------------------------
+//
+// Yılda sığmayan detaylar burada: o ayın bordro karşılaştırması tam
+// açıklamasıyla, mesai kayıtlarının listesi, tür kırılımı. Kıyas bölümleri
+// basılmaz — ay görünümü yalnız o ayın detayı.
+function renderMonth(container, state, ctx, view) {
+  const periodKey = view.periodKey;
+  const settings = state.settings;
+  const summary = periodSummary(state, periodKey);
+  const received = receivedInPeriod(state, periodKey);
+  const finance = scopeFinance(state, view);
+  const slip = payslipFor(state, periodKey);
+  const filled = hasPayslipData(slip);
+  const cmp = filled ? comparePayslip(summary, slip, settings) : null;
+  const explanation = cmp ? explainPayslipDiff(summary, cmp, settings) : '';
+
+  const sub = `${received.total > 0 ? formatMoney(received.total, { decimals: false }) : 'para girişi yok'} · ${formatHours(summary.totalHours)} mesai`;
+
+  container.innerHTML = `
+    ${scopeSwitchHTML(view)}
+    ${scopeCardHTML(view, sub)}
+
+    <div class="stat-strip stat-strip--kpi">
+      <div class="stat-strip__item stat-strip__item--wide">
+        <div class="stat-strip__label">Eline geçen</div>
+        <div class="stat-strip__value">${received.total > 0 ? formatMoney(received.total, { decimals: false }) : '—'}</div>
+      </div>
+      <div class="stat-strip__divider"></div>
+      <div class="stat-strip__item">
+        <div class="stat-strip__label">Mesai</div>
+        <div class="stat-strip__value">${formatHours(summary.totalHours)}</div>
+      </div>
+      <div class="stat-strip__divider stat-strip__divider--wide"></div>
+      <div class="stat-strip__item stat-strip__item--desktop">
+        <div class="stat-strip__label">Mesai ücreti</div>
+        <div class="stat-strip__value">${formatMoney(summary.overtimePay, { decimals: false })}</div>
+      </div>
+    </div>
+
+    <div class="panes">
+      <div class="pane">
+        ${monthReceivedHTML(received, periodKey)}
+        ${monthPayslipHTML(periodKey, summary, cmp, explanation, filled)}
+      </div>
+      <div class="pane">
+        ${monthEntriesHTML(summary, settings)}
+      </div>
+    </div>
+
+    ${subExportHTML('exportIncomeReport', 'Gelir raporunu HTML indir')}
+  `;
+
+  wireScopeNav(container, ctx, view, sub);
+  wireSubExport(container, state, ctx, view, { id: 'exportIncomeReport', scope: 'income', fileName: 'gelir-raporu' });
+
+  container.querySelector('#monthPayslipLink')?.addEventListener('click', () => {
+    ctx.payslipYear = Number(periodKey.slice(0, 4));
+    ctx.payslipFocus = periodKey;
+    ctx.navigate({ tab: 'income', page: 'payslip' });
+  });
+}
+
+// Ay: eline geçen fişi (Özet kartındaki kalıbın aynısı).
+function monthReceivedHTML(received, periodKey) {
+  const label = { payslip: 'Bordro', advance: 'Avans', manual: 'Para girişi' };
+  if (received.total === 0) {
+    return `
+      <div class="section-header"><span class="section-title" style="margin:0;">Eline geçen</span></div>
+      <div class="card empty">
+        <div class="empty__title">Bu ay para girişi yok</div>
+        <div class="empty__sub">${escapeHTML(periodLabel(received.payslipPeriod))} bordrosunu girersen bu ayın geliri burada görünür.</div>
+      </div>`;
+  }
+  return `
+    <div class="section-header"><span class="section-title" style="margin:0;">Eline geçen</span></div>
+    <div class="card">
+      <div class="rows rows--receipt">
+        ${received.lines.map((l, i) => `
+          <div class="row">
+            <span class="row__label">${l.key === 'payslip' && received.payslipPeriod !== periodKey
+    ? `Bordro <span style="color:var(--text-tertiary);">(${escapeHTML(periodLabel(received.payslipPeriod))})</span>`
+    : label[l.key] || l.key}</span>
+            <span class="row__leader"></span>
+            <span class="row__value ${i === 0 ? '' : 'is-positive'}">${i === 0 ? '' : '+ '}${formatMoney(l.amount, { decimals: false })}</span>
+          </div>`).join('')}
+        <div class="row row--total"><span class="row__label">Toplam</span><span class="row__leader"></span><span class="row__value">${formatMoney(received.total)}</span></div>
+      </div>
+    </div>`;
+}
+
+// Ay: bordro karşılaştırması — yıl tablosunda tek satır olan şey burada
+// sebebiyle birlikte.
+function monthPayslipHTML(periodKey, summary, cmp, explanation, filled) {
+  const header = `
+    <div class="section-header">
+      <span class="section-title" style="margin:0;">Bordro karşılaştırma</span>
+      <button class="section-header__link" id="monthPayslipLink" type="button">Bordroyu aç ›</button>
+    </div>`;
+
+  if (!filled) {
+    return `${header}
+      <div class="card empty">
+        <div class="empty__title">Bu ayın bordrosu girilmedi</div>
+        <div class="empty__sub">Hesaba göre ${formatMoney(summary.payoutTotal, { decimals: false })} yatmalıydı. Cebine geçeni girersen tutup tutmadığını görürsün.</div>
+      </div>`;
+  }
+
+  const durum = {
+    match: { cls: 'is-positive', baslik: 'Tutuyor ✓' },
+    short: { cls: 'is-negative', baslik: `${formatMoney(Math.abs(cmp.diff))} eksik` },
+    over: { cls: 'is-positive', baslik: `${formatMoney(cmp.diff)} fazla` },
+  }[cmp.status];
+
+  return `${header}
+    <div class="card">
+      <div class="hero" style="padding-top:4px;">
+        <div class="hero__value ${durum.cls}" style="font-size:26px;">${durum.baslik}</div>
+        <div class="hero__sub">hesaba göre ${formatMoney(cmp.expected, { decimals: false })} · yatan ${formatMoney(cmp.paid, { decimals: false })}</div>
+        ${explanation ? `<p class="hero__note">${explanation}</p>` : ''}
+      </div>
+      <div class="rows rows--receipt">
+        ${cmp.lines.map((l) => `
+          <div class="row">
+            <span class="row__label">${escapeHTML(l.label)} <span style="color:var(--text-tertiary);">beklenen ${formatMoney(l.expected, { decimals: false })}</span></span>
+            <span class="row__leader"></span>
+            <span class="row__value">${formatMoney(l.paid, { decimals: false })}
+              <span class="payslip-line__diff ${Math.abs(l.diff) <= 1 ? '' : l.diff < 0 ? 'is-negative' : 'is-positive'}">
+                ${Math.abs(l.diff) <= 1 ? '✓' : `${l.diff > 0 ? '+' : '−'}${formatMoney(Math.abs(l.diff), { decimals: false })}`}
+              </span>
+            </span>
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+// Ay: o ayın mesai kayıtları + tür kırılımı.
+function monthEntriesHTML(summary, settings) {
+  const entries = [...summary.entries].sort((a, b) => (a.date < b.date ? 1 : -1));
+  const types = Object.entries(summary.byType).filter(([, v]) => v.hours > 0);
+  return `
+    <div class="section-header">
+      <span class="section-title" style="margin:0;">Mesai kayıtları</span>
+      <span class="section-header__note">${entries.length} kayıt · ${formatHours(summary.totalHours)}</span>
+    </div>
+    ${types.length === 0 ? '' : `
+    <div class="card">
+      <div class="rows rows--receipt">
+        ${types.map(([key, v]) => `
+          <div class="row">
+            <span class="row__label">${escapeHTML(TYPE_LABEL[key] || key)} <span style="color:var(--text-tertiary);">${formatHours(v.hours)}</span></span>
+            <span class="row__leader"></span>
+            <span class="row__value is-positive">${formatMoney(v.amount, { decimals: false })}</span>
+          </div>`).join('')}
+        <div class="row row--total"><span class="row__label">Toplam</span><span class="row__leader"></span><span class="row__value">${formatMoney(summary.overtimePay)}</span></div>
+      </div>
+    </div>`}
+    ${entries.length === 0
+    ? '<div class="card empty"><div class="empty__title">Bu ay mesai kaydın yok</div><div class="empty__sub">Kaldığın saatleri girdikçe burada listelenir.</div></div>'
+    : `<ul class="list">${entries.map((e) => entryRowHTML(e, settings)).join('')}</ul>`}`;
+}
+
+const TYPE_LABEL = { normal: 'Normal', weekend: 'Hafta tatili', holiday: 'Resmi tatil' };
+
+// --- Yıl kapsamı ----------------------------------------------------------
+function renderYear(container, state, ctx, view) {
+  const year = view.year;
   const finance = yearFinance(state, year);
   const ySummary = yearSummary(state, year);
 
@@ -27,7 +205,8 @@ export function render(container, state, ctx) {
   const sub = `${finance.incomeMonths} ay bordro · ${formatHours(ySummary.totalHours)} mesai`;
 
   container.innerHTML = `
-    ${yearCardHTML(year, sub)}
+    ${scopeSwitchHTML(view)}
+    ${scopeCardHTML(view, sub)}
 
     <div class="stat-strip stat-strip--kpi">
       <div class="stat-strip__item stat-strip__item--wide">
@@ -66,8 +245,8 @@ export function render(container, state, ctx) {
     ${subExportHTML('exportIncomeReport', 'Gelir raporunu HTML indir')}
   `;
 
-  wireYearNav(container, ctx, year, sub);
-  wireSubExport(container, state, ctx, year, { id: 'exportIncomeReport', scope: 'income', fileName: 'gelir-raporu' });
+  wireScopeNav(container, ctx, view, sub);
+  wireSubExport(container, state, ctx, view, { id: 'exportIncomeReport', scope: 'income', fileName: 'gelir-raporu' });
 
   container.querySelector('#payslipPageLink')?.addEventListener('click', () => {
     // Yıl imlecini devret, yoksa kullanıcı başka yıla düşer.

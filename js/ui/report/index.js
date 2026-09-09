@@ -12,7 +12,8 @@ import { openSheet, closeSheet } from '../sheet.js';
 import * as incomePage from './income.js';
 import * as expensePage from './expense.js';
 import {
-  monthRowState, visibleMonths, yearCardHTML, wireYearNav, moneyOrDash, receivedTitle, escapeHTML,
+  monthRowState, visibleMonths, scopeCardHTML, wireScopeNav, readScope,
+  moneyOrDash, receivedTitle, escapeHTML,
 } from './shared.js';
 import { exportCardHTML, wireExport } from './export.js';
 
@@ -25,14 +26,18 @@ export function renderReportRoute(container, state, ctx, page) {
 }
 
 function renderMain(container, state, ctx) {
-  const year = ctx.reportYear || Number(currentPeriodKey().slice(0, 4));
+  // Ana sayfa yıl kapsamlı kalır — zaten "ay ay döküm" o. Kapsam anahtarı
+  // yalnız alt sayfalarda var; buradaki yıl okları ortak imleci günceller,
+  // böylece alt sayfaya geçince aynı yıl açılır.
+  const view = readScope(ctx);
+  const year = view.year;
   const finance = yearFinance(state, year);
   const rows = visibleMonths(finance);
   const eksik = finance.months.filter((m) => !m.isFuture && m.hasData && !m.hasIncome).length;
   const sub = `${finance.dataMonths} ay veri · ${finance.incomeMonths} ay bordro`;
 
   container.innerHTML = `
-    ${yearCardHTML(year, sub)}
+    ${scopeCardHTML({ kind: 'year', year, periodKey: view.periodKey }, sub)}
 
     <div class="card card--menu" style="margin-top:12px;">
       <button class="menu-row" type="button" data-report-page="income">
@@ -56,7 +61,7 @@ function renderMain(container, state, ctx) {
     ${exportCardHTML()}
   `;
 
-  wireYearNav(container, ctx, year, sub);
+  wireScopeNav(container, ctx, { kind: 'year', year, periodKey: view.periodKey }, sub);
   wireExport(container, state, ctx, year);
 
   container.querySelector('.card--menu')?.addEventListener('click', (e) => {
@@ -142,8 +147,8 @@ function openMonthSheet(ctx, state, periodKey) {
     title: periodLabel(periodKey),
     footerHTML: `
       <div class="adj-actions">
-        <button class="btn btn--secondary btn--sm" id="sheetIncome" type="button">Gelir sayfası</button>
-        <button class="btn btn--secondary btn--sm" id="sheetExpense" type="button">Gider sayfası</button>
+        <button class="btn btn--secondary btn--sm" id="sheetIncome" type="button">Gelir raporu</button>
+        <button class="btn btn--secondary btn--sm" id="sheetExpense" type="button">Gider raporu</button>
       </div>`,
     build(bodyEl, footerEl) {
       bodyEl.innerHTML = `
@@ -166,17 +171,15 @@ function openMonthSheet(ctx, state, periodKey) {
         <button class="btn btn--secondary btn--inline" id="sheetPayslip" type="button" style="margin-top:12px;">Bordroyu gir</button>` : ''}
       `;
 
-      footerEl.querySelector('#sheetIncome').addEventListener('click', () => {
+      // Rapor içinden çıkmadan o aya in: iki alt sayfa da ay kapsamını
+      // destekliyor artık.
+      const openScoped = (page) => {
         closeSheet();
-        ctx.setReportPeriod(periodKey);
-        ctx.navigate({ tab: 'income', page: null });
-      });
-      footerEl.querySelector('#sheetExpense').addEventListener('click', () => {
-        closeSheet();
-        // Gider sekmesinin kendi imleci var; setReportPeriod ona işlemez.
-        ctx.setBudgetPeriod(periodKey);
-        ctx.navigate({ tab: 'expense', page: null });
-      });
+        ctx.setReportView({ kind: 'month', periodKey, year: Number(periodKey.slice(0, 4)) });
+        ctx.navigate({ tab: 'report', page });
+      };
+      footerEl.querySelector('#sheetIncome').addEventListener('click', () => openScoped('income'));
+      footerEl.querySelector('#sheetExpense').addEventListener('click', () => openScoped('expense'));
       bodyEl.querySelector('#sheetPayslip')?.addEventListener('click', () => {
         closeSheet();
         ctx.payslipYear = Number(received.payslipPeriod.slice(0, 4));

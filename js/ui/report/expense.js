@@ -4,14 +4,140 @@ import { currentPeriodKey, periodLabel } from '../../period.js';
 import { yearFinance, budgetSummary, lifetimeByCategory, monthlySpendBuckets } from '../../budget.js';
 import { debtReport } from '../../loans.js';
 import { yearsWithData, compareYears, realChange, categoryTrend } from '../../analysis.js';
-import { formatMoney, formatMonthYear } from '../../format.js';
-import { yearCardHTML, wireYearNav, changeCell, escapeHTML, visibleMonths } from './shared.js';
+import { formatMoney, formatMonthYear, formatDayMonthShort } from '../../format.js';
+import {
+  scopeCardHTML, scopeSwitchHTML, wireScopeNav, readScope, scopeLabel,
+  changeCell, escapeHTML, visibleMonths,
+} from './shared.js';
 import { subExportHTML, wireSubExport } from './export.js';
 
 const DIRECTION_LABEL = { artıyor: '▲ artıyor', azalıyor: '▼ azalıyor', sabit: '● sabit', yeni: '· yeni' };
 
 export function render(container, state, ctx) {
-  const year = ctx.reportYear || Number(currentPeriodKey().slice(0, 4));
+  const view = readScope(ctx);
+  if (view.kind === 'month') { renderMonth(container, state, ctx, view); return; }
+  renderYear(container, state, ctx, view);
+}
+
+// --- Ay kapsamı -----------------------------------------------------------
+// Yılda toplanıp kaybolan şey burada tek tek: o ayın harcama kalemleri.
+// Kıyas bölümleri (trend, yıl karşılaştırması, bugüne kadar) basılmaz.
+function renderMonth(container, state, ctx, view) {
+  const periodKey = view.periodKey;
+  const budget = budgetSummary(state, periodKey);
+  const debts = debtReport(state, [periodKey]);
+  const hasIncome = budget.expectedTotal > 0;
+  const sub = `${formatMoney(budget.spent, { decimals: false })} harcama · ${budget.expenses.length} kalem`;
+
+  container.innerHTML = `
+    ${scopeSwitchHTML(view)}
+    ${scopeCardHTML(view, sub)}
+
+    <div class="stat-strip stat-strip--kpi">
+      <div class="stat-strip__item stat-strip__item--wide">
+        <div class="stat-strip__label">Harcama</div>
+        <div class="stat-strip__value">${formatMoney(budget.spent, { decimals: false })}</div>
+      </div>
+      <div class="stat-strip__divider"></div>
+      <div class="stat-strip__item">
+        <div class="stat-strip__label">Borca ödenen</div>
+        <div class="stat-strip__value">${formatMoney(debts.totalPaid, { decimals: false })}</div>
+      </div>
+      <div class="stat-strip__divider stat-strip__divider--wide"></div>
+      <div class="stat-strip__item stat-strip__item--desktop">
+        <div class="stat-strip__label">Kalan</div>
+        <div class="stat-strip__value ${hasIncome && budget.remaining < 0 ? 'is-negative' : ''}">${hasIncome ? formatMoney(budget.remaining, { decimals: false }) : '—'}</div>
+      </div>
+    </div>
+
+    <div class="panes">
+      <div class="pane">
+        ${monthCategoryHTML(budget)}
+        ${debtSectionHTML(debts, scopeLabel(view))}
+      </div>
+      <div class="pane">
+        ${monthExpenseListHTML(budget)}
+      </div>
+    </div>
+
+    ${subExportHTML('exportExpenseReport', 'Gider raporunu HTML indir')}
+  `;
+
+  wireScopeNav(container, ctx, view, sub);
+  wireSubExport(container, state, ctx, view, { id: 'exportExpenseReport', scope: 'expense', fileName: 'gider-raporu' });
+}
+
+function monthCategoryHTML(budget) {
+  if (budget.spent <= 0) {
+    return `
+      <div class="section-header"><span class="section-title" style="margin:0;">Kategori dökümü</span></div>
+      <div class="card empty">
+        <div class="empty__title">Bu ay harcama kaydın yok</div>
+        <div class="empty__sub">Gider sekmesinden ekledikçe döküm burada oluşur.</div>
+      </div>`;
+  }
+  const fixedPct = (budget.fixedTotal / budget.spent) * 100;
+  return `
+    <div class="section-header"><span class="section-title" style="margin:0;">Kategori dökümü</span></div>
+    <div class="card">
+      ${budget.fixedTotal > 0 ? `
+      <div class="fixvar">
+        <div class="fixvar__bar" role="img" aria-label="Sabit ve değişken gider oranı">
+          <span class="fixvar__seg fixvar__seg--fixed" style="width:${fixedPct.toFixed(2)}%"></span>
+        </div>
+        <div class="fixvar__legend">
+          <span><span class="fixvar__dot fixvar__dot--fixed"></span>Sabit ${formatMoney(budget.fixedTotal, { decimals: false })} <small>%${Math.round(fixedPct)}</small></span>
+          <span><span class="fixvar__dot"></span>Değişken ${formatMoney(budget.variableTotal, { decimals: false })} <small>%${Math.round(100 - fixedPct)}</small></span>
+        </div>
+      </div>` : ''}
+      <div class="lifetime" style="margin-top:12px;">
+        ${budget.byCategory.map((c) => `
+          <div class="lifetime__row">
+            <span class="lifetime__dot" style="background:${c.color}"></span>
+            <span>
+              <span class="lifetime__label">${escapeHTML(c.label)}</span>
+              <span class="lifetime__avg">giderin %${((c.amount / budget.spent) * 100).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}</span>
+            </span>
+            <span class="lifetime__total">${formatMoney(c.amount, { decimals: false })}</span>
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+// Ay kapsamının asıl kazancı: kalemleri tek tek görmek. Sürekli gider ve
+// kredi taksiti "otomatik" diye işaretlenir — elle girilmediler.
+function monthExpenseListHTML(budget) {
+  const rows = [...budget.expenses].sort((a, b) => (a.date < b.date ? 1 : -1));
+  if (rows.length === 0) return '';
+  const labels = new Map(budget.byCategory.map((c) => [c.key, c]));
+  return `
+    <div class="section-header">
+      <span class="section-title" style="margin:0;">Harcama kalemleri</span>
+      <span class="section-header__note">${rows.length} kalem</span>
+    </div>
+    <div class="card">
+      <div class="rows rows--receipt">
+        ${rows.map((e) => {
+    const cat = labels.get(e.category);
+    return `
+          <div class="row">
+            <span class="row__label">
+              <span class="dot" style="background:${cat?.color || 'var(--text-tertiary)'};"></span>
+              ${escapeHTML(e.note || cat?.label || 'Harcama')}
+              <span style="color:var(--text-tertiary);">${escapeHTML(formatDayMonthShort(e.date))}${e.virtual ? ' · otomatik' : ''}</span>
+            </span>
+            <span class="row__leader"></span>
+            <span class="row__value">${formatMoney(e.amount, { decimals: false })}</span>
+          </div>`;
+  }).join('')}
+        <div class="row row--total"><span class="row__label">Toplam</span><span class="row__leader"></span><span class="row__value">${formatMoney(budget.spent)}</span></div>
+      </div>
+    </div>`;
+}
+
+// --- Yıl kapsamı ----------------------------------------------------------
+function renderYear(container, state, ctx, view) {
+  const year = view.year;
   const finance = yearFinance(state, year);
   const yearPeriods = finance.months.map((m) => m.periodKey);
   const debts = debtReport(state, yearPeriods);
@@ -29,7 +155,8 @@ export function render(container, state, ctx) {
   const sub = `${formatMoney(finance.spent, { decimals: false })} harcama · ${spendMonths.length} ay`;
 
   container.innerHTML = `
-    ${yearCardHTML(year, sub)}
+    ${scopeSwitchHTML(view)}
+    ${scopeCardHTML(view, sub)}
 
     <div class="stat-strip stat-strip--kpi">
       <div class="stat-strip__item stat-strip__item--wide">
@@ -54,7 +181,7 @@ export function render(container, state, ctx) {
         ${monthlySectionHTML(state, year, spendMonths)}
       </div>
       <div class="pane">
-        ${debtSectionHTML(debts, year)}
+        ${debtSectionHTML(debts, String(year))}
         ${lifetimeSectionHTML(state)}
         ${analysisHTML(state, year)}
       </div>
@@ -63,8 +190,8 @@ export function render(container, state, ctx) {
     ${subExportHTML('exportExpenseReport', 'Gider raporunu HTML indir')}
   `;
 
-  wireYearNav(container, ctx, year, sub);
-  wireSubExport(container, state, ctx, year, { id: 'exportExpenseReport', scope: 'expense', fileName: 'gider-raporu' });
+  wireScopeNav(container, ctx, view, sub);
+  wireSubExport(container, state, ctx, view, { id: 'exportExpenseReport', scope: 'expense', fileName: 'gider-raporu' });
 }
 
 // --- Kategori dökümü ------------------------------------------------------
@@ -136,7 +263,7 @@ function monthlySectionHTML(state, year, spendMonths) {
 }
 
 // --- Borçlar --------------------------------------------------------------
-function debtSectionHTML(debts, year) {
+function debtSectionHTML(debts, kapsam) {
   if (!debts || !debts.hasDebt) return '';
   const withData = debts.months.filter((m) => m.remaining > 0 || m.paid > 0);
   const max = Math.max(...debts.months.map((m) => m.remaining), 0);
@@ -144,7 +271,7 @@ function debtSectionHTML(debts, year) {
   return `
     <div class="section-header">
       <span class="section-title" style="margin:0;">Borç durumu</span>
-      <span class="section-header__meta">${year}</span>
+      <span class="section-header__meta">${escapeHTML(kapsam)}</span>
     </div>
     <div class="card">
       <div class="stat-strip stat-strip--kpi" style="margin:0 0 14px;">
@@ -154,7 +281,7 @@ function debtSectionHTML(debts, year) {
         </div>
         <div class="stat-strip__divider"></div>
         <div class="stat-strip__item">
-          <div class="stat-strip__label">Bu yıl ödenen</div>
+          <div class="stat-strip__label">Ödenen</div>
           <div class="stat-strip__value">${formatMoney(debts.totalPaid, { decimals: false })}</div>
         </div>
       </div>
@@ -168,7 +295,7 @@ function debtSectionHTML(debts, year) {
           </div>`).join('')}
       </div>
       <p class="field__hint" style="margin:10px 0 0;">
-        Soldaki tutar kalan borç, yanındaki ${year} içinde o borca ödenen para.
+        Soldaki tutar kalan borç, yanındaki ${escapeHTML(kapsam)} içinde o borca ödenen para.
       </p>
 
       ${max <= 0 || withData.length < 2 ? '' : `

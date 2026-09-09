@@ -418,6 +418,27 @@ export function periodsFinance(state, periodKeys, todayStr = todayISO()) {
   };
 }
 
+/**
+ * Rapor kapsamı → dönem anahtarları.
+ *
+ * Kapsamın tek doğruluk kaynağı. `periodsFinance` zaten herhangi bir anahtar
+ * listesiyle çalıştığı için ay kapsamı yeni bir hesap gerektirmiyor; yalnız
+ * "hangi aylar" sorusu sayfadan alınıp buraya taşınıyor.
+ *
+ * @param {{kind: 'month'|'year', periodKey?: string, year?: number}} scope
+ */
+export function periodKeysForScope(scope) {
+  if (scope?.kind === 'month') return scope.periodKey ? [scope.periodKey] : [];
+  const year = scope?.year;
+  if (!year) return [];
+  return Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
+}
+
+/** Kapsamın finansı — yearFinance/rangeFinance ile aynı şekli döndürür. */
+export function scopeFinance(state, scope, todayStr = todayISO()) {
+  return { scope, ...periodsFinance(state, periodKeysForScope(scope), todayStr) };
+}
+
 /** Yılın 12 ayı. */
 export function yearFinance(state, year, todayStr = todayISO()) {
   const keys = [];

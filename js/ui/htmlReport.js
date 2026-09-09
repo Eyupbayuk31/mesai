@@ -3,7 +3,7 @@
 import { formatMoney, formatHours, formatFullDate, formatWeekday } from '../format.js';
 import { entryAmount, yearSummary as buildYearSummary, periodSummary as periodSummaryOf } from '../payroll.js';
 import { periodLabel, payDateForPeriod } from '../period.js';
-import { budgetSummary, yearFinance, rangeFinance } from '../budget.js';
+import { budgetSummary, yearFinance, rangeFinance, scopeFinance } from '../budget.js';
 import { portfolioSummary, investedInPeriod, formatQuantity, unitOf, kindOf } from '../investments.js';
 import { yearsWithData, compareYears, realChange, categoryTrend } from '../analysis.js';
 import { payslipRows, payslipStats, payslipLineTotals, openBalance } from '../payslip.js';
@@ -151,7 +151,7 @@ function yearTableRows(ySummary, withMeal, withTransport) {
 // Raporun içeriği state'ten TÜRETİLİR: çağıranın harcama/yatırım verisini
 // ayrıca geçmesi gerekmez. (Önceden geçiyordu; çağıran eski bir sürümse
 // bölümler sessizce düşüp rapor yalnız mesai gösteriyordu.)
-export function buildHtmlReport({ profileName, periodKey, summary, settings, scope = 'period', state = null, yearSummary = null }) {
+export function buildHtmlReport({ profileName, periodKey, summary, settings, scope = 'period', state = null, yearSummary = null, periodKeys = null, scopeLabel = null }) {
   const year = Number(periodKey.slice(0, 4));
   const ySummary = yearSummary || (state ? buildYearSummary(state, year) : null);
   const portfolio = state ? portfolioSummary(state) : null;
@@ -163,9 +163,13 @@ export function buildHtmlReport({ profileName, periodKey, summary, settings, sco
     });
   }
   if ((scope === 'income' || scope === 'expense') && ySummary && state) {
+    // periodKeys verildiyse kapsam ay (ya da başka bir alt küme); yoksa yıl.
+    const keys = periodKeys || null;
     return buildSideReport({
-      profileName, yearSummary: ySummary, settings, portfolio, state, year, side: scope,
-      finance: yearFinance(state, year),
+      profileName, yearSummary: ySummary, settings, portfolio, state, side: scope,
+      label: scopeLabel || String(year),
+      finance: keys ? scopeFinance(state, { kind: 'month', periodKey: keys[0] }) : yearFinance(state, year),
+      months: keys ? keys.length : 12,
     });
   }
   if (scope === 'year' && ySummary) {
@@ -185,34 +189,38 @@ export function buildHtmlReport({ profileName, periodKey, summary, settings, sco
 
 // Yalnız gelir ya da yalnız gider tarafı. Bölüm üreticileri ortak; hangi
 // bölümlerin basılacağını `side` seçer.
-function buildSideReport({ profileName, yearSummary, settings, finance, portfolio, state, year, side }) {
+function buildSideReport({ profileName, yearSummary, settings, finance, portfolio, state, label, side, months = 12 }) {
   const gelir = side === 'income';
   const allKeys = finance.months.map((m) => m.periodKey);
   const withMeal = Number(settings.mealAllowance) > 0;
   const withTransport = Number(settings.transportAllowance) > 0;
   const baslik = gelir ? 'Gelir raporu' : 'Gider raporu';
+  // Ay kapsamında 12 çubuklu yıl grafiği tek çubuğa düşer — ekrandaki
+  // kuralın aynısı: basılmaz.
+  const yillik = months >= 12;
 
   return htmlShell({
-    title: `${baslik} — ${escapeHTML(profileName)} — ${year}`,
-    headerTitle: `${escapeHTML(profileName)} — ${year} ${baslik.toLocaleLowerCase('tr-TR')}`,
-    metaRight: `Oluşturulma: <b>${todayLabel()}</b><br />Kapsam: <b>${year}</b>`,
+    title: `${baslik} — ${escapeHTML(profileName)} — ${label}`,
+    headerTitle: `${escapeHTML(profileName)} — ${label} ${baslik.toLocaleLowerCase('tr-TR')}`,
+    metaRight: `Oluşturulma: <b>${todayLabel()}</b><br />Kapsam: <b>${label}</b>`,
     body: gelir ? `
       <div class="stats">
         ${statCard('Eline geçen', formatMoney(finance.received, { decimals: false }), '#12946b')}
-        ${statCard('Bordro girilen ay', `${finance.incomeMonths} / 12`)}
-        ${statCard('Yıllık mesai', formatHours(yearSummary.totalHours))}
-        ${statCard('Mesai ücreti', formatMoney(yearSummary.totalOvertimePay), '#12946b')}
+        ${statCard('Bordro girilen ay', `${finance.incomeMonths} / ${months}`)}
+        ${statCard('Mesai', formatHours(finance.hours))}
+        ${statCard('Mesai ücreti', formatMoney(finance.overtimePay), '#12946b')}
       </div>
 
+      ${yillik ? `
       <h2>Aylık mesai dağılımı</h2>
       <div class="chart">${yearChartSVG(yearSummary)}</div>
       <table class="table">
         <thead><tr><th>Ay</th><th class="num">Saat</th><th class="num">Tutar</th>${withMeal ? '<th class="num">Yemek</th>' : ''}${withTransport ? '<th class="num">Yol</th>' : ''}</tr></thead>
         <tbody>${yearTableRows(yearSummary, withMeal, withTransport)}</tbody>
-      </table>
+      </table>` : ''}
 
-      ${payslipSection(state, allKeys, `${year} bordro karşılaştırması`)}
-      ${analysisSection(state, year)}
+      ${payslipSection(state, allKeys, `${label} bordro karşılaştırması`)}
+      ${yillik ? analysisSection(state, Number(String(label).slice(-4))) : ''}
     ` : `
       <div class="stats">
         ${statCard('Toplam harcama', formatMoney(finance.spent, { decimals: false }), '#c9402f')}
@@ -220,8 +228,8 @@ function buildSideReport({ profileName, yearSummary, settings, finance, portfoli
         ${profitCard(portfolio)}
       </div>
 
-      ${categoryTable(finance.byCategory, finance.spent, `${year} harcama kırılımı`)}
-      ${debtSection(state, allKeys, `${year} borç durumu`)}
+      ${categoryTable(finance.byCategory, finance.spent, `${label} harcama kırılımı`)}
+      ${debtSection(state, allKeys, `${label} borç durumu`)}
       ${/* expenseListTable bir dönem özeti bekliyor; yılın harcamalarını
            tek listede toplayıp aynı biçimi kullanıyoruz. */''}
       ${expenseListTable({

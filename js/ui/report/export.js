@@ -82,9 +82,15 @@ export function subExportHTML(id, label) {
     </div>`;
 }
 
-export function wireSubExport(container, state, ctx, year, { id, scope, fileName }) {
+/**
+ * Alt sayfaların çıktısı. Kapsam neyse çıktı da o: ay kapsamında tek ayın
+ * gelir/gider raporu, yıl kapsamında 12 ayın.
+ */
+export function wireSubExport(container, state, ctx, view, { id, scope, fileName }) {
   container.querySelector(`#${id}`)?.addEventListener('click', () => {
-    const anchor = `${year}-12`;
+    const month = view.kind === 'month';
+    // Çapa dönem anahtarı; htmlReport yılı bundan türetiyor.
+    const anchor = month ? view.periodKey : `${view.year}-12`;
     const html = buildHtmlReport({
       profileName: profileName(ctx.profileId),
       periodKey: anchor,
@@ -92,9 +98,11 @@ export function wireSubExport(container, state, ctx, year, { id, scope, fileName
       settings: state.settings,
       scope,
       state,
-      yearSummary: yearSummary(state, year),
+      yearSummary: yearSummary(state, Number(anchor.slice(0, 4))),
+      periodKeys: month ? [view.periodKey] : null,
+      scopeLabel: month ? periodLabel(view.periodKey) : String(view.year),
     });
-    downloadFile(`${fileName}-${year}.html`, html, 'text/html;charset=utf-8');
+    downloadFile(`${fileName}-${month ? view.periodKey : view.year}.html`, html, 'text/html;charset=utf-8');
     showToast('Rapor indirildi');
   });
 }

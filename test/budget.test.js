@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   budgetSummary, budgetTips, categoryOf, allCategories, CATEGORIES,
   spendingPace, comparePreviousPeriod, spentThrough, monthlySpendBuckets,
+  periodKeysForScope, scopeFinance,
 } from '../js/budget.js';
 
 function makeMemoryLocalStorage() {
@@ -739,4 +740,53 @@ test('periodsFinance - harcaması olan bordrosuz ay veri sayılır ama gelirli s
   assert.equal(mart.spent, 1200);
   // remaining sayı olarak -1200; gizleme kararını çizen taraf verir (monthRowState).
   assert.equal(mart.remaining, -1200);
+});
+
+// --- Rapor kapsamı (ay / yıl) ------------------------------------------
+//
+// Gelir ve Gider raporları yıla kilitliydi. Kapsam tek yerde tanımlanıyor;
+// periodsFinance zaten herhangi bir anahtar listesiyle çalıştığı için yeni
+// bir hesap yok.
+
+test('periodKeysForScope - ay tek anahtar, yıl 12 anahtar', () => {
+  assert.deepEqual(periodKeysForScope({ kind: 'month', periodKey: '2026-09' }), ['2026-09']);
+  const yil = periodKeysForScope({ kind: 'year', year: 2026 });
+  assert.equal(yil.length, 12);
+  assert.equal(yil[0], '2026-01');
+  assert.equal(yil[11], '2026-12');
+  // Eksik tanımda hesap uydurulmaz.
+  assert.deepEqual(periodKeysForScope({ kind: 'month' }), []);
+  assert.deepEqual(periodKeysForScope(null), []);
+});
+
+test('scopeFinance - ay kapsamı budgetSummary ile birebir tutuyor', () => {
+  const state = lifetimeState();
+  const fin = scopeFinance(state, { kind: 'month', periodKey: '2026-07' }, '2026-08-24');
+  const budget = budgetSummary(state, '2026-07', '2026-08-24');
+  assert.equal(fin.months.length, 1);
+  assert.equal(fin.spent, budget.spent);
+  assert.equal(fin.received, budget.expectedTotal);
+  assert.equal(fin.remaining, budget.expectedTotal - budget.spent);
+  assert.equal(fin.from, '2026-07');
+  assert.equal(fin.to, '2026-07');
+});
+
+test('scopeFinance - yıl kapsamı yearFinance ile aynı sonucu verir', () => {
+  const state = lifetimeState();
+  const kapsam = scopeFinance(state, { kind: 'year', year: 2026 }, '2026-08-24');
+  const yil = yearFinance(state, 2026, '2026-08-24');
+  assert.equal(kapsam.received, yil.received);
+  assert.equal(kapsam.spent, yil.spent);
+  assert.equal(kapsam.incomeMonths, yil.incomeMonths);
+  assert.equal(kapsam.months.length, 12);
+});
+
+test('scopeFinance - ay kapsamında da bordrosuz ay gelir uydurmaz', () => {
+  // v6.0.0'ın kazanımı ay kapsamında da geçerli olmalı.
+  const fin = scopeFinance(bordrosuzState(), { kind: 'month', periodKey: '2026-01' }, '2026-09-15');
+  const ocak = fin.months[0];
+  assert.equal(ocak.received, 0);
+  assert.equal(ocak.hasIncome, false);
+  assert.ok(ocak.earned > 0, 'hesaplanan kazanç ayrıca durur');
+  assert.equal(fin.incomeMonths, 0);
 });
