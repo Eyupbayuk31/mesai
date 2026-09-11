@@ -407,7 +407,8 @@ function nudgeHTML() {
 // cepte varmış gibi görünüyordu. Artık yalnız gerçekten giren para: maaş
 // yatınca girilen bordro, avans ve elle eklenen para girişleri.
 function receivedHTML(received) {
-  const month = periodLabel(received.payslipPeriod);
+  // Bu ayın gelirini doldurmanın yolu BU AYIN bordrosunu girmek.
+  const month = periodLabel(received.periodKey);
   if (received.total === 0) {
     return `
       <div class="received-empty">
@@ -431,7 +432,10 @@ function receivedHTML(received) {
     const text = names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2}` : names.join(', ');
     return ` <span style="color:var(--text-tertiary);">(${escapeHTML(text)})</span>`;
   };
-  const label = { payslip: `Bordro <span style="color:var(--text-tertiary);">(${month})</span>`, advance: 'Avans', manual: 'Para girişi' };
+  // Bordro satırı artık dönemin KENDİ bordrosu; ay adı yazmak gereksiz
+  // (zaten o aya bakıyoruz) ve yanıltıcı olurdu — eskiden burada bir önceki
+  // ayın adı yazıyordu.
+  const label = { payslip: 'Bordro', advance: 'Avans', manual: 'Para girişi' };
   return `
     <div class="rows rows--receipt">
       ${received.lines.map((l, i) => receiptRow(

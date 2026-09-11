@@ -127,10 +127,15 @@ export function changeCell(row) {
   return `<span class="${good ? 'is-positive' : 'is-negative'}">${sign}%${Math.abs(Math.round(row.pct))}</span>`;
 }
 
-/** "Eline geçen" hücresinin ipucu — kaydırma yoksa yanıltıcı olur, basılmaz. */
-export function receivedTitle(m) {
-  if (!m.hasIncome || m.payslipPeriod === m.periodKey) return '';
-  return ` title="${escapeHTML(periodLabel(m.payslipPeriod))} bordrosu"`;
+/**
+ * "Eline geçen" hücresinin ipucu.
+ *
+ * Eskiden başka bir ayın adını basıyordu ("Ağustos bordrosu"); bordro artık
+ * kendi ayına yazıldığı için o ipucu yanlış olurdu. Satırın ayı zaten ilk
+ * sütunda yazılı, eklenecek bir şey kalmadı.
+ */
+export function receivedTitle() {
+  return '';
 }
 
 export function moneyOrDash(value, show) {

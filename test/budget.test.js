@@ -23,9 +23,10 @@ const baseSettings = {
   multipliers: { normal: 1.5, weekend: 2, holiday: 2 },
 };
 
-// Bütçe artık ayarlardaki maaştan değil, ELE GEÇEN paradan hesaplanıyor:
-// Ağustos'ta harcadığın para Temmuz bordrosudur (10 Ağustos'ta yatar).
-const yatan = (amount, periodKey = '2026-07') => [{ id: `p_${periodKey}`, periodKey, amount }];
+// Bütçe ayarlardaki maaştan değil, BORDRODAN hesaplanıyor. Bordro kendi
+// ayının parasıdır: Ağustos bordrosu 10 Eylül'de yatıp o gün girilse de
+// Ağustos'un bütçesine yazılır.
+const yatan = (amount, periodKey = '2026-08') => [{ id: `p_${periodKey}`, periodKey, amount }];
 
 test('budgetSummary - harcamalar toplanır, dönem dışı sayılmaz, kalan hesaplanır', () => {
   const state = {
@@ -274,7 +275,7 @@ test('budgetSummary - sürekli gider sonraki aylarda otomatik sanal harcama üre
     expenses: [{ id: 'x1', date: '2026-08-05', amount: 5000, category: 'kira' }], // ilk giriş anı
     recurring: [{ id: 'r1', label: 'Kira', amount: 5000, category: 'kira', day: 5, since: '2026-08' }],
     adjustments: [],
-    payslips: [...yatan(30000, '2026-07'), ...yatan(30000, '2026-08')],
+    payslips: [...yatan(30000, '2026-08'), ...yatan(30000, '2026-09')],
   };
   // Girildiği ay: sanal üretilmez (gerçek harcama zaten var, çifte sayım olmasın)
   const aug = budgetSummary(state, '2026-08', '2026-08-21');
@@ -358,7 +359,7 @@ test('Store - sürekli gider ekle/güncelle/kaldır', async () => {
 const paceState = (expenses, recurring = []) => ({
   settings: { ...baseSettings, monthlySalary: 30000 },
   entries: [], adjustments: [], expenses, recurring,
-  payslips: [...yatan(30000, '2026-06'), ...yatan(30000, '2026-07')],
+  payslips: [...yatan(30000, '2026-07'), ...yatan(30000, '2026-08')],
 });
 
 test('spendingPace - değişken harcama ay sonuna ileri sarılır', () => {
@@ -706,26 +707,33 @@ test('periodsFinance - bordro girilmemiş ay gelir UYDURMAZ', () => {
   assert.equal(res.incomeMonths, 0);
 });
 
-test('periodsFinance - eline geçen para bir önceki ayın bordrosundan gelir', () => {
+test('periodsFinance - bordro KENDİ ayına yazılır, yattığı aya değil', () => {
   const state = bordrosuzState();
   state.payslips = [{ id: 'p1', periodKey: '2026-08', amount: 52960, transport: 1430 }];
   const res = yearFinance(state, 2026, '2026-09-15');
   const agustos = res.months[7];
   const eylul = res.months[8];
-  assert.equal(agustos.received, 0, 'Ağustos bordrosu Ağustos içinde ele geçmez');
-  assert.equal(eylul.received, 54390, '10 Eylül’de yatar');
-  assert.equal(eylul.payslipPeriod, '2026-08');
-  assert.equal(eylul.hasPayslip, true);
+  // 10 Eylül'de yatıyor ve o gün giriliyor ama Ağustos'un kazancı.
+  assert.equal(agustos.received, 54390, 'Ağustos bordrosu Ağustos’a yazılır');
+  assert.equal(eylul.received, 0, 'Eylül’ün toplamını şişirmez');
+  assert.equal(agustos.hasPayslip, true);
+  assert.equal(eylul.hasPayslip, false);
   assert.equal(res.incomeMonths, 1);
 });
 
-test('periodsFinance - payMonthOffset 0 ise ayın kendi bordrosu', () => {
+test('periodsFinance - kaydırma yalnız "bu ay ne yattı" bilgisini etkiler', () => {
   const state = bordrosuzState();
-  state.settings.payMonthOffset = 0;
   state.payslips = [{ id: 'p1', periodKey: '2026-08', amount: 40000 }];
-  const eylul = yearFinance(state, 2026, '2026-09-15').months[7];
-  assert.equal(eylul.payslipPeriod, '2026-08', 'kaydırma yoksa ayın kendisi');
-  assert.equal(eylul.received, 40000);
+  const res = yearFinance(state, 2026, '2026-09-15');
+  // Toplam her iki ayarda da Ağustos'ta; kaydırma yalnız Eylül ekranında
+  // "bu ay şu yattı" diye gösterilecek bilgiyi belirler.
+  assert.equal(res.months[7].received, 40000);
+  assert.equal(res.months[8].payslipPeriod, '2026-08');
+
+  state.settings.payMonthOffset = 0;
+  const res0 = yearFinance(state, 2026, '2026-09-15');
+  assert.equal(res0.months[7].received, 40000, 'kaydırma toplamı değiştirmez');
+  assert.equal(res0.months[7].payslipPeriod, '2026-08');
 });
 
 test('periodsFinance - gelecek ay isFuture, "veri yok" ile karıştırılmaz', () => {

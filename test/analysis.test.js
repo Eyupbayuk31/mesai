@@ -46,9 +46,11 @@ const bordrolu = (from, to, amount) => {
 };
 
 // 2025 geliri 12×30000, 2026 geliri 12×40000 olacak şekilde.
+// Bordro KENDİ ayına yazılır (10 Eylül'de girilen Ağustos bordrosu Ağustos'un
+// kazancıdır), o yüzden dönemler yılın kendi ayları.
 const doluState = () => ({
   ...state,
-  payslips: [...bordrolu('2024-12', '2025-11', 30000), ...bordrolu('2025-12', '2026-11', 40000)],
+  payslips: [...bordrolu('2025-01', '2025-12', 30000), ...bordrolu('2026-01', '2026-12', 40000)],
 });
 
 test('pctChange - taban sıfırsa yüzde uydurulmaz', () => {
@@ -119,7 +121,7 @@ test('realChange - gelir mi harcama mı hızlı arttı', () => {
 test('realChange - taban yılda bordro yoksa yorum yok', () => {
   // Harcama iki yılda da var ama gelir yalnız 2026'da: taban gelir 0 →
   // pctChange null → uydurma oran üretilmez.
-  const s2 = { ...state, payslips: bordrolu('2025-12', '2026-11', 40000) };
+  const s2 = { ...state, payslips: bordrolu('2026-01', '2026-12', 40000) };
   assert.equal(realChange(s2, 2025, 2026, '2026-08-24'), null);
 });
 
@@ -187,7 +189,7 @@ test('monthsWithData - sürekli gider varsa yıl dolu sayılır', () => {
 });
 
 test('realChange - yarım veriyle kıyas güvenilir sayılmaz', () => {
-  const s2 = { ...doluState(), payslips: [...bordrolu('2025-01', '2025-02', 30000), ...bordrolu('2025-12', '2026-11', 40000)] };
+  const s2 = { ...doluState(), payslips: [...bordrolu('2025-01', '2025-02', 30000), ...bordrolu('2026-01', '2026-12', 40000)] };
   const res = realChange(s2, 2025, 2026, '2026-08-24');
   assert.equal(res.reliable, false, '2025 yalnız 2 bordro ayı');
   assert.equal(res.basePayslipMonths, 2);

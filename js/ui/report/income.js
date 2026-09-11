@@ -95,7 +95,7 @@ function monthReceivedHTML(received, periodKey) {
       <div class="section-header"><span class="section-title" style="margin:0;">Eline geçen</span></div>
       <div class="card empty">
         <div class="empty__title">Bu ay para girişi yok</div>
-        <div class="empty__sub">${escapeHTML(periodLabel(received.payslipPeriod))} bordrosunu girersen bu ayın geliri burada görünür.</div>
+        <div class="empty__sub">${escapeHTML(periodLabel(periodKey))} bordrosunu girersen bu ayın geliri burada görünür.</div>
       </div>`;
   }
   return `
@@ -104,9 +104,7 @@ function monthReceivedHTML(received, periodKey) {
       <div class="rows rows--receipt">
         ${received.lines.map((l, i) => `
           <div class="row">
-            <span class="row__label">${l.key === 'payslip' && received.payslipPeriod !== periodKey
-    ? `Bordro <span style="color:var(--text-tertiary);">(${escapeHTML(periodLabel(received.payslipPeriod))})</span>`
-    : label[l.key] || l.key}</span>
+            <span class="row__label">${escapeHTML(label[l.key] || l.key)}</span>
             <span class="row__leader"></span>
             <span class="row__value ${i === 0 ? '' : 'is-positive'}">${i === 0 ? '' : '+ '}${formatMoney(l.amount, { decimals: false })}</span>
           </div>`).join('')}

@@ -6,13 +6,23 @@ const { receivedInPeriod, payslipTotal } = await import('../js/received.js');
 const settings = { payDay: 10, payMonthOffset: 1, monthlySalary: 35000 };
 const state = (over = {}) => ({ settings, payslips: [], adjustments: [], ...over });
 
-test('receivedInPeriod - Eylül\'ün parası Ağustos bordrosudur', () => {
+test('receivedInPeriod - bordro KENDİ ayına yazılır, yattığı aya değil', () => {
   const s = state({ payslips: [{ id: 'p1', periodKey: '2026-08', amount: 52960, transport: 1430 }] });
-  const r = receivedInPeriod(s, '2026-09');
-  assert.equal(r.payslipPeriod, '2026-08');
-  assert.equal(r.payslip, 54390);
-  assert.equal(r.total, 54390);
-  assert.equal(r.hasPayslip, true);
+
+  // Ağustos bordrosu 10 Eylül'de yatar ve o gün girilir; yine de Ağustos'un
+  // kazancıdır. Eylül'ün toplamına hiçbir şekilde eklenmez.
+  const agustos = receivedInPeriod(s, '2026-08');
+  assert.equal(agustos.payslip, 54390);
+  assert.equal(agustos.total, 54390);
+  assert.equal(agustos.hasPayslip, true);
+
+  const eylul = receivedInPeriod(s, '2026-09');
+  assert.equal(eylul.payslip, 0);
+  assert.equal(eylul.total, 0);
+  assert.equal(eylul.hasPayslip, false);
+  assert.deepEqual(eylul.lines, [], 'Eylül ekranında bilgi satırı olarak bile durmaz');
+  // Kaydırma yalnız "maaşın yattığında şu ayın bordrosunu gir" için lazım.
+  assert.equal(eylul.payslipPeriod, '2026-08');
 });
 
 test('receivedInPeriod - bordro girilmemişse para girmemiş sayılır', () => {
@@ -24,7 +34,7 @@ test('receivedInPeriod - bordro girilmemişse para girmemiş sayılır', () => {
 
 test('receivedInPeriod - para girişi ve avans o dönemde ele geçmiş sayılır', () => {
   const s = state({
-    payslips: [{ id: 'p1', periodKey: '2026-08', amount: 50000 }],
+    payslips: [{ id: 'p1', periodKey: '2026-09', amount: 50000 }],
     adjustments: [
       { id: 'a1', periodKey: '2026-09', kind: 'income', amount: 3000 },
       { id: 'a2', periodKey: '2026-09', kind: 'advance', amount: 5000 },
@@ -45,7 +55,7 @@ test('receivedInPeriod - eski "bonus" kayıtları para girişi sayılır', () =>
 
 test('receivedInPeriod - kesinti bordro toplamından düşülür, ayrıca düşülmez', () => {
   const s = state({
-    payslips: [{ id: 'p1', periodKey: '2026-08', amount: 50000, deduction: 2000 }],
+    payslips: [{ id: 'p1', periodKey: '2026-09', amount: 50000, deduction: 2000 }],
     adjustments: [{ id: 'a1', periodKey: '2026-09', kind: 'deduction', amount: 777 }],
   });
   const r = receivedInPeriod(s, '2026-09');

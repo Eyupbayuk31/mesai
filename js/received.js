@@ -6,10 +6,12 @@
 // daha yatmadan cepte varmış gibi görünüyordu. Burası tersini yapar, yalnızca
 // gerçekten giren parayı toplar.
 //
-// Hangi para hangi döneme yazılır? Maaş, ait olduğu dönemden `payMonthOffset`
-// ay sonra yatar: Ağustos bordrosu 10 Eylül'de ele geçer. Yani EYLÜL'de
-// harcayabileceğin para AĞUSTOS bordrosudur. Bu yüzden dönemin bütçesi bir
-// önceki dönemin bordrosundan gelir.
+// Hangi para hangi döneme yazılır? BORDRO KENDİ AYININ PARASIDIR. Ağustos
+// bordrosu 10 Eylül'de yatar ve o gün girilir, ama Ağustos'un kazancıdır:
+// Ağustos'un toplamında sayılır, Eylül'ünkinde değil.
+//
+// Eylül ekranında HİÇ görünmez. Eskiden görünüyor ve toplama giriyordu;
+// Eylül'ün toplamı, Eylül'ün kazancı olmayan bir parayla şişiyordu.
 
 import { shiftPeriod } from './period.js';
 import { payslipFor, PAYSLIP_LINES } from './payslip.js';
@@ -53,9 +55,13 @@ export function payslipPeriodFor(settings, periodKey) {
  */
 export function receivedInPeriod(state, periodKey) {
   const settings = state?.settings || {};
+
+  // Dönemin KENDİ bordrosu — toplama giren tek bordro budur.
+  const payslip = payslipTotal(payslipFor(state, periodKey));
+
+  // Bu dönemde YATAN bordronun dönemi. Toplamla ilgisi yok; yalnız "maaşın
+  // yattığında şu ayın bordrosunu gir" yönlendirmesi için lazım.
   const payslipPeriod = payslipPeriodFor(settings, periodKey);
-  const slip = payslipFor(state, payslipPeriod);
-  const payslip = payslipTotal(slip);
 
   // Elle girilen para girişleri ve avanslar bu dönemde ele geçmiş sayılır.
   // ("bonus" artık girilmiyor ama eski kayıtlar duruyor — para girişi sayılır.)

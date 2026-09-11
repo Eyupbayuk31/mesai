@@ -55,7 +55,7 @@ export function renderBudget(container, state, ctx) {
       ${fixedVariableHTML(summary)}
       <div class="rows rows--receipt">
         ${summary.received.lines.map((l) => receiptRow(
-          l.key === 'payslip' ? `Bordro <span style="color:var(--text-tertiary);">(${periodLabel(summary.received.payslipPeriod)})</span>` : l.label,
+          l.label,
           formatMoney(l.amount, { decimals: false }),
         )).join('')}
         ${receiptRow('Eline geçen', formatMoney(summary.expectedTotal, { decimals: false }), { rowCls: 'row--subtotal' })}
@@ -77,7 +77,7 @@ export function renderBudget(container, state, ctx) {
         <div class="hero__sub">${summary.expenseCount} kayıt</div>
       </div>
       ${categoryBarHTML(summary)}
-      <div class="cta-note">Kalan bütçeyi görmek için eline geçen parayı gir: maaşın yattığında <b>${periodLabel(shiftPeriod(periodKey, -(state.settings.payMonthOffset ?? 1)))}</b> bordrosunu yaz, yan gelirleri de para girişi olarak ekle.</div>
+      <div class="cta-note">Kalan bütçeyi görmek için eline geçen parayı gir: <b>${periodLabel(periodKey)}</b> bordrosunu yaz, yan gelirleri de para girişi olarak ekle.</div>
       <div class="received-empty__actions" style="margin-top:10px;">
         <button class="btn btn--secondary btn--inline" id="goPayslip" type="button">Bordroyu gir</button>
         <button class="btn btn--secondary btn--inline" id="goIncome" type="button">Para girişi ekle</button>

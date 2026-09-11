@@ -154,11 +154,10 @@ function openMonthSheet(ctx, state, periodKey) {
       bodyEl.innerHTML = `
         <div class="rows rows--receipt">
           ${hasIncome
-    ? received.lines.map((l) => row(l.key === 'payslip' && received.payslipPeriod !== periodKey
-      ? `Bordro <span style="color:var(--text-tertiary);">(${escapeHTML(periodLabel(received.payslipPeriod))})</span>`
-      : ({ payslip: 'Bordro', advance: 'Avans', manual: 'Para girişi' }[l.key] || l.key),
+    ? received.lines.map((l) => row(
+      { payslip: 'Bordro', advance: 'Avans', manual: 'Para girişi' }[l.key] || l.key,
     formatMoney(l.amount, { decimals: false }))).join('')
-    : `<p class="field__hint" style="margin:0 0 10px;">Bu ay bordro girilmemiş — eline geçen para hesaplanamıyor.</p>`}
+    : `<p class="field__hint" style="margin:0 0 10px;">Bu ayın bordrosu girilmemiş — eline geçen para hesaplanamıyor.</p>`}
           ${hasIncome ? row('Eline geçen', formatMoney(received.total, { decimals: false }), 'row--subtotal') : ''}
           ${budget.byCategory.map((c) => row(
     `<span style="color:var(--text-tertiary);"><span class="dot" style="background:${c.color};"></span>${escapeHTML(c.label)}</span>`,
@@ -182,8 +181,9 @@ function openMonthSheet(ctx, state, periodKey) {
       footerEl.querySelector('#sheetExpense').addEventListener('click', () => openScoped('expense'));
       bodyEl.querySelector('#sheetPayslip')?.addEventListener('click', () => {
         closeSheet();
-        ctx.payslipYear = Number(received.payslipPeriod.slice(0, 4));
-        ctx.payslipFocus = received.payslipPeriod;
+        // Bu ayın gelirini doldurmanın yolu BU AYIN bordrosunu girmek.
+        ctx.payslipYear = Number(periodKey.slice(0, 4));
+        ctx.payslipFocus = periodKey;
         ctx.navigate({ tab: 'income', page: 'payslip' });
       });
     },
