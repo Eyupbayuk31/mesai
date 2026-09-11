@@ -8,6 +8,7 @@
 // amaç zaten kasadan çok kapı.
 
 import { profileName, clearActiveProfile } from '../profile.js';
+import { sacmalikSec } from '../lockJokes.js';
 import { verifyPin, markUnlocked, MIN_PIN_LENGTH, MAX_PIN_LENGTH } from '../lock.js';
 import { APP_VERSION } from './settings/about.js';
 
@@ -22,6 +23,10 @@ export function renderLockScreen(appEl, profileId, onUnlocked) {
   appEl.innerHTML = `
     <div class="profile-picker">
       <div class="profile-picker__glow" aria-hidden="true"></div>
+
+      <div class="lock-flash" id="lockFlash" aria-hidden="true">
+        <img class="lock-flash__img" id="lockFlashImg" src="img/yanlis-pin.jpg" alt="" decoding="async" />
+      </div>
 
       <div class="profile-picker__inner">
         <div class="profile-picker__brand reveal" style="--delay:0ms;">
@@ -41,10 +46,7 @@ export function renderLockScreen(appEl, profileId, onUnlocked) {
           <button class="btn btn--primary" id="lockSubmit" type="submit">Aç</button>
         </form>
 
-        <p class="profile-picker__hint reveal" style="--delay:140ms;">
-          PIN yalnız bu cihazda geçerli. Unutursan Ayarlar’dan sıfırlanamaz —
-          profili silip yeniden kurman gerekir, veriler bulut yedeğinden geri gelir.
-        </p>
+        <p class="profile-picker__hint reveal" style="--delay:140ms;" id="lockJoke">${sacmalikSec()}</p>
         <button class="btn btn--ghost btn--sm" id="lockSwitch" type="button">Profil değiştir</button>
       </div>
 
@@ -54,6 +56,23 @@ export function renderLockScreen(appEl, profileId, onUnlocked) {
       </div>
     </div>
   `;
+
+  // Yanlış PIN'de ekranın ortasında çıkan resim. Dosya yoksa (henüz
+  // eklenmediyse ya da önbellek eskiyse) img onerror ile sessizce kalkar —
+  // kırık resim simgesi göstermek şakayı da bozar, ekranı da.
+  const flash = appEl.querySelector('#lockFlash');
+  const flashImg = appEl.querySelector('#lockFlashImg');
+  let flashTimer = null;
+  flashImg?.addEventListener('error', () => { flash?.remove(); }, { once: true });
+
+  const showFlash = () => {
+    if (!flash || !flash.isConnected) return;
+    clearTimeout(flashTimer);
+    flash.classList.remove('is-on');
+    void flash.offsetWidth; // animasyonu yeniden tetikle
+    flash.classList.add('is-on');
+    flashTimer = setTimeout(() => flash.classList.remove('is-on'), 1400);
+  };
 
   const form = appEl.querySelector('#lockForm');
   const input = appEl.querySelector('#lockPin');
@@ -85,6 +104,10 @@ export function renderLockScreen(appEl, profileId, onUnlocked) {
     attempts += 1;
     const wait = delayFor(attempts);
     input.value = '';
+    // Her yanlışta yeni bir saçmalık: aynı ekrana bakarken can sıkmasın.
+    const joke = appEl.querySelector('#lockJoke');
+    if (joke) joke.textContent = sacmalikSec();
+    showFlash();
     form.classList.remove('is-wrong');
     void form.offsetWidth; // animasyonu yeniden tetikle
     form.classList.add('is-wrong');

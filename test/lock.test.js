@@ -143,3 +143,31 @@ test('isUnlocked - bozuk oturum kaydı açık saymaz', async () => {
   globalThis.sessionStorage.setItem('mesai.lock.open', 'eyup:abc');
   assert.equal(lock.isUnlocked('eyup'), false);
 });
+
+// --- Kilit ekranının alt yazısı -------------------------------------------
+
+test('sacmalikSec - havuzdan seçer, hep aynı satırı vermez', async () => {
+  const { SACMALIKLAR, sacmalikSec } = await import('../js/lockJokes.js');
+  assert.ok(SACMALIKLAR.length >= 3, 'havuz en az birkaç satır olmalı');
+  assert.equal(new Set(SACMALIKLAR).size, SACMALIKLAR.length, 'tekrar eden satır olmasın');
+  assert.ok(SACMALIKLAR.every((l) => typeof l === 'string' && l.trim().length > 0));
+
+  // Sınırlar: 0 ilk satırı, 1'e çok yakın değer son satırı vermeli
+  // (Math.floor taşarsa undefined basardı).
+  assert.equal(sacmalikSec(() => 0), SACMALIKLAR[0]);
+  assert.equal(sacmalikSec(() => 0.9999999), SACMALIKLAR[SACMALIKLAR.length - 1]);
+
+  const gorulen = new Set();
+  for (let i = 0; i < 200; i += 1) gorulen.add(sacmalikSec());
+  assert.ok(gorulen.size > 1, 'rastgelelik çalışmalı');
+});
+
+test('kilit ekranında artık açıklama yok', async () => {
+  const src = await import('node:fs').then((fs) => fs.readFileSync('js/ui/lockScreen.js', 'utf8'));
+  // Kullanıcının kaldırılmasını istediği metin geri gelmesin.
+  assert.ok(!src.includes('PIN yalnız bu cihazda geçerli'), 'açıklama kaldırılmıştı');
+  const jokes = await import('node:fs').then((fs) => fs.readFileSync('js/lockJokes.js', 'utf8'));
+  assert.ok(jokes.includes('Fenerbahçe'), 'saçmalık havuzu duruyor');
+  // Resim yoksa kırık simge kalmasın diye onerror şart.
+  assert.ok(src.includes("addEventListener('error'"), 'eksik resim sessizce kalkmalı');
+});
