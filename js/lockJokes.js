@@ -10,7 +10,7 @@
 export const SACMALIKLAR = [
   'Fenerbahçe’nin neden şampiyon olamadığı burada yazıyor.',
   'Gizli devlet belgeleri · Klasör 3 · Raf B',
-  'Fuat’ın kaç kez ısmarladığı bu ekranın arkasında kayıtlı.',
+  'Fuat’ın çıplak fotoğrafları burada gizli.',
   'Nükleer fırlatma kodları (ve çay ocağı hesabı).',
   'Bermuda Şeytan Üçgeni’nin koordinatları.',
 ];
