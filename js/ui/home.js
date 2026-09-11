@@ -7,7 +7,7 @@ import { escapeHTML } from './report/shared.js';
 import { enableSwipeToDelete } from './swipe.js';
 import { showToast } from './toast.js';
 import { openSheet } from './sheet.js';
-import { mountPeriodInfo } from './periodNav.js';
+import { mountPeriodNav } from './periodNav.js';
 import {
   periodProgress, projectPeriod, overtimeShare,
   weeklyBuckets, periodRecord, busiestWeekday, todayNudge, payslipNudge,
@@ -40,7 +40,11 @@ function thisWeekHours(entries, today = new Date()) {
 }
 
 export function renderHome(container, state, ctx) {
-  const periodKey = currentPeriodKey();
+  const periodKey = ctx.homePeriodKey || currentPeriodKey();
+  // İçinde bulunulan ay mıyız? Özet'in yarısı "bugün"e bağlı: bu hafta kaç
+  // saat, bu hızla ay sonunda ne olur, net değer şu an ne. Geçmiş bir aya
+  // bakarken bunları basmak yalan olur — o yüzden hepsi bu bayrağa bağlı.
+  const isCurrent = periodKey === currentPeriodKey();
   const summary = periodSummary(state, periodKey);
   const prevSummary = periodSummary(state, shiftPeriod(periodKey, -1));
   const settings = state.settings;
@@ -48,7 +52,13 @@ export function renderHome(container, state, ctx) {
 
   const payDate = payDateForPeriod(periodKey, settings);
   const daysLeft = daysUntilPay(periodKey, settings);
-  const daysText = daysLeft === 0 ? 'bugün' : daysLeft === 1 ? 'yarın' : `${daysLeft} gün kaldı`;
+  // Geçmiş dönemde "yatacak" demek yanlış, ama "yattı · 1 gün önce yattı"
+  // gibi kendini tekrar eden bir cümle de kurulmamalı.
+  const daysText = daysLeft > 1 ? `${daysLeft} gün kaldı`
+    : daysLeft === 1 ? 'yarın'
+      : daysLeft === 0 ? 'bugün'
+        : `${Math.abs(daysLeft)} gün önce`;
+  const payText = `<b>${formatFullDate(toISODate(payDate))}</b> tarihinde ${daysLeft >= 0 ? 'yatacak' : 'yattı'} · ${daysText}`;
 
   const recentEntries = [...summary.entries]
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : (a.createdAt < b.createdAt ? 1 : -1)))
@@ -71,20 +81,26 @@ export function renderHome(container, state, ctx) {
   // Bu dönem GERÇEKTEN ele geçen para. Maaş/yemek/yol artık burada tahmin
   // olarak gösterilmiyor: hepsi maaş yatınca bordroya giriliyor.
   const received = receivedInPeriod(state, periodKey);
+  // Başlığı basmadan önce kartın dolu olup olmadığını bilmek gerekiyor.
+  const statusCard = hasSalary ? statusCardHTML(state, periodKey, isCurrent) : '';
 
   container.innerHTML = `
     ${syncPillHTML()}
     <div class="period-card">
-      <div style="width:34px;"></div>
+      <button class="period-card__nav" id="homePrev" type="button" aria-label="Önceki ay">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+      </button>
       <div class="period-card__body">
         <div class="period-card__label">${periodLabel(periodKey)}</div>
-        <div class="period-card__sub"><b>${formatFullDate(toISODate(payDate))}</b> tarihinde yatacak · ${daysText}</div>
+        <div class="period-card__sub">${payText}</div>
       </div>
-      <div style="width:34px;"></div>
+      <button class="period-card__nav" id="homeNext" type="button" aria-label="Sonraki ay">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+      </button>
     </div>
 
-    ${slipNudge.show ? payslipNudgeHTML(slipNudge) : ''}
-    ${nudge.show ? nudgeHTML() : ''}
+    ${isCurrent && slipNudge.show ? payslipNudgeHTML(slipNudge) : ''}
+    ${isCurrent && nudge.show ? nudgeHTML() : ''}
 
     ${hasSalary ? `
     <div class="stat-strip stat-strip--kpi">
@@ -92,11 +108,14 @@ export function renderHome(container, state, ctx) {
         <div class="stat-strip__label">Bu dönem eline geçen</div>
         <div class="stat-strip__value">${received.total > 0 ? formatMoney(received.total, { decimals: false }) : '—'}</div>
       </div>
+      ${/* "Bu hafta" içinde bulunulan aya ait bir sayı; Ağustos'a bakarken
+           bu haftanın saatini basmak o ayın verisiymiş gibi okunurdu. */''}
+      ${isCurrent ? `
       <div class="stat-strip__divider"></div>
       <div class="stat-strip__item">
         <div class="stat-strip__label">Bu hafta</div>
         <div class="stat-strip__value">${formatHours(thisWeekHours(state.entries))}</div>
-      </div>
+      </div>` : ''}
       <div class="stat-strip__divider"></div>
       <div class="stat-strip__item">
         <div class="stat-strip__label">Kayıt</div>
@@ -129,21 +148,24 @@ export function renderHome(container, state, ctx) {
         </div>
       </div>
 
+      ${isCurrent ? `
       <button class="btn btn--primary" id="quickAdd" type="button" style="margin-top:14px;">
         <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
         Bugün mesai ekle
-      </button>
+      </button>` : ''}
     `}
 
     <div class="panes">
     <div class="pane">
-    ${netWorthHTML(state)}
-    ${state.entries.length > 0 ? weeklyChartHTML(state.entries) : ''}
-    ${hasSalary ? `
+    ${/* Net değer ve son haftalar grafiği BUGÜNÜN tablosu; bir aya ait
+         değiller. Geçmiş aya bakarken o ayın verisi sanılırlardı. */''}
+    ${isCurrent ? netWorthHTML(state) : ''}
+    ${isCurrent && state.entries.length > 0 ? weeklyChartHTML(state.entries) : ''}
+    ${hasSalary && statusCard ? `
       <div class="section-header">
         <span class="section-title" style="margin:0;">Durum</span>
       </div>
-      ${statusCardHTML(state, periodKey)}` : ''}
+      ${statusCard}` : ''}
     </div>
 
     <div class="pane">
@@ -174,10 +196,15 @@ export function renderHome(container, state, ctx) {
   });
   container.querySelector('#spendAll')?.addEventListener('click', () => ctx.setTab('expense'));
 
-  mountPeriodInfo(ctx, {
+  const step = (delta) => ctx.setHomePeriod(shiftPeriod(periodKey, delta));
+  mountPeriodNav(ctx, {
     label: periodLabel(periodKey),
     sub: `${formatFullDate(toISODate(payDate))} · ${daysText}`,
+    onPrev: () => step(-1),
+    onNext: () => step(1),
   });
+  container.querySelector('#homePrev')?.addEventListener('click', () => step(-1));
+  container.querySelector('#homeNext')?.addEventListener('click', () => step(1));
 
   container.querySelector('#goSettings')?.addEventListener('click', () => {
     ctx.navigate({ tab: 'settings', page: 'salary' });
@@ -582,7 +609,7 @@ function goalBarHTML(summary, goal) {
 }
 
 // Durum kartı: sıradaki resmi tatil + haftalık puantaj (program + mesai, 45 sa sınırı)
-function statusCardHTML(state, periodKey = currentPeriodKey()) {
+function statusCardHTML(state, periodKey = currentPeriodKey(), isCurrent = true) {
   const holiday = nextHoliday(todayISO());
   const planned = scheduledWeeklyHours(state.settings);
   const overtime = thisWeekHours(state.entries);
@@ -591,15 +618,25 @@ function statusCardHTML(state, periodKey = currentPeriodKey()) {
   const plannedPct = Math.min(100, (planned / scale) * 100);
   const overtimePct = Math.min(100 - plannedPct, (overtime / scale) * 100);
   const limitPct = Math.min(100, (45 / scale) * 100);
+
+  // Geçmiş/gelecek ayda haftalık ölçer ve sıradaki tatil basılmıyor; geriye
+  // borç ve rekor satırları kalıyor, onlar da yoksa kart bomboş bir şerit
+  // olarak duruyordu. İçerik yoksa bölüm hiç açılmasın.
+  const rows = debtRowHTML(state, periodKey) + recordRowsHTML(state, periodKey);
+  if (!isCurrent && rows.trim() === '') return '';
+
   return `
     <div class="card status-card">
-      ${holiday ? `
+      ${/* Sıradaki tatil ve haftalık puantaj BUGÜNÜN bilgisi; geçmiş bir aya
+           bakarken o ayın verisi sanılırlardı. */''}
+      ${isCurrent && holiday ? `
       <button class="status-row" id="holidayRow" type="button">
         <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="status-row__icon"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3.5v3M16 3.5v3"/></svg>
         <span class="status-row__label">Sıradaki tatil</span>
         <span class="status-row__value">${holiday.name} · ${formatDayMonthShort(holiday.date)}</span>
         <span class="status-row__chip">${holiday.daysLeft} gün</span>
       </button>` : ''}
+      ${isCurrent ? `
       <div class="status-row status-row--meter">
         <span class="status-row__label">Bu hafta puantaj</span>
         <span class="status-row__value">${formatHours(total)}</span>
@@ -609,10 +646,9 @@ function statusCardHTML(state, periodKey = currentPeriodKey()) {
         <div class="meter__fill meter__fill--planned" style="width:${plannedPct.toFixed(1)}%"></div>
         <div class="meter__fill meter__fill--overtime" style="left:${plannedPct.toFixed(1)}%; width:${overtimePct.toFixed(1)}%"></div>
         ${total > 45 ? `<div class="meter__limit" style="left:${limitPct.toFixed(1)}%" title="Kanuni sınır 45 sa"></div>` : ''}
-      </div>
-      ${debtRowHTML(state, periodKey)}
-      ${recordRowsHTML(state, periodKey)}
-      <div class="status-card__foot">Kanuni haftalık çalışma sınırı 45 saat</div>
+      </div>` : ''}
+      ${rows}
+      ${isCurrent ? '<div class="status-card__foot">Kanuni haftalık çalışma sınırı 45 saat</div>' : ''}
     </div>
   `;
 }

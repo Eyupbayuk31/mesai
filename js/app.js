@@ -65,6 +65,10 @@ function boot(profileId) {
   const ctx = {
     store,
     profileId,
+    // Özet'in kendi dönem imleci. Gelir sekmesininkiyle (reportPeriodKey)
+    // paylaşılmıyor: Özet'te geçmiş bir aya bakmak Gelir'i de oraya
+    // sürüklerse iki ekran birbirini kaydırıp duruyor.
+    homePeriodKey: currentPeriodKey(),
     reportPeriodKey: currentPeriodKey(),
     // Rapor sayfalarının kendi kapsam imleci. reportPeriodKey Gelir
     // sekmesiyle paylaşıldığı için ona dokunulmuyor. kind değişse bile
@@ -76,6 +80,7 @@ function boot(profileId) {
     budgetPeriodKey: currentPeriodKey(),
     // Kayıtlar sekmesinin görünüm/filtre/sayfa durumu sekmeler arası korunur.
     entriesView: { mode: 'list', periodKey: currentPeriodKey(), allTime: false, type: 'all', page: 1, sort: { key: 'date', dir: 'desc' } },
+    setHomePeriod(key) { ctx.homePeriodKey = key; render(); },
     setReportPeriod(key) { ctx.reportPeriodKey = key; render(); },
     // entriesView kalıbı: parçalı birleştirme. Bir alanı değiştirirken
     // ona bağlı imleci aynı çağrıda düzeltmek gerekir (yıl değişince ay da
