@@ -13,6 +13,7 @@ import { formatMoney, formatHours, formatDayMonthShort, formatFullDate, toISODat
 import {
   PAYSLIP_LINES, comparePayslip, explainPayslipDiff, payslipFor, hasPayslipData,
   payslipStats, payslipLineTotals, payslipRows, openBalance, hoursCheck,
+  adjustForShortfall,
 } from '../payslip.js';
 import { mountPeriodNav } from './periodNav.js';
 import { absenceDatesInPeriod } from '../absences.js';
@@ -534,12 +535,15 @@ function lineFieldsHTML(lines, summary, slip) {
     <div class="field">
       <label class="field__label">${line.label} (₺)
         ${/* "Net maaş" artık-toplam kalemi: beklenen tutarı diğer kalemlere
-             bağlı olduğu için tek başına yazmak yanıltır. Onun beklentisi
-             kartın başındaki "hesaba göre" satırında duruyor. */''}
+             bağlı olduğu için sabit bir sayı yazılamaz. Onun yerine, o an
+             hangi kalemler doluysa ona göre NE YAZILMASI gerektiği
+             söyleniyor — alanın iki farklı anlamı olması en sık yapılan
+             giriş hatasının kaynağıydı. */''}
         ${line.remainder ? '' : `<span style="font-weight:500;color:var(--text-tertiary);">hesaba göre ${formatMoney(line.expectedOf(summary), { decimals: false })}</span>`}
       </label>
       <input class="input input--amount" type="text" inputmode="decimal" data-line="${line.key}"
         value="${numValue(slip[line.key])}" placeholder="0" autocomplete="off" />
+      ${line.remainder ? '<div class="field__hint" id="amountHint"></div>' : ''}
     </div>
   `).join('');
 }
@@ -686,6 +690,7 @@ function eksikHintText(eksik, settings, periodKey) {
 function wireLiveSum(container, summary, settings, periodKey) {
   const sumEl = container.querySelector('#slipSum');
   const hintEl = container.querySelector('#slipSumHint');
+  const amountHint = container.querySelector('#amountHint');
   const eksikEl = container.querySelector('#monthEksik');
   const eksikHint = container.querySelector('#eksikHint');
   if (!sumEl) return;
@@ -693,33 +698,70 @@ function wireLiveSum(container, summary, settings, periodKey) {
   const read = (key) => {
     const el = container.querySelector(`[data-line="${key}"]`);
     const raw = el ? el.value.trim() : '';
-    return raw === '' ? null : parseLocaleNumber(raw);
+    if (raw === '') return null;
+    const v = parseLocaleNumber(raw);
+    return Number.isFinite(v) ? v : null;
   };
 
   const refresh = () => {
     let total = 0;
-    let filled = 0;
     let others = 0;
+    let othersFilled = 0;
+    let filled = 0;
     for (const line of PAYSLIP_LINES) {
       const v = read(line.key);
-      if (v === null || !Number.isFinite(v)) continue;
+      if (v === null) continue;
       filled += 1;
       const signed = line.negative ? -v : v;
       total += signed;
-      if (line.key !== 'amount') others += signed;
+      if (line.key !== 'amount') { others += signed; othersFilled += 1; }
     }
+
+    // Hedef, eksik saat girildiği anda düşmeli — yoksa canlı ipucu bir sayı,
+    // kaydedince çıkan karşılaştırma başka bir sayı söylüyordu.
+    const eksikSaat = parseLocaleNumber(String(eksikEl?.value ?? '').trim() || '0');
+    const hedefSummary = Number.isFinite(eksikSaat) && eksikSaat > 0
+      ? adjustForShortfall(summary, eksikSaat, settings)
+      : summary;
+    const hedef = Number(hedefSummary?.payoutTotal) || 0;
     sumEl.textContent = filled === 0 ? '—' : formatMoney(total, { decimals: false });
 
-    const beklenen = Number(summary?.payoutTotal) || 0;
+    // Alanın anlamı girilen kalemlere göre değişiyor; ne yazılacağını söyle.
+    if (amountHint) {
+      const kalan = hedef - others;
+      if (othersFilled === 0) {
+        amountHint.innerHTML = 'Hiçbir kalem girmediysen buraya <b>cebine geçen toplamı</b> yaz (bordroda “net kazanç”).';
+      } else if (kalan < 0) {
+        // Negatif kalan neredeyse her zaman tek bir şey demek: avans girilmemiş
+        // ya da buraya alt toplam yazılmış. Eksi bir lira tutarı basmak
+        // yardımcı olmaz, ne yapılacağını söylemek yardımcı olur.
+        amountHint.innerHTML = `Buraya <b>yalnız maaş satırı</b> gelmeli (bordroda
+          “Normal Ücreti”) — yol ve mesai ayrı ayrı yazılı. Girilen kalemler
+          şimdiden hedefi aşıyor; avansı girmeyi unutmuş olabilirsin.`;
+      } else {
+        amountHint.innerHTML = `Diğer kalemleri girdiğin için buraya <b>yalnız maaş satırı</b>
+          gelmeli (bordroda “Normal Ücreti”) — yol ve mesai ayrı ayrı yazılı, tekrar
+          sayılmasın. Bu kalemlerle beklenen: <b>${formatMoney(kalan, { decimals: false })}</b>.`;
+      }
+    }
+
     if (filled === 0) {
-      hintEl.innerHTML = 'Bu toplam, ödeme günü hesabına yatan tutara eşit olmalı.';
-    } else if (read('amount') !== null && others !== 0) {
-      // Uyarı değil bilgi: ikisi de doğru olabilir, ama karışması kolay.
-      hintEl.innerHTML = `Ödeme günü beklenen: <b>${formatMoney(beklenen, { decimals: false })}</b>.
-        Bordronun en alt satırını (net kazanç) Net maaş alanına yazdıysan yol ve
-        mesaiyi <b>boş bırak</b> — o satır ikisini zaten içeriyor, yoksa iki kez sayılır.`;
+      hintEl.innerHTML = `Bu toplam ödeme günü hesabına yatan tutara eşit olmalı:
+        <b>${formatMoney(hedef, { decimals: false })}</b>.`;
     } else {
-      hintEl.innerHTML = `Ödeme günü beklenen: <b>${formatMoney(beklenen, { decimals: false })}</b>.`;
+      const fark = total - hedef;
+      const yakin = Math.abs(fark) <= 1;
+      hintEl.innerHTML = `Hedef <b>${formatMoney(hedef, { decimals: false })}</b> — ${yakin
+        ? 'tutuyor.'
+        : `şu an ${formatMoney(Math.abs(fark), { decimals: false })} ${fark > 0 ? 'fazla' : 'eksik'}.`}`;
+    }
+
+    // Avans girilmemişken kalemler tek tek giriliyorsa toplam kaçınılmaz
+    // olarak avans kadar yüksek çıkar. En sık karışan yer burası.
+    if (othersFilled > 0 && read('advance') === null && Number(summary?.advances) > 0) {
+      hintEl.innerHTML += `<br><b>Avans alanı boş.</b> Bordroda
+        ${formatMoney(summary.advances, { decimals: false })} avans yazıyor; onu da
+        girmezsen toplam o kadar yüksek kalır.`;
     }
 
     if (eksikHint && eksikEl) eksikHint.innerHTML = eksikHintText(eksikEl.value, settings, periodKey);

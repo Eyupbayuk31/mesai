@@ -23,6 +23,12 @@ export const PAYSLIP_LINES = [
   { key: 'overtime', label: 'Mesai ücreti', expectedOf: (s) => s.overtimePay },
   // Kesinti ödemeyi azaltır: girilirse toplamdan düşülür.
   { key: 'deduction', label: 'Kesinti', expectedOf: (s) => s.deductions, negative: true },
+  // Avans da öyle — ve bordroda kendi satırı var. Olmadığı sürece bordroyu
+  // olduğu gibi yazmanın yolu yoktu: kalemleri tek tek girenin toplamı
+  // "G.Toplam" seviyesinde kalıyor, uygulamanın beklentisi ise avans
+  // düşülmüş "net kazanç" seviyesinde. Aradaki fark sebepsiz "fazla yatmış"
+  // olarak görünüyordu.
+  { key: 'advance', label: 'Avans', expectedOf: (s) => s.advances, negative: true },
 ];
 
 const EXTRA_LINES = PAYSLIP_LINES.filter((l) => !l.remainder);
