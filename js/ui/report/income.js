@@ -354,7 +354,7 @@ function payslipSectionHTML(state, year, summaries, rows, balance) {
       <div class="year-table__scroll">
         <table class="year-table">
           <thead>
-            <tr><th>Ay</th><th>Beklenen</th><th>Net maaş</th><th>Yol</th><th>Toplam</th>${withHours ? '<th>Saat farkı</th>' : ''}<th>Fark</th></tr>
+            <tr><th>Ay</th><th>Beklenen</th><th>Normal ücret</th><th>Yol</th><th>Toplam</th>${withHours ? '<th>Saat farkı</th>' : ''}<th>Fark</th></tr>
           </thead>
           <tbody>
             ${rows.map((r) => {

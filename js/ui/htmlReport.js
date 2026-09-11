@@ -841,7 +841,7 @@ function payslipSection(state, periodKeys, heading) {
       Kontrol edilen <b>${stats.checked} ay</b> · ${stats.match} tuttu${stats.short > 0 ? ` · ${stats.short} eksik` : ''}${stats.over > 0 ? ` · ${stats.over} fazla` : ''}${Math.abs(stats.totalDiff) > 1 ? ` · toplam ${stats.totalDiff > 0 ? '+' : '−'}${formatMoney(Math.abs(stats.totalDiff), { decimals: false })}` : ''}
     </p>
     <table class="table">
-      <thead><tr><th>Ay</th><th class="num">Beklenen</th><th class="num">Net maaş</th><th class="num">Yol</th><th class="num">Toplam</th>${withHours ? '<th class="num">Saat farkı</th>' : ''}<th class="num">Fark</th></tr></thead>
+      <thead><tr><th>Ay</th><th class="num">Beklenen</th><th class="num">Normal ücret</th><th class="num">Yol</th><th class="num">Toplam</th>${withHours ? '<th class="num">Saat farkı</th>' : ''}<th class="num">Fark</th></tr></thead>
       <tbody>
         ${rows.map((r) => {
     const maas = lineOf(r, 'amount');

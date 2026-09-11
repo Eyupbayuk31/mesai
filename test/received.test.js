@@ -69,3 +69,33 @@ test('payslipTotal - tüm kalemler toplanır, kesinti düşülür', () => {
   assert.equal(payslipTotal(null), 0);
   assert.equal(payslipTotal({}), 0);
 });
+
+test('receivedInPeriod - elle girilen paranın kendi etiketi taşınır', () => {
+  const state = {
+    settings: { payMonthOffset: 1 },
+    payslips: [],
+    adjustments: [
+      { id: 'a1', periodKey: '2026-09', kind: 'income', amount: 35000, label: 'Avans elden' },
+      { id: 'a2', periodKey: '2026-09', kind: 'income', amount: 500, label: 'Bahşiş' },
+      { id: 'a3', periodKey: '2026-09', kind: 'advance', amount: 1000, label: '' },
+    ],
+  };
+  const r = receivedInPeriod(state, '2026-09');
+  const manual = r.lines.find((l) => l.key === 'manual');
+  // "Para girişi ₺35.500" tek başına ne olduğunu söylemiyordu.
+  assert.deepEqual(manual.items.map((i) => i.label), ['Avans elden', 'Bahşiş']);
+  assert.equal(manual.amount, 35500);
+  const advance = r.lines.find((l) => l.key === 'advance');
+  assert.deepEqual(advance.items.map((i) => i.label), [''], 'etiketsiz kayıt da listelenir');
+});
+
+test('payslipTotal - bordrodaki avans satırı toplamdan düşülür', async () => {
+  const { payslipTotal } = await import('../js/received.js');
+  // Bordro satır satır girilince toplam NET KAZANÇ olmalı.
+  assert.equal(
+    Math.round(payslipTotal({
+      amount: 33619.63, transport: 2300, overtime: 5054.15, advance: 35000,
+    }) * 100) / 100,
+    5973.78,
+  );
+});

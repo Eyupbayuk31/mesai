@@ -17,7 +17,10 @@ const TOLERANCE = 1;
  * doğru fark görür.
  */
 export const PAYSLIP_LINES = [
-  { key: 'amount', label: 'Net maaş', remainder: true },
+  // Adı bordronun kendi kelimesi: "Normal Ücreti". Eskiden "Net maaş"tı ve
+  // kullanıcı bordroda o adla bir satır bulamayınca en alttaki toplamı
+  // buraya yazıyordu — yol ve mesai iki kez sayılıyordu.
+  { key: 'amount', label: 'Normal ücret', remainder: true },
   { key: 'transport', label: 'Yol parası', expectedOf: (s) => s.transportPay },
   { key: 'meal', label: 'Yemek parası', expectedOf: (s) => s.mealPay },
   { key: 'overtime', label: 'Mesai ücreti', expectedOf: (s) => s.overtimePay },
@@ -167,7 +170,7 @@ export function comparePayslip(summary, slip, settings) {
     });
   }
 
-  // Net maaş girilmemişse yalnız girilen kalemler kıyaslanır. Aksi halde
+  // Normal ücret girilmemişse yalnız girilen kalemler kıyaslanır. Aksi halde
   // "yol parasını yazdım" diyen biri bütün maaşı eksik yatmış gibi görürdü.
   const salaryEntered = entered(record, 'amount');
   const salaryExpected = payoutExpected - extrasExpected;
@@ -175,7 +178,7 @@ export function comparePayslip(summary, slip, settings) {
   if (salaryEntered) {
     lines.unshift({
       key: 'amount',
-      label: 'Net maaş',
+      label: 'Normal ücret',
       expected: salaryExpected,
       paid: salaryPaid,
       diff: salaryPaid - salaryExpected,

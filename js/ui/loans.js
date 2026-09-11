@@ -330,7 +330,7 @@ function openExtraPaymentSheet(store, loan) {
         </div>
         <div class="field" style="margin-bottom:0;">
           <label class="field__label">Not</label>
-          <input class="input" type="text" id="paymentNote" placeholder="ör. ikramiye ile" />
+          <input class="input" type="text" id="paymentNote" placeholder="ör. elden ödendi" />
         </div>
       `;
 

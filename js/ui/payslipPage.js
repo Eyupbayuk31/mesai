@@ -158,10 +158,10 @@ function renderMonth(container, state, ctx) {
       </div>
       <div class="field" style="margin-bottom:0;">
         <label class="field__label">Not <span style="font-weight:500;color:var(--text-tertiary);">(opsiyonel)</span></label>
-        <input class="input" type="text" id="monthNote" value="${(slip.note || '').replace(/"/g, '&quot;')}" placeholder="ör. ikramiye ayrı yattı" />
+        <input class="input" type="text" id="monthNote" value="${(slip.note || '').replace(/"/g, '&quot;')}" placeholder="ör. mesai farkı muhasebeye soruldu" />
       </div>
       ${/* Girilenlerin canlı toplamı. Olmadığında en sık hata görünmüyordu:
-           bordronun EN ALT satırını "Net maaş"a yazıp yol ve mesaiyi de ayrıca
+           bordronun EN ALT satırını "Normal ücret"e yazıp yol ve mesaiyi de ayrıca
            girmek. O zaman ikisi iki kez sayılıyor ve sebebi anlaşılmadan
            "fazla yatmış" çıkıyor. */''}
       <div class="preview-strip" style="margin:14px 0 0;">
@@ -264,7 +264,7 @@ function renderYear(container, state, ctx) {
         <table class="year-table payslip-table">
           <thead>
             <tr>
-              <th>Ay</th><th>Net maaş</th><th>Yol parası</th><th>Gün</th><th>Saat</th>
+              <th>Ay</th><th>Normal ücret</th><th>Yol parası</th><th>Gün</th><th>Saat</th>
               <th>Beklenen</th><th>Fark</th><th>Durum</th><th></th>
             </tr>
           </thead>
@@ -534,7 +534,7 @@ function lineFieldsHTML(lines, summary, slip) {
   return lines.map((line) => `
     <div class="field">
       <label class="field__label">${line.label} (₺)
-        ${/* "Net maaş" artık-toplam kalemi: beklenen tutarı diğer kalemlere
+        ${/* "Normal ücret" artık-toplam kalemi: beklenen tutarı diğer kalemlere
              bağlı olduğu için sabit bir sayı yazılamaz. Onun yerine, o an
              hangi kalemler doluysa ona göre NE YAZILMASI gerektiği
              söyleniyor — alanın iki farklı anlamı olması en sık yapılan
@@ -633,7 +633,7 @@ function openLineSheet(ctx, summary, tableRow) {
 
         <div class="field" style="margin-bottom:0;">
           <label class="field__label">Not <span style="font-weight:500;color:var(--text-tertiary);">(opsiyonel)</span></label>
-          <input class="input" type="text" id="slipNote" value="${(slip.note || '').replace(/"/g, '&quot;')}" placeholder="ör. ikramiye ayrı yattı" />
+          <input class="input" type="text" id="slipNote" value="${(slip.note || '').replace(/"/g, '&quot;')}" placeholder="ör. mesai farkı muhasebeye soruldu" />
         </div>
       `;
 
@@ -683,7 +683,7 @@ function eksikHintText(eksik, settings, periodKey) {
  * Girilenlerin canlı toplamı.
  *
  * En sık yapılan giriş hatasını görünür kılmak için var: bordronun EN ALT
- * satırını ("net kazanç") Net maaş alanına yazıp yol ve mesaiyi de ayrıca
+ * satırını ("net kazanç") Normal ücret alanına yazıp yol ve mesaiyi de ayrıca
  * girmek. O alt toplam ikisini zaten içerdiği için hepsi iki kez sayılıyor
  * ve sebebi anlaşılmadan "fazla yatmış" çıkıyordu.
  */
@@ -730,18 +730,20 @@ function wireLiveSum(container, summary, settings, periodKey) {
     if (amountHint) {
       const kalan = hedef - others;
       if (othersFilled === 0) {
-        amountHint.innerHTML = 'Hiçbir kalem girmediysen buraya <b>cebine geçen toplamı</b> yaz (bordroda “net kazanç”).';
+        // Tek başına doldurulduğunda bu alan artık-toplam olarak davranır:
+        // karşılaştırma cebe geçen TOPLAM üzerinden yapılır. Etiket
+        // "Normal ücret" dediği için bunun açıkça söylenmesi gerekiyor.
+        amountHint.innerHTML = `Bordrodaki <b>Normal Ücreti</b> satırı. Yalnız burayı
+          doldurursan cebine geçen toplam olarak karşılaştırılır; satır satır kontrol
+          için yol, mesai ve avansı da gir.`;
       } else if (kalan < 0) {
         // Negatif kalan neredeyse her zaman tek bir şey demek: avans girilmemiş
         // ya da buraya alt toplam yazılmış. Eksi bir lira tutarı basmak
         // yardımcı olmaz, ne yapılacağını söylemek yardımcı olur.
-        amountHint.innerHTML = `Buraya <b>yalnız maaş satırı</b> gelmeli (bordroda
-          “Normal Ücreti”) — yol ve mesai ayrı ayrı yazılı. Girilen kalemler
-          şimdiden hedefi aşıyor; avansı girmeyi unutmuş olabilirsin.`;
+        amountHint.innerHTML = `Girilen kalemler hedefi şimdiden aşıyor —
+          avansı girmeyi unutmuş ya da buraya bordronun alt toplamını yazmış olabilirsin.`;
       } else {
-        amountHint.innerHTML = `Diğer kalemleri girdiğin için buraya <b>yalnız maaş satırı</b>
-          gelmeli (bordroda “Normal Ücreti”) — yol ve mesai ayrı ayrı yazılı, tekrar
-          sayılmasın. Bu kalemlerle beklenen: <b>${formatMoney(kalan, { decimals: false })}</b>.`;
+        amountHint.innerHTML = `Bu kalemlerle beklenen: <b>${formatMoney(kalan, { decimals: false })}</b>.`;
       }
     }
 

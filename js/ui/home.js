@@ -3,6 +3,7 @@ import { periodSummary, scheduledWeeklyHours } from '../payroll.js';
 import { holidayListForYear, nextHoliday } from '../holidays.js';
 import { formatMoney, formatHours, formatFullDate, formatDayMonthShort, formatWeekdayShort, toISODate, todayISO, withSuffix, numberSuffix } from '../format.js';
 import { entryRowHTML } from './entryRow.js';
+import { escapeHTML } from './report/shared.js';
 import { enableSwipeToDelete } from './swipe.js';
 import { showToast } from './toast.js';
 import { openSheet } from './sheet.js';
@@ -421,11 +422,20 @@ function receivedHTML(received) {
         </div>
       </div>`;
   }
+  // Bordro dışındaki satırlar ELLE girilmiş paradır; kullanıcının kendi
+  // etiketi varsa yazılır. Yoksa "Para girişi ₺35.000" satırı bordroyla
+  // karışıyor — ikisi de aynı fişte, biri otomatik biri elle.
+  const ownLabels = (line) => {
+    const names = (line.items || []).map((i) => i.label).filter(Boolean);
+    if (names.length === 0) return '';
+    const text = names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2}` : names.join(', ');
+    return ` <span style="color:var(--text-tertiary);">(${escapeHTML(text)})</span>`;
+  };
   const label = { payslip: `Bordro <span style="color:var(--text-tertiary);">(${month})</span>`, advance: 'Avans', manual: 'Para girişi' };
   return `
     <div class="rows rows--receipt">
       ${received.lines.map((l, i) => receiptRow(
-        label[l.key],
+        label[l.key] + ownLabels(l),
         `${i === 0 ? '' : '+ '}${formatMoney(l.amount, { decimals: false })}`,
         { valueCls: i === 0 ? '' : 'is-positive' },
       )).join('')}

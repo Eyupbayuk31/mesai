@@ -62,17 +62,27 @@ export function receivedInPeriod(state, periodKey) {
   // Kesinti ayrıca düşülmez: bordroya yazdığın tutar zaten kesinti sonrasıdır.
   let manual = 0;
   let advances = 0;
+  // Kullanıcının kendi yazdığı etiketler de taşınır. "Para girişi ₺35.000"
+  // satırı tek başına hiçbir şey anlatmıyordu: bordrodan mı geldi, elle mi
+  // girildi, ne parası? Etiket olunca satır kendini açıklıyor.
+  const manualItems = [];
+  const advanceItems = [];
   for (const adj of state?.adjustments || []) {
     if (adj?.periodKey !== periodKey) continue;
     const amount = num(adj.amount);
-    if (adj.kind === 'income' || adj.kind === 'bonus') manual += amount;
-    else if (adj.kind === 'advance') advances += amount;
+    if (adj.kind === 'income' || adj.kind === 'bonus') {
+      manual += amount;
+      manualItems.push({ id: adj.id, label: adj.label || '', amount });
+    } else if (adj.kind === 'advance') {
+      advances += amount;
+      advanceItems.push({ id: adj.id, label: adj.label || '', amount });
+    }
   }
 
   const lines = [];
-  if (payslip !== 0) lines.push({ key: 'payslip', label: 'Bordro', amount: payslip });
-  if (advances !== 0) lines.push({ key: 'advance', label: 'Avans', amount: advances });
-  if (manual !== 0) lines.push({ key: 'manual', label: 'Para girişi', amount: manual });
+  if (payslip !== 0) lines.push({ key: 'payslip', label: 'Bordro', amount: payslip, items: [] });
+  if (advances !== 0) lines.push({ key: 'advance', label: 'Avans', amount: advances, items: advanceItems });
+  if (manual !== 0) lines.push({ key: 'manual', label: 'Para girişi', amount: manual, items: manualItems });
 
   return {
     periodKey,
