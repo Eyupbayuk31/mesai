@@ -386,10 +386,19 @@ export function periodsFinance(state, periodKeys, todayStr = todayISO()) {
       isFuture: periodKey > todayStr.slice(0, 7),
       hasData: hasIncome || budget.spent > 0 || monthInvested > 0 || pay.totalHours > 0,
     });
+    // Toplamlara YALNIZ geçmiş ve içinde bulunulan aylar girer.
+    // budgetSummary sürekli giderler için gelecek aylara da sanal harcama
+    // üretiyor (bu ayın bütçesini tahmin ederken doğru). Ama yıl toplamına
+    // katılınca henüz ödenmemiş kira "harcandı" sayılıyordu: ekranda 4 satır
+    // ₺40.000 ederken toplam ₺70.000 yazıyordu. Gelecek ay satır olarak da
+    // basılmıyor (monthRowState → 'future'), toplam da onu saymamalı.
+    const ay = months[months.length - 1];
+    if (ay.isFuture) continue;
+
     received += r.total;
     earned += budget.earnedTotal;
     if (hasIncome) incomeMonths += 1;
-    if (months[months.length - 1].hasData) dataMonths += 1;
+    if (ay.hasData) dataMonths += 1;
     spent += budget.spent;
     invested += monthInvested;
     hours += pay.totalHours;

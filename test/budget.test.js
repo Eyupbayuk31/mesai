@@ -590,9 +590,13 @@ test('yearFinance - 12 ay, aylık toplamlar yıl toplamına eşit', () => {
   ];
   const res = yearFinance(state, 2026, '2026-08-24');
   assert.equal(res.months.length, 12, '12 aylık şekil sözleşme: htmlReport tam listeye dayanıyor');
-  assert.equal(res.months.reduce((t, m) => t + m.spent, 0), res.spent);
-  assert.equal(res.months.reduce((t, m) => t + m.received, 0), res.received);
-  assert.equal(res.months.reduce((t, m) => t + m.invested, 0), res.invested);
+  // Toplamlar YALNIZ geçmiş/bugünkü aylardan: sürekli gider gelecek aylara
+  // da sanal harcama üretiyor, henüz ödenmemiş kira "harcandı" sayılmamalı.
+  const gecmis = res.months.filter((m) => !m.isFuture);
+  assert.equal(gecmis.reduce((t, m) => t + m.spent, 0), res.spent);
+  assert.equal(gecmis.reduce((t, m) => t + m.received, 0), res.received);
+  assert.equal(gecmis.reduce((t, m) => t + m.invested, 0), res.invested);
+  assert.ok(res.months.reduce((t, m) => t + m.spent, 0) > res.spent, 'gelecek aylarda sanal gider var ama toplama girmiyor');
   assert.equal(res.invested, 14500);
   assert.equal(res.remaining, res.received - res.spent);
   // İki bordro girildi → iki ay gelirli.

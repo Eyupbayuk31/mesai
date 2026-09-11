@@ -89,12 +89,13 @@ test('compareYears - satırlar, farklar ve yüzdeler', () => {
 test('compareYears - gelir satırı ELE GEÇEN paradır', () => {
   const res = compareYears(doluState(), 2025, 2026, '2026-08-24');
   const gelir = res.rows.find((r) => r.key === 'income');
+  // 2025 tamamlanmış: 12 ay. 2026 için bugün 24 Ağustos → Ocak-Ağustos = 8 ay;
+  // gelecek aylar toplama girmez, yoksa "henüz almadığın maaş" sayılırdı.
   assert.equal(gelir.from, 12 * 30000);
-  assert.equal(gelir.to, 12 * 40000);
-  assert.ok(gelir.pct > 32 && gelir.pct < 34, `beklenen ~%33, gelen %${gelir.pct}`);
+  assert.equal(gelir.to, 8 * 40000);
   assert.equal(res.fromIncomeMonths, 12);
-  assert.equal(res.toIncomeMonths, 12);
-  assert.equal(res.incomeComparable, true);
+  assert.equal(res.toIncomeMonths, 8);
+  assert.equal(res.incomeComparable, true, 'ikisi de 6 aydan fazla');
 });
 
 test('compareYears - bordro yoksa gelir 0 ve yüzde basılmaz', () => {
@@ -209,6 +210,6 @@ test('realChange - sürekli gider tek başına yılı kıyaslanabilir YAPMAZ', (
 test('realChange - iki yıl da bordro doluysa kıyas güvenilir', () => {
   const res = realChange(doluState(), 2025, 2026, '2026-08-24');
   assert.equal(res.basePayslipMonths, 12);
-  assert.equal(res.targetPayslipMonths, 12);
-  assert.equal(res.reliable, true);
+  assert.equal(res.targetPayslipMonths, 8, 'içinde bulunulan yılda yalnız geçmiş aylar');
+  assert.equal(res.reliable, true, 'ikisi de MIN_COMPARE_MONTHS üstünde');
 });
