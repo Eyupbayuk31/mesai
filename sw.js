@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mesai-v82';
+const CACHE_NAME = 'mesai-v83';
 const APP_SHELL = [
   './',
   './index.html',
@@ -29,6 +29,7 @@ const APP_SHELL = [
   './js/payslip.js',
   './js/absences.js',
   './js/leave.js',
+  './js/lock.js',
   './js/severance.js',
   './js/incomeMix.js',
   './js/investments.js',
@@ -65,6 +66,7 @@ const APP_SHELL = [
   './js/ui/settings/appearance.js',
   './js/ui/settings/backup.js',
   './js/ui/settings/lunch.js',
+  './js/ui/settings/lock.js',
   './js/ui/settings/about.js',
   './js/ui/installGuide.js',
   './js/ui/sheet.js',
@@ -76,6 +78,7 @@ const APP_SHELL = [
   './js/ui/hoursSheet.js',
   './js/ui/timeSelect.js',
   './js/ui/profilePicker.js',
+  './js/ui/lockScreen.js',
   './screenshots/wide-home.png',
   './screenshots/wide-report.png',
   './screenshots/narrow-home.png',

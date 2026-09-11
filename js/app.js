@@ -15,6 +15,7 @@ import * as loansPage from './ui/loans.js';
 import * as investPage from './ui/investments.js';
 import { renderSettingsRoute, settingsPageTitle } from './ui/settings/index.js';
 import { getActiveProfile, profileName } from './profile.js';
+import { hasPin, isUnlocked, markUnlocked, lockNow, touchUnlocked } from './lock.js';
 import { showToast } from './ui/toast.js';
 import { SyncEngine, readStatus, relativeTime } from './sync/engine.js';
 import { APP_VERSION } from './ui/settings/about.js';
@@ -28,12 +29,29 @@ if (window.location.search.includes('yenile=')) {
 
 const activeProfile = getActiveProfile();
 
+// Bu kadar süre işlem yapılmazsa kendini kilitler. Asıl koruma bu: "PC'de
+// açık unuttum" durumu, kapatmayı hatırlamaya bağlı kalmasın.
+const AUTO_LOCK_MS = 10 * 60 * 1000;
+
 if (!activeProfile) {
   const { renderProfilePicker } = await import('./ui/profilePicker.js');
   renderProfilePicker(appEl);
   window.__mesaiBooted = true;
+} else if (hasPin(activeProfile) && !isUnlocked(activeProfile, AUTO_LOCK_MS)) {
+  await showLock(activeProfile);
 } else {
+  if (hasPin(activeProfile)) markUnlocked(activeProfile);
   boot(activeProfile);
+}
+
+async function showLock(profileId) {
+  const { renderLockScreen } = await import('./ui/lockScreen.js');
+  renderLockScreen(appEl, profileId, () => {
+    // Açılınca uygulamayı baştan kur: kilit ekranı #app'in içeriğini
+    // tamamen değiştirdiği için sayfayı yenilemek en temizi.
+    window.location.reload();
+  });
+  window.__mesaiBooted = true;
 }
 
 function boot(profileId) {
@@ -81,6 +99,8 @@ function boot(profileId) {
     // Kayıtlar sekmesinin görünüm/filtre/sayfa durumu sekmeler arası korunur.
     entriesView: { mode: 'list', periodKey: currentPeriodKey(), allTime: false, type: 'all', page: 1, sort: { key: 'date', dir: 'desc' } },
     setHomePeriod(key) { ctx.homePeriodKey = key; render(); },
+    // Kilit kurulunca/kaldırılınca boşta kalma sayacını hemen güncelle.
+    armAutoLock: () => armIdle(),
     setReportPeriod(key) { ctx.reportPeriodKey = key; render(); },
     // entriesView kalıbı: parçalı birleştirme. Bir alanı değiştirirken
     // ona bağlı imleci aynı çağrıda düzeltmek gerekir (yıl değişince ay da
@@ -362,6 +382,54 @@ function boot(profileId) {
 
   // Service worker kaydı. updateViaCache:none -> sw.js her açılışta HTTP
   // önbelleğini atlayıp ağdan kontrol edilir; PWA arka planda beklerken
+  // --- Otomatik kilit ----------------------------------------------------
+  //
+  // Arka plandayken kilitlemek yerine ÖNE DÖNÜNCE bakılıyor: kullanıcı
+  // görmediği bir sekmenin ne yaptığını umursamıyor, önemli olan ekrana
+  // geri döndüğünde ne bulduğu.
+  // Dinleyiciler PIN olsun olmasın bir kez kurulur; "kilit var mı" kararı
+  // ÇAĞRI ANINDA veriliyor. Eskiden boot sırasında bir kez bakılıyordu ve
+  // PIN o oturumda kurulunca sayaç hiç başlamıyordu — kullanıcı kilidi
+  // kurup kullanmaya devam ediyor, uygulama bir daha kilitlenmiyordu.
+  let idleTimer = null;
+  const kilitle = () => {
+    lockNow();
+    window.location.reload();
+  };
+
+  // Sayfa AÇIKKEN boşta kalma sayacı. Tek başına visibilitychange yetmiyor:
+  // ekran açık, uygulama önde ve kimse dokunmuyorsa da kilitlenmeli.
+  const armIdle = () => {
+    clearTimeout(idleTimer);
+    if (!hasPin(profileId)) return;
+    idleTimer = setTimeout(kilitle, AUTO_LOCK_MS);
+  };
+
+  // Her harekette sessionStorage'a yazmamak için damga seyreltilir; sayaç
+  // ise her harekette sıfırlanır (ucuz bir clearTimeout).
+  let lastTouch = 0;
+  const touch = () => {
+    armIdle();
+    if (!hasPin(profileId)) return;
+    const now = Date.now();
+    if (now - lastTouch < 30000) return;
+    lastTouch = now;
+    touchUnlocked(profileId);
+  };
+  for (const evt of ['pointerdown', 'keydown', 'wheel', 'touchstart']) {
+    document.addEventListener(evt, touch, { passive: true });
+  }
+
+  // Arka plandayken zamanlayıcılar kısılıyor, o yüzden öne dönüşte geçen
+  // süre damgadan yeniden hesaplanır.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    if (hasPin(profileId) && !isUnlocked(profileId, AUTO_LOCK_MS)) { kilitle(); return; }
+    touch();
+  });
+
+  armIdle();
+
   // yayımlanan sürümler ön plana ilk dönüşte yakalanır.
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {

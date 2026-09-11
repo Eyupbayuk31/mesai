@@ -3,6 +3,7 @@
 import { formatMoney, withSuffix } from '../../format.js';
 import { hourlyRate } from '../../payroll.js';
 import { profileName } from '../../profile.js';
+import { hasPin } from '../../lock.js';
 import * as salaryPage from './salary.js';
 import * as schedulePage from './schedule.js';
 import * as periodPage from './period.js';
@@ -11,6 +12,7 @@ import * as appearancePage from './appearance.js';
 import * as backupPage from './backup.js';
 import { readStatus, relativeTime } from '../../sync/engine.js';
 import * as lunchPage from './lunch.js';
+import * as lockPage from './lock.js';
 import * as aboutPage from './about.js';
 
 const PAGES = {
@@ -21,6 +23,7 @@ const PAGES = {
   appearance: appearancePage,
   backup: backupPage,
   lunch: lunchPage,
+  lock: lockPage,
   about: aboutPage,
 };
 
@@ -64,6 +67,10 @@ function budgetSummaryLabel(settings) {
   return custom.length ? `${9 + custom.length} kategori · ${custom.length} özel` : '9 hazır kategori';
 }
 
+function lockSummary(ctx) {
+  return hasPin(ctx.profileId) ? 'PIN kurulu' : 'Kilit yok';
+}
+
 function backupSummary(state) {
   // Bulut senkronu açıksa asıl bilgi odur; dosya yedeği ikinci plandadır.
   const status = readStatus();
@@ -90,6 +97,7 @@ const MENU_ICONS = {
   backup: '<path d="M12 15.5V4m0 11.5-4-4m4 4 4-4"/><path d="M4.5 15v3.5a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V15"/>',
   lunch: '<path d="M6 3.5v7a2.5 2.5 0 0 0 5 0v-7M8.5 13v7.5"/><path d="M16.5 3.5c-1.4 1-2 2.6-2 4.5s.6 3.2 2 4v8.5"/>',
   about: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.8v.2"/>',
+  lock: '<rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>',
 };
 
 function menuRowHTML(page, label, summary) {
@@ -128,6 +136,7 @@ function renderSettingsMenu(container, state, ctx) {
       ${menuRowHTML('budget', 'Bütçe kategorileri', budgetSummaryLabel(settings))}
       ${menuRowHTML('appearance', 'Görünüm', themeSummary(settings))}
       ${menuRowHTML('backup', 'Yedekleme', backupSummary(state))}
+      ${menuRowHTML('lock', 'Uygulama kilidi', lockSummary(ctx))}
       ${menuRowHTML('lunch', 'Kim ısmarlasın?', 'Öğle yemeği çekilişi')}
       ${menuRowHTML('about', 'Uygulama hakkında', '')}
     </div>
