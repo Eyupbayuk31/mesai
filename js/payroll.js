@@ -91,7 +91,12 @@ export function hoursBetween(start, end) {
   let endMinutes = eh * 60 + em;
   if (endMinutes <= startMinutes) endMinutes += 24 * 60; // ertesi güne sarkar
   const diffMinutes = endMinutes - startMinutes;
-  return Math.round((diffMinutes / 60) * 4) / 4; // 15 dk hassasiyet
+  // DAKİKA hassasiyeti. Eskiden çeyrek saate yuvarlanıyordu; Ağustos 2026
+  // puantajı bunun yanlış olduğunu gösterdi — işyeri 18:32 çıkışa 0,53,
+  // 18:46'ya 0,77, 20:47'ye 2,28 yazıyor. Yuvarlama her ay bordroyla
+  // uyuşmayan bir kalıntı bırakıyordu.
+  // Kayan nokta artığını kesmek için 2 haneye sabitlenir (0,53 gibi).
+  return Math.round((diffMinutes / 60) * 100) / 100;
 }
 
 export function crossesMidnight(start, end) {
@@ -129,15 +134,34 @@ function breakOverlapHours(start, end, breakStart, breakEnd) {
 }
 
 // Bir zaman aralığından, ayarlarda tanımlı mola penceresiyle kesişen kısmı
-// düşer (örn. mesai 18:00-21:00 sürerken 18:30-19:00 arası yemek molasıysa
+// düşer (örn. mesai 18:00-21:00 sürerken 20:00-20:30 arası yemek molasıysa
 // gerçek mesai 2,5 saat sayılır, 3 saat değil).
+//
+// Sonuç ÇEYREK SAATE YUVARLANMAZ. Eskiden yuvarlanıyordu; Ağustos 2026
+// puantajı bunun yanlış olduğunu gösterdi: işyeri 18:32 çıkışa 0,53 ve
+// 18:46 çıkışa 0,77 yazıyor — dakika dakika, yuvarlamasız.
 function subtractBreak(windowStart, windowEnd, rawHours, settings) {
   const bw = settings.breakWindow;
   if (!bw || !bw.enabled) return { hours: rawHours, breakHours: 0 };
   const overlap = breakOverlapHours(windowStart, windowEnd, bw.start, bw.end);
   const breakHours = Math.min(overlap, rawHours);
-  const hours = Math.max(0, Math.round((rawHours - breakHours) * 4) / 4);
-  return { hours, breakHours };
+  return { hours: Math.max(0, rawHours - breakHours), breakHours };
+}
+
+/**
+ * Sayılmayacak kadar kısa mesai.
+ *
+ * İşyeri günlük mesaiyi bir eşiğin altındaysa hiç yazmıyor: Ağustos 2026'da
+ * 18:08, 18:10, 18:11 ve 18:12 çıkışlarının hepsi 0,00; 18:18 çıkışı ise tam
+ * 0,30. Eşik olmadan uygulama bu dakikaları sayıyor ve her ay bordroya
+ * "eksik ödeme" diye takılıyordu — olmayan bir alacak.
+ *
+ * 0 = kapalı (her dakika sayılır).
+ */
+function applyMinimum(hours, settings) {
+  const min = Number(settings?.minOvertimeMinutes) || 0;
+  if (min <= 0) return hours;
+  return hours * 60 + 1e-9 < min ? 0 : hours;
 }
 
 // "Aralık" modunda girilen saatler doğrudan mesai sayılır, ama mola penceresi
@@ -147,7 +171,13 @@ function subtractBreak(windowStart, windowEnd, rawHours, settings) {
 export function rangeOvertime(start, end, settings) {
   const totalHours = hoursBetween(start, end);
   const { hours, breakHours } = subtractBreak(start, end, totalHours, settings || {});
-  return { totalHours, overtimeHours: hours, breakHours, windowStart: start, windowEnd: end };
+  return {
+    totalHours,
+    overtimeHours: applyMinimum(hours, settings),
+    breakHours,
+    windowStart: start,
+    windowEnd: end,
+  };
 }
 
 // Girilen "bugün kaçta girdim / kaçta çıktım" saatlerinden, haftalık çalışma
@@ -161,7 +191,14 @@ export function shiftOvertime(date, shiftStart, shiftEnd, settings) {
 
   if (!daySchedule || !daySchedule.works) {
     const { hours, breakHours } = subtractBreak(shiftStart, shiftEnd, totalHours, settings);
-    return { scheduled: null, totalHours, overtimeHours: hours, breakHours, windowStart: shiftStart, windowEnd: shiftEnd };
+    return {
+      scheduled: null,
+      totalHours,
+      overtimeHours: applyMinimum(hours, settings),
+      breakHours,
+      windowStart: shiftStart,
+      windowEnd: shiftEnd,
+    };
   }
 
   const rawOvertimeHours = timeToMinutes(shiftEnd) > timeToMinutes(daySchedule.end)
@@ -174,7 +211,7 @@ export function shiftOvertime(date, shiftStart, shiftEnd, settings) {
   return {
     scheduled: daySchedule,
     totalHours,
-    overtimeHours: hours,
+    overtimeHours: applyMinimum(hours, settings),
     breakHours,
     windowStart: daySchedule.end,
     windowEnd: shiftEnd,

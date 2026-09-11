@@ -2,9 +2,10 @@
 // Her kullanıcı profili kendi anahtarında saklanır (mesai.state.<profil>).
 
 import { inferKind, kindByKey, PRESET_ASSETS } from './investments.js';
+import { rangeOvertime } from './payroll.js';
 
 const LEGACY_STORAGE_KEY = 'mesai.state'; // profil sistemi öncesi tek kullanıcılı sürüm
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 // Haftalık çalışma programı: JS Date.getDay() sırasına göre (0=Pazar..6=Cumartesi).
 // Hafta içi 08:30-18:00, Cumartesi 08:30-12:45, Pazar kapalı — bu varsayılan
@@ -40,10 +41,14 @@ const DEFAULT_SETTINGS = {
   defaultEntryMode: 'shift',
   theme: 'auto',
   weeklySchedule: DEFAULT_WEEKLY_SCHEDULE,
-  // Mesai sırasındaki yemek molası — açıksa bu pencereyle kesişen süre
-  // mesaiden düşülür. Varsayılan KAPALI: 18:00-21:00 çalışıldıysa mesai
-  // 3 saat yazılır. Molası ödenmeyen bir işyeri için Ayarlar'dan açılabilir.
-  breakWindow: { enabled: false, start: '18:30', end: '19:00' },
+  // Mesai sırasındaki yemek molası. Ağustos 2026 bordrosu pencereyi kesin
+  // olarak gösterdi: 20:19 çıkışa 2,00 yazılmış (2 sa 19 dk eksi 19 dakikalık
+  // kesişim), 20:47 çıkışa 2,28, 21:00 çıkışa 2,50. Üçü de yalnız
+  // 20:00-20:30 penceresiyle kuruşu kuruşuna oturuyor.
+  breakWindow: { enabled: true, start: '20:00', end: '20:30' },
+  // Bu kadar dakikanın altındaki günlük mesai hiç sayılmaz. Yine aynı
+  // bordrodan: 18:12 çıkış 0,00 — 18:18 çıkış 0,30. 0 = kapalı.
+  minOvertimeMinutes: 15,
   // Haftalık programa hiç dokunulmadıysa ilk açılış ekranı o adımı bekliyor
   // gösterir; kullanıcı ayarladığı anda true olur.
   scheduleTouched: false,
@@ -149,13 +154,38 @@ function mergeSettings(settings) {
 function migrate(raw) {
   const state = { ...defaultState(), ...raw };
   state.settings = mergeSettings(raw?.settings);
+  const fromVersion = Number(raw?.schemaVersion) || 1;
   // v2: mola düşme varsayılan olarak açıktı; 18:00-21:00 mesaisi 2,5 saat
-  // görünüyordu. Beklenen 3 saat olduğu için bir kereliğine kapatılır.
-  // Ayarlar'dan tekrar açılırsa (şema artık 2) bir daha dokunulmaz.
-  if ((Number(raw?.schemaVersion) || 1) < 2) {
+  // görünüyordu. O zaman beklenen 3 saat sanıldığı için kapatılmıştı.
+  if (fromVersion < 2) {
     state.settings.breakWindow = { ...state.settings.breakWindow, enabled: false };
   }
+  // v4: Ağustos 2026 bordrosu v2'deki kararın YANLIŞ olduğunu kanıtladı —
+  // işyeri gerçekten 30 dakika mola düşüyor, üstelik 18:30'da değil
+  // 20:00-20:30 arasında. Kapatma kararı kullanıcının değil bizim hatamızdı,
+  // o yüzden düzeltiliyor. Ama yalnız o hatalı varsayılana hiç dokunulmamışsa:
+  // kullanıcı kendi penceresini girdiyse ona karışılmaz.
+  if (fromVersion < 4) {
+    const bw = state.settings.breakWindow;
+    const dokunulmamis = bw && !bw.enabled && bw.start === '18:30' && bw.end === '19:00';
+    if (dokunulmamis) state.settings.breakWindow = { ...DEFAULT_SETTINGS.breakWindow };
+  }
   state.entries = Array.isArray(raw?.entries) ? raw.entries : [];
+  // v4: mesai saatleri KAYDEDİLDİĞİ ANDAKİ kuralla saklanıyor. Mola penceresi
+  // ve eşik değiştiğinde eski kayıtlar kendiliğinden düzelmez — 18:00-21:00
+  // mesaisi 3,00 olarak yazılı kalırdı, oysa işyeri 2,50 ödüyor. Bu yüzden
+  // pencere ve saatleri saklanmış her kayıt yeni kuralla yeniden hesaplanır.
+  //
+  // Yalnız start/end taşıyan kayıtlar: "saati elle yazdım" kayıtlarında
+  // pencere yok ve onlara dokunmak kullanıcının girdiği sayıyı ezmek olurdu.
+  if (fromVersion < 4) {
+    state.entries = state.entries.map((e) => {
+      if (!e || typeof e.start !== 'string' || typeof e.end !== 'string') return e;
+      const { overtimeHours } = rangeOvertime(e.start, e.end, state.settings);
+      if (!Number.isFinite(overtimeHours) || overtimeHours === Number(e.hours)) return e;
+      return { ...e, hours: overtimeHours, recalculatedAt: new Date().toISOString() };
+    });
+  }
   state.expenses = Array.isArray(raw?.expenses) ? raw.expenses : [];
   state.recurring = Array.isArray(raw?.recurring) ? raw.recurring : [];
   state.adjustments = Array.isArray(raw?.adjustments) ? raw.adjustments : [];

@@ -40,8 +40,13 @@ test('hoursBetween - gece yarısını geçen vardiya', () => {
   assert.equal(hoursBetween('22:00', '02:00'), 4);
 });
 
-test('hoursBetween - 15 dakika hassasiyet', () => {
-  assert.equal(hoursBetween('09:00', '09:50'), 0.75);
+test('hoursBetween - dakika hassasiyeti (çeyreğe yuvarlanmaz)', () => {
+  // Ağustos 2026 bordrosu: 18:32 çıkış 0,53 — yani işyeri dakika sayıyor.
+  // Eskiden 0,75'e yuvarlanıyordu ve her ay bordroyla uyuşmuyordu.
+  assert.equal(hoursBetween('09:00', '09:50'), 0.83);
+  assert.equal(hoursBetween('18:00', '18:32'), 0.53);
+  assert.equal(hoursBetween('18:00', '20:47'), 2.78);
+  assert.equal(hoursBetween('08:30', '18:00'), 9.5, 'tam saatler bozulmaz');
 });
 
 test('crossesMidnight - tespit doğru', () => {
@@ -274,10 +279,11 @@ test('shiftOvertime - mola penceresi kısmen kesişiyorsa sadece kesişen kısı
 });
 
 test('shiftOvertime - mesai molayı hiç kapsamıyorsa düşülmez', () => {
-  // Cuma 18:00-18:20 arası mesai (20 dk), mola 18:30'da başlıyor, kesişme yok
+  // Cuma 18:00-18:20 arası mesai (20 dk), mola 18:30'da başlıyor, kesişme yok.
+  // 20 dakika olduğu gibi kalır — ne yuvarlanır ne de eşiğe takılır.
   const date = new Date(2026, 7, 21);
   const result = shiftOvertime(date, '08:30', '18:20', weeklySettingsWithBreak);
-  assert.equal(result.overtimeHours, 0.25); // 20 dk, 15 dk hassasiyete yuvarlanır
+  assert.equal(result.overtimeHours, 0.33);
   assert.equal(result.breakHours, 0);
 });
 

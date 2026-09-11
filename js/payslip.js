@@ -49,6 +49,37 @@ function normalizeSlip(slip) {
  * @param {object|number} slip bordro kaydı (veya eski kullanım: yatan tutar)
  */
 /**
+ * Bordroda yazan EKSİK saat, maaştan doğrudan para olarak düşülür.
+ *
+ * Geç kalınan dakikalar işyerinin puantajında birikiyor ve ay sonunda çıplak
+ * saat ücretiyle (mesai çarpanı YOK — çalışılmayan saat, fazla çalışma değil)
+ * maaştan kesiliyor. Ağustos 2026'da 8,87 saat eksik, 35.000 ₺ maaşta
+ * 1.380 ₺ kesinti demekti; uygulama bunu bilmediği için her ay tam maaş
+ * bekliyor ve aradaki farkı "eksik ödeme" sanıyordu.
+ *
+ * Bu uygulamanın hesaplayabileceği bir şey değil: mesai takip ediyoruz,
+ * giriş saati değil. O yüzden bordrodan okunup girilen bir sayı.
+ */
+export function adjustForShortfall(summary, shortfallHours, settings) {
+  const hours = num(shortfallHours);
+  if (!summary || !Number.isFinite(hours) || hours <= 0) return summary;
+
+  const rate = hourlyRate(settings, summary.periodKey);
+  const cost = hours * rate;
+  if (!(cost > 0)) return summary;
+
+  return {
+    ...summary,
+    shortfallHours: hours,
+    shortfallCost: cost,
+    baseSalary: num(summary.baseSalary) - cost,
+    earnedTotal: num(summary.earnedTotal) - cost,
+    payoutTotal: num(summary.payoutTotal) - cost,
+    netTotal: num(summary.netTotal) - cost,
+  };
+}
+
+/**
  * Bordroda yazan çalışılan gün, uygulamanınkinden farklıysa yemek/yol
  * beklentisi ona göre düzeltilir. İzin işaretlenmemişse uygulama fazla gün
  * sayar ve boş yere "eksik" der; bordrodaki gün bunu kesin olarak bilir.
@@ -102,7 +133,10 @@ export function hoursCheck(summary, slip, settings) {
 
 export function comparePayslip(summary, slip, settings) {
   const record = normalizeSlip(slip);
-  const adjusted = entered(record, 'days') ? adjustForDays(summary, num(record.days), settings) : summary;
+  const withDays = entered(record, 'days') ? adjustForDays(summary, num(record.days), settings) : summary;
+  // Eksik saat günden SONRA uygulanır: gün düzeltmesi yemek/yol beklentisini,
+  // eksik ise maaşı değiştiriyor — ikisi ayrı kalemler, sırası da bu.
+  const adjusted = entered(record, 'eksik') ? adjustForShortfall(withDays, num(record.eksik), settings) : withDays;
   const payoutExpected = num(adjusted?.payoutTotal ?? adjusted?.netTotal);
 
   // Ayrıca girilen kalemler: hem ödenene hem "kalan"ın hesabına girer.
@@ -159,6 +193,9 @@ export function comparePayslip(summary, slip, settings) {
     partial: !salaryEntered,
     payoutExpected,
     dayCheck,
+    shortfall: entered(record, 'eksik') && num(record.eksik) > 0
+      ? { hours: num(record.eksik), cost: num(adjusted.shortfallCost) }
+      : null,
     hours: hoursCheck(summary, record, settings),
     tolerance: TOLERANCE,
   };
@@ -215,6 +252,21 @@ export function explainPayslipDiff(summary, comparison, settings) {
     if (rounded >= 0.25 && Math.abs(Math.abs(diff) - rounded * perHour) <= TOLERANCE) {
       const yon = diff < 0 ? 'eksik' : 'fazla';
       return `Yaklaşık ${formatQuarter(rounded)} saat mesai ${yon} ödenmiş olabilir.`;
+    }
+  }
+
+  // Son ihtimal: geç kalma. Bordro eksik saatleri ÇIPLAK saat ücretiyle
+  // maaştan kesiyor; eksik girilmemişse fark her ay bu yöne bakar.
+  //
+  // Bilerek en sonda ve bilerek temkinli: her fark bir saat sayısına
+  // bölünebildiği için bu dal öne alınsa "uydurma açıklama yapma" kuralını
+  // çiğnerdi — mesai açıklaması oturuyorsa o kazanır, oturmuyorsa burada da
+  // yalnız anlamlı büyüklükteki (≥1 saat) bir eksik önerilir ve "olabilir"
+  // denir.
+  if (missing > TOLERANCE && rate > 0 && !comparison.shortfall) {
+    const shortfallHours = missing / rate;
+    if (shortfallHours >= 1 && shortfallHours <= 60) {
+      return `Eksik saat girilmemiş olabilir: bu fark ${formatQuarter(Math.round(shortfallHours * 100) / 100)} saatlik geç kalmaya denk geliyor.`;
     }
   }
 

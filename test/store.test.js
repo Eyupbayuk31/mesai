@@ -149,22 +149,46 @@ test('Store - profil sistemi öncesi eski (tek kullanıcılı) veri ilk profile 
 
 // --- Mola varsayılanı ---------------------------------------------------
 
-test('Store - mola düşme varsayılan olarak kapalı (18:00-21:00 = 3 saat)', () => {
+test('Store - mola varsayılanı Ağustos 2026 bordrosundan geliyor', () => {
   const store = freshStore();
-  assert.equal(store.getState().settings.breakWindow.enabled, false);
+  const bw = store.getState().settings.breakWindow;
+  // v2'de kapatılmıştı; bordro 20:19→2,00 / 20:47→2,28 / 21:00→2,50 yazarak
+  // hem molanın gerçekten düşüldüğünü hem penceresini kanıtladı.
+  assert.equal(bw.enabled, true);
+  assert.equal(bw.start, '20:00');
+  assert.equal(bw.end, '20:30');
+  assert.equal(store.getState().settings.minOvertimeMinutes, 15);
 });
 
-test('Store - eski kayıtta açık kalan mola bir kereliğine kapatılır', () => {
+test('Store - v2 hatası düzeltilir: kapatılmış varsayılan mola doğru pencereyle açılır', () => {
   globalThis.window = { localStorage: makeMemoryLocalStorage() };
+  // v2 molayı kapatmıştı. Ağustos 2026 bordrosu kapatmanın yanlış olduğunu
+  // gösterdi; v4 o kararı geri alıyor.
   window.localStorage.setItem('mesai.state', JSON.stringify({
-    schemaVersion: 1,
-    settings: { monthlySalary: 45000, breakWindow: { enabled: true, start: '18:30', end: '19:00' } },
+    schemaVersion: 3,
+    settings: { monthlySalary: 45000, breakWindow: { enabled: false, start: '18:30', end: '19:00' } },
     entries: [],
   }));
   const store = new Store();
-  assert.equal(store.getState().settings.breakWindow.enabled, false);
+  const bw = store.getState().settings.breakWindow;
+  assert.equal(bw.enabled, true);
+  assert.equal(bw.start, '20:00');
+  assert.equal(bw.end, '20:30');
   assert.equal(store.getState().settings.monthlySalary, 45000, 'diğer ayarlar korunur');
-  assert.equal(store.getState().settings.breakWindow.start, '18:30', 'saatler korunur');
+});
+
+test('Store - kullanıcı kendi mola penceresini girdiyse v4 ona dokunmaz', () => {
+  globalThis.window = { localStorage: makeMemoryLocalStorage() };
+  window.localStorage.setItem('mesai.state', JSON.stringify({
+    schemaVersion: 3,
+    settings: { breakWindow: { enabled: false, start: '12:00', end: '12:45' } },
+    entries: [],
+  }));
+  const store = new Store();
+  const bw = store.getState().settings.breakWindow;
+  assert.equal(bw.enabled, false, 'kullanıcının kapalı tercihi korunur');
+  assert.equal(bw.start, '12:00');
+  assert.equal(bw.end, '12:45');
 });
 
 test('Store - şema 2 olduktan sonra elle açılan mola kapatılmaz', () => {

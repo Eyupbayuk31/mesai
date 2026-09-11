@@ -7,7 +7,7 @@
 // Detay isteyen satırdaki › ile diğer kalemleri (yemek, mesai, kesinti)
 // de girer.
 
-import { periodSummary, workdayBreakdown } from '../payroll.js';
+import { periodSummary, workdayBreakdown, hourlyRate } from '../payroll.js';
 import { currentPeriodKey, periodLabel, shiftPeriod, payDateForPeriod, daysUntilPay } from '../period.js';
 import { formatMoney, formatHours, formatDayMonthShort, formatFullDate, toISODate, locative, parseLocaleNumber } from '../format.js';
 import {
@@ -38,6 +38,9 @@ function nextStatus(key) {
 }
 
 // Tabloda girilen dört alan. Hepsi opsiyonel; hiçbiri girilmemişse kayıt yok.
+// Yıllık tablonun sütunları. 'eksik' BİLEREK yok: tabloda okunmuyor, listeye
+// eklense yıllık kaydet her seferinde onu undefined'a çekip silerdi.
+// Eksik, ay görünümünde ve kalem sheet'inde giriliyor.
 const FIELDS = ['amount', 'transport', 'days', 'hours'];
 
 export function render(container, state, ctx) {
@@ -118,6 +121,9 @@ function renderMonth(container, state, ctx) {
         <div class="hero__label">${periodLabel(periodKey)} bordrosu</div>
         <div class="hero__value ${durum.cls}">${durum.baslik}</div>
         <div class="hero__sub">hesaba göre ${formatMoney(cmp.expected, { decimals: false })} · yatan ${formatMoney(cmp.paid, { decimals: false })}</div>
+        ${cmp.shortfall ? `<p class="hero__note" style="opacity:.85;">
+          ${formatHours(cmp.shortfall.hours)} eksik saat için ${formatMoney(cmp.shortfall.cost, { decimals: false })}
+          maaştan düşülerek hesaplandı.</p>` : ''}
         ${explanation ? `<p class="hero__note">${explanation}</p>` : ''}
       </div>
     </div>` : ''}
@@ -141,10 +147,27 @@ function renderMonth(container, state, ctx) {
           <input class="input input--amount" type="text" inputmode="decimal" id="monthHours" value="${numValue(slip.hours)}" placeholder="0" autocomplete="off" />
         </div>
       </div>
+      ${/* Eksik saat bordronun kendi sütunu ve doğrudan maaştan para
+           kesiyor. Uygulama bunu hesaplayamaz (mesai takip ediyoruz, giriş
+           saati değil), o yüzden bordrodan okunup giriliyor. */''}
+      <div class="field">
+        <label class="field__label">Eksik saat <span style="font-weight:500;color:var(--text-tertiary);">geç kalma · maaştan kesilir</span></label>
+        <input class="input input--amount" type="text" inputmode="decimal" id="monthEksik" value="${numValue(slip.eksik)}" placeholder="0" autocomplete="off" />
+        <div class="field__hint" id="eksikHint">${eksikHintText(slip.eksik, settings, periodKey)}</div>
+      </div>
       <div class="field" style="margin-bottom:0;">
         <label class="field__label">Not <span style="font-weight:500;color:var(--text-tertiary);">(opsiyonel)</span></label>
         <input class="input" type="text" id="monthNote" value="${(slip.note || '').replace(/"/g, '&quot;')}" placeholder="ör. ikramiye ayrı yattı" />
       </div>
+      ${/* Girilenlerin canlı toplamı. Olmadığında en sık hata görünmüyordu:
+           bordronun EN ALT satırını "Net maaş"a yazıp yol ve mesaiyi de ayrıca
+           girmek. O zaman ikisi iki kez sayılıyor ve sebebi anlaşılmadan
+           "fazla yatmış" çıkıyor. */''}
+      <div class="preview-strip" style="margin:14px 0 0;">
+        <span class="preview-strip__label">Girilenlerin toplamı</span>
+        <span class="preview-strip__value" id="slipSum">—</span>
+      </div>
+      <div class="field__hint" id="slipSumHint" style="margin-top:6px;"></div>
       <div class="table-foot">
         ${filled ? '<button class="btn btn--ghost btn--inline" id="monthClear" type="button">Bu ayı sil</button>' : '<span class="table-foot__hint">Kaydedene kadar tutulmaz.</span>'}
         <button class="btn btn--primary btn--inline" id="monthSave" type="button">Kaydet</button>
@@ -171,6 +194,7 @@ function renderMonth(container, state, ctx) {
     };
     payload.days = num('#monthDays');
     payload.hours = num('#monthHours');
+    payload.eksik = num('#monthEksik');
     payload.note = container.querySelector('#monthNote').value.trim();
     ctx.store.setPayslip(periodKey, payload);
     showToast(`${periodLabel(periodKey)} bordrosu kaydedildi`);
@@ -180,6 +204,8 @@ function renderMonth(container, state, ctx) {
     ctx.store.removePayslip(periodKey);
     showToast('Bordro kaydı silindi');
   });
+
+  wireLiveSum(container, summary, settings, periodKey);
 
   requestAnimationFrame(() => container.querySelector('[data-line="amount"]')?.focus({ preventScroll: true }));
 }
@@ -592,6 +618,12 @@ function openLineSheet(ctx, summary, tableRow) {
             </button>
             <div id="extraLines" hidden>${lineFieldsHTML(rest, summary, slip)}</div>`;
         })()}
+        <div class="field">
+          <label class="field__label">Eksik saat <span style="font-weight:500;color:var(--text-tertiary);">geç kalma · maaştan kesilir</span></label>
+          <input class="input input--amount" type="text" inputmode="decimal" id="sheetEksik" value="${numValue(slip.eksik)}" placeholder="0" autocomplete="off" />
+          <div class="field__hint">${eksikHintText(slip.eksik, state.settings, summary.periodKey)}</div>
+        </div>
+
         <div class="section-title" style="margin-top:4px;">Gün hesabı</div>
         ${dayBreakdownHTML(breakdown)}
 
@@ -615,6 +647,8 @@ function openLineSheet(ctx, summary, tableRow) {
           const raw = el.value.trim();
           payload[line.key] = raw === '' ? undefined : parseLocaleNumber(raw);
         }
+        const eksikRaw = bodyEl.querySelector('#sheetEksik').value.trim();
+        payload.eksik = eksikRaw === '' ? undefined : parseLocaleNumber(eksikRaw);
         payload.note = bodyEl.querySelector('#slipNote').value.trim();
         // Tablodaki alanlar da birlikte yazılır ki kaydedilmemiş giriş kaybolmasın.
         for (const f of FIELDS) {
@@ -626,4 +660,72 @@ function openLineSheet(ctx, summary, tableRow) {
       });
     },
   });
+}
+
+/**
+ * Eksik saatin para karşılığı. Kesinti ÇIPLAK saat ücretinden yapılır —
+ * çalışılmayan saat fazla çalışma değildir, mesai çarpanı uygulanmaz.
+ */
+function eksikHintText(eksik, settings, periodKey) {
+  const hours = Number(String(eksik ?? '').replace(',', '.'));
+  if (!Number.isFinite(hours) || hours <= 0) {
+    return 'Bordrodaki “Eksik” sütununun ay toplamı. Maaştan çıplak saat ücretiyle kesilir.';
+  }
+  const cost = hours * hourlyRate(settings, periodKey);
+  return `${formatHours(hours)} × ${formatMoney(hourlyRate(settings, periodKey))} = <b>${formatMoney(cost, { decimals: false })}</b> maaştan kesilir.`;
+}
+
+/**
+ * Girilenlerin canlı toplamı.
+ *
+ * En sık yapılan giriş hatasını görünür kılmak için var: bordronun EN ALT
+ * satırını ("net kazanç") Net maaş alanına yazıp yol ve mesaiyi de ayrıca
+ * girmek. O alt toplam ikisini zaten içerdiği için hepsi iki kez sayılıyor
+ * ve sebebi anlaşılmadan "fazla yatmış" çıkıyordu.
+ */
+function wireLiveSum(container, summary, settings, periodKey) {
+  const sumEl = container.querySelector('#slipSum');
+  const hintEl = container.querySelector('#slipSumHint');
+  const eksikEl = container.querySelector('#monthEksik');
+  const eksikHint = container.querySelector('#eksikHint');
+  if (!sumEl) return;
+
+  const read = (key) => {
+    const el = container.querySelector(`[data-line="${key}"]`);
+    const raw = el ? el.value.trim() : '';
+    return raw === '' ? null : parseLocaleNumber(raw);
+  };
+
+  const refresh = () => {
+    let total = 0;
+    let filled = 0;
+    let others = 0;
+    for (const line of PAYSLIP_LINES) {
+      const v = read(line.key);
+      if (v === null || !Number.isFinite(v)) continue;
+      filled += 1;
+      const signed = line.negative ? -v : v;
+      total += signed;
+      if (line.key !== 'amount') others += signed;
+    }
+    sumEl.textContent = filled === 0 ? '—' : formatMoney(total, { decimals: false });
+
+    const beklenen = Number(summary?.payoutTotal) || 0;
+    if (filled === 0) {
+      hintEl.innerHTML = 'Bu toplam, ödeme günü hesabına yatan tutara eşit olmalı.';
+    } else if (read('amount') !== null && others !== 0) {
+      // Uyarı değil bilgi: ikisi de doğru olabilir, ama karışması kolay.
+      hintEl.innerHTML = `Ödeme günü beklenen: <b>${formatMoney(beklenen, { decimals: false })}</b>.
+        Bordronun en alt satırını (net kazanç) Net maaş alanına yazdıysan yol ve
+        mesaiyi <b>boş bırak</b> — o satır ikisini zaten içeriyor, yoksa iki kez sayılır.`;
+    } else {
+      hintEl.innerHTML = `Ödeme günü beklenen: <b>${formatMoney(beklenen, { decimals: false })}</b>.`;
+    }
+
+    if (eksikHint && eksikEl) eksikHint.innerHTML = eksikHintText(eksikEl.value, settings, periodKey);
+  };
+
+  container.querySelectorAll('[data-line]').forEach((el) => el.addEventListener('input', refresh));
+  eksikEl?.addEventListener('input', refresh);
+  refresh();
 }

@@ -1,7 +1,7 @@
 import { timeSelectHTML } from '../timeSelect.js';
 import { seniority, entitlementFor } from '../../leave.js';
 import { todayISO } from '../../format.js';
-import { WEEKDAY_LABELS_FULL, WEEKDAY_JS_VALUES } from './shared.js';
+import { WEEKDAY_LABELS_FULL, WEEKDAY_JS_VALUES, commitNumberOnChange } from './shared.js';
 
 export const title = 'Çalışma programı';
 
@@ -80,6 +80,15 @@ export function render(container, state, ctx) {
           </div>
         </div>
       ` : ''}
+      <div class="field" style="margin:12px 0 0;">
+        <label class="field__label">En az mesai (dakika)</label>
+        <input class="input" type="text" inputmode="numeric" id="minOvertimeInput" value="${settings.minOvertimeMinutes || ''}" placeholder="0" />
+        <div class="field__hint">
+          Bu kadar dakikanın altındaki günlük mesai hiç sayılmaz. Ağustos 2026
+          bordrosunda 18:12 çıkış 0,00 — 18:18 çıkış 0,30 yazıyor; işyerinin
+          eşiği 15 dakika. Boş bırak = her dakika sayılır.
+        </div>
+      </div>
     </div>
   `;
 
@@ -143,6 +152,15 @@ export function render(container, state, ctx) {
     const key = part === 'Start' ? 'start' : 'end';
     ctx.store.updateSettings({ breakWindow: { ...settings.breakWindow, [key]: timeValue } });
   });
+
+  // Eşik molanın kardeşi: ikisi de "işyeri mesaiyi nasıl sayıyor" sorusunun
+  // cevabı, o yüzden aynı kartta duruyorlar.
+  const minOvertimeInput = container.querySelector('#minOvertimeInput');
+  if (minOvertimeInput) {
+    commitNumberOnChange(minOvertimeInput, (v) => {
+      ctx.store.updateSettings({ minOvertimeMinutes: Math.max(0, Math.round(v)) });
+    }, { emptyValue: 0 });
+  }
 }
 
 // "3 yıl 2 ay kıdem · yılda 14 gün izin hakkı" — tarih girilince görünür.
