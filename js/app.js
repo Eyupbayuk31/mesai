@@ -6,6 +6,7 @@ import { renderEntries } from './ui/entries.js';
 import { renderIncome } from './ui/income.js';
 import * as payslipPage from './ui/payslipPage.js';
 import * as absencesPage from './ui/absences.js';
+import * as severancePage from './ui/severancePage.js';
 import { NAV_TREE, QUICK_TABS, navLabel, navListHTML } from './ui/nav.js';
 import { wireDrawer, toggleDrawer, closeDrawer } from './ui/drawer.js';
 import { renderReportRoute } from './ui/report/index.js';
@@ -245,6 +246,7 @@ function boot(profileId) {
       if (page === 'entries') renderEntries(screenEl, state, ctx);
       else if (page === 'payslip') payslipPage.render(screenEl, state, ctx);
       else if (page === 'absences') absencesPage.render(screenEl, state, ctx);
+      else if (page === 'severance') severancePage.render(screenEl, state, ctx);
       else renderIncome(screenEl, state, ctx);
     }
     else if (tab === 'report') renderReportRoute(screenEl, state, ctx, page);

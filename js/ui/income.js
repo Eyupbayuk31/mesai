@@ -115,6 +115,21 @@ export function renderIncome(container, state, ctx) {
       ${summary.entries.length === 0
     ? '<div class="card empty"><div class="empty__title">Bu dönemde kayıt yok</div><div class="empty__sub">Sağ alttaki + ile mesai ekleyebilirsin.</div></div>'
     : `<ul class="list">${previewEntries(summary.entries).map((e) => entryRowHTML(e, settings)).join('')}</ul>`}
+
+      ${/* Alt sayfalara doğrudan kapı. Mobilde tek yol çekmeceyi açmaktı;
+            günde bir bakılmayan ama arandığında bulunamayan sayfalar bunlar. */''}
+      <div class="card card--menu">
+        <button class="menu-row" type="button" id="absenceLink">
+          <span class="menu-row__label">Gelinmeyen günler</span>
+          <span class="menu-row__value">izin · rapor</span>
+          <span class="menu-row__chevron">›</span>
+        </button>
+        <button class="menu-row" type="button" id="severanceLink">
+          <span class="menu-row__label">Tazminat hesapla</span>
+          <span class="menu-row__value">kıdem · ihbar</span>
+          <span class="menu-row__chevron">›</span>
+        </button>
+      </div>
     </div>
     </div>
   `;
@@ -139,6 +154,7 @@ export function renderIncome(container, state, ctx) {
   });
 
   container.querySelector('#absenceLink')?.addEventListener('click', () => ctx.navigate({ tab: 'income', page: 'absences' }));
+  container.querySelector('#severanceLink')?.addEventListener('click', () => ctx.navigate({ tab: 'income', page: 'severance' }));
 }
 
 // Mesai satırları. Tek tür varsa "Mesai ücreti · 14 sa ×1,5" tek satırdır;

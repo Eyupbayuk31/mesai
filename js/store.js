@@ -58,6 +58,12 @@ const DEFAULT_SETTINGS = {
   // İş Kanunu md. 53: 18 yaşından küçük / 50 yaşından büyük işçiye en az
   // 20 gün izin.
   leaveMinimum20: false,
+  // Tazminat sayfasının vergi tablosu. null = koddaki güncel yıl
+  // varsayılanları (js/severance.js). Asgari ücret, vergi dilimleri ve
+  // kıdem tavanı her yıl değiştiği ve kıdem tavanı yılda İKİ KEZ
+  // güncellendiği için kullanıcı bunları kendisi düzeltebilmeli; yoksa
+  // uygulama eskiyip sessizce yanlış tazminat hesaplar.
+  taxParams: null,
 };
 
 function defaultState() {

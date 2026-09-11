@@ -18,6 +18,7 @@ export const NAV_TREE = [
       { page: 'entries', label: 'Mesai kayıtları' },
       { page: 'payslip', label: 'Bordro' },
       { page: 'absences', label: 'Gelinmeyen günler' },
+      { page: 'severance', label: 'Tazminat hesapla' },
     ],
   },
   {
