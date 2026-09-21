@@ -33,8 +33,8 @@ function renderMain(container, state, ctx) {
   const year = view.year;
   const finance = yearFinance(state, year);
   const rows = visibleMonths(finance);
-  const eksik = finance.months.filter((m) => !m.isFuture && m.hasData && !m.hasIncome).length;
-  const sub = `${finance.dataMonths} ay veri · ${finance.incomeMonths} ay bordro`;
+  const eksik = finance.months.filter((m) => !m.isFuture && m.hasData && !m.hasCash).length;
+  const sub = `${finance.dataMonths} ay veri · ${finance.cashMonths} ay para girişi`;
 
   container.innerHTML = `
     ${scopeCardHTML({ kind: 'year', year, periodKey: view.periodKey }, sub)}
@@ -102,35 +102,42 @@ function tableHTML(finance, rows, eksik) {
       <div class="year-table__scroll">
         <table class="year-table">
           <thead>
+            ${/* Bu tablo GİDERLE YAN YANA gelir gösteriyor, o yüzden gelir
+                  sütunu NAKİT: o ay fiilen cebe giren para. Kazanç (ayın kendi
+                  bordrosu) kullanılsaydı "Kalan", Ağustos'un harcamasından
+                  parası daha gelmemiş Ağustos bordrosunu düşerdi ve olmayan
+                  bir açık basardı. Kazanç görünümü Gelir raporunda duruyor. */''}
             <tr><th>Ay</th><th>Mesai</th><th>Eline geçen</th><th>Harcama</th><th>Kalan</th></tr>
           </thead>
           <tbody>
             ${rows.map((m) => {
-    const partial = monthRowState(m) === 'no-income';
+    const partial = monthRowState(m, 'cash') === 'no-income';
     return `
               <tr data-year-month="${m.periodKey}" class="${partial ? 'is-partial' : ''}">
                 <td>${escapeHTML(formatMonthYear(m.periodKey).replace(` ${m.year}`, ''))}</td>
                 <td>${formatHours(m.hours)}</td>
-                <td${receivedTitle(m)}>${moneyOrDash(m.received, m.hasIncome)}</td>
+                <td${receivedTitle(m)}>${moneyOrDash(m.cash, m.hasCash)}</td>
                 <td>${formatMoney(m.spent, { decimals: false })}</td>
-                <td>${moneyOrDash(m.remaining, m.hasIncome)}</td>
+                <td>${moneyOrDash(m.remaining, m.hasCash)}</td>
               </tr>`;
   }).join('')}
             <tr class="is-total">
               <td>Toplam · ${rows.length} ay</td>
               <td>${formatHours(finance.hours)}</td>
-              <td>${formatMoney(finance.received, { decimals: false })}</td>
+              <td>${formatMoney(finance.cash, { decimals: false })}</td>
               <td>${formatMoney(finance.spent, { decimals: false })}</td>
-              ${/* Listedeki her ayın bordrosu yoksa toplam "kalan" da yalan
-                    olur: 8 aylık harcamadan 2 aylık geliri düşmek olmayan bir
-                    açık üretir. Satır bazındaki kuralın aynısı. */''}
-              <td>${moneyOrDash(finance.remaining, rows.every((m) => m.hasIncome))}</td>
+              ${/* Listedeki HARCAMASI OLAN bir ayın parası girmemişse toplam
+                    "kalan" yalan olur: 8 aylık harcamadan 2 aylık geliri
+                    düşmek olmayan bir açık üretir. Ama harcaması da parası da
+                    olmayan ay toplamı geçersiz kılmaz — onun yüzünden
+                    basmamak bilgi kaybı olurdu. */''}
+              <td>${moneyOrDash(finance.remaining, rows.every((m) => m.hasCash || m.spent === 0))}</td>
             </tr>
           </tbody>
         </table>
       </div>
       ${eksik > 0 ? `<p class="field__hint" style="margin:12px 0 0;">
-        ${eksik} ayın bordrosu girilmedi; o ayların geliri hesaplanmadı,
+        ${eksik} ayda hiç para girişi yok; o ayların kalanı hesaplanamadı,
         toplam kalan da bu yüzden basılmıyor.
       </p>` : ''}
     </div>`;
@@ -140,7 +147,8 @@ function tableHTML(finance, rows, eksik) {
 // Sheet kullanıcıyı raporda tutar, iki sekmeye de kapı açar.
 function openMonthSheet(ctx, state, periodKey) {
   const budget = budgetSummary(state, periodKey);
-  const received = budget.received;
+  // Sheet de gelir ve gideri yan yana koyuyor → nakit görünümü.
+  const received = budget.cash;
   const hasIncome = received.total > 0;
 
   openSheet({
@@ -157,7 +165,7 @@ function openMonthSheet(ctx, state, periodKey) {
     ? received.lines.map((l) => row(
       { payslip: 'Bordro', advance: 'Avans', manual: 'Para girişi' }[l.key] || l.key,
     formatMoney(l.amount, { decimals: false }))).join('')
-    : `<p class="field__hint" style="margin:0 0 10px;">Bu ayın bordrosu girilmemiş — eline geçen para hesaplanamıyor.</p>`}
+    : `<p class="field__hint" style="margin:0 0 10px;">Bu ay hiç para girişi yok — kalan hesaplanamıyor.</p>`}
           ${hasIncome ? row('Eline geçen', formatMoney(received.total, { decimals: false }), 'row--subtotal') : ''}
           ${budget.byCategory.map((c) => row(
     `<span style="color:var(--text-tertiary);"><span class="dot" style="background:${c.color};"></span>${escapeHTML(c.label)}</span>`,

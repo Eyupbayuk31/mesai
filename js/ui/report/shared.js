@@ -17,17 +17,24 @@ export function escapeHTML(str) {
  *   future    — ay henüz gelmedi. "Veri yok" DEĞİL; Kasım'a "veri yok"
  *               demek yıl sonunu bozuk gösterir.
  *   empty     — geçmiş ama hiç veri yok. Listeye hiç girmez.
- *   no-income — harcama/mesai var ama bordro girilmemiş. Satır kalır ama
- *               eline geçen ve KALAN hücreleri "—" olur: kalan'a −harcama
- *               yazmak olmayan bir açık icat etmektir, uydurma gelirle aynı
- *               sınıf bir yalan.
- *   full      — bordro girilmiş, bütün hücreler dolu.
+ *   no-income — harcama/mesai var ama gelir yok. Satır kalır ama gelir ve
+ *               KALAN hücreleri "—" olur: kalan'a −harcama yazmak olmayan
+ *               bir açık icat etmektir, uydurma gelirle aynı sınıf bir yalan.
+ *   full      — gelir girilmiş, bütün hücreler dolu.
+ *
+ * `basis` hangi saate bakılacağını söyler:
+ *   'income' (varsayılan) — ayın KENDİ bordrosu. Gelir raporu ve bordro
+ *                           denetimi bunu ister: "Ağustos bordrosu ne dedi".
+ *   'cash'                — o ay fiilen cebe giren para. Gelirin giderle
+ *                           yan yana durduğu her yerde bu kullanılmalı,
+ *                           yoksa "Kalan" iki farklı ayın parasını çıkarır.
  */
-export function monthRowState(m) {
+export function monthRowState(m, basis = 'income') {
   if (!m) return 'empty';
   if (m.isFuture) return 'future';
   if (!m.hasData) return 'empty';
-  return m.hasIncome ? 'full' : 'no-income';
+  const varMi = basis === 'cash' ? m.hasCash : m.hasIncome;
+  return varMi ? 'full' : 'no-income';
 }
 
 /** Raporlarda gösterilecek aylar: gelecek ve bomboş aylar elenir. */

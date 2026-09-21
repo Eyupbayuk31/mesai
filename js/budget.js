@@ -352,8 +352,10 @@ export function periodsFinance(state, periodKeys, todayStr = todayISO()) {
   const months = [];
   const byCategory = new Map();
   let received = 0;
+  let cash = 0;
   let earned = 0;
   let incomeMonths = 0;
+  let cashMonths = 0;
   let dataMonths = 0;
   let spent = 0;
   let invested = 0;
@@ -369,8 +371,14 @@ export function periodsFinance(state, periodKeys, todayStr = todayISO()) {
     // görünüyordu — çalışılmamış Ocak'a hesap uyduruyordu. Hesaplanan tutar
     // `earned` olarak durur: bordro denetimi ve "gelirinin ne kadarı mesai"
     // oranı onu kullanır.
+    // İKİ SAAT: kazanç (ayın kendi bordrosu) ve nakit (bu ay yatan).
+    // Gelir giderle AYNI SATIRDA duruyorsa nakit olmalı — yoksa "Kalan"
+    // Ağustos'un harcamasından Ağustos bordrosunu düşer, oysa o bordronun
+    // parası 10 Eylül'de gelir ve satır −24.026 gibi olmayan bir açık basar.
     const r = budget.received;
+    const c = budget.cash;
     const hasIncome = r.total > 0;
+    const hasCash = c.total > 0;
     months.push({
       periodKey,
       month: Number(periodKey.slice(5, 7)),
@@ -383,11 +391,16 @@ export function periodsFinance(state, periodKeys, todayStr = todayISO()) {
       payslipPeriod: r.payslipPeriod,
       hasPayslip: r.hasPayslip,
       hasIncome,
+      // Nakit görünümü: bu ay fiilen cebe giren para ve ona göre kalan.
+      cash: c.total,
+      cashPayslipPeriod: c.payslipPeriod,
+      hasCash,
       earned: budget.earnedTotal,
       spent: budget.spent,
       invested: monthInvested,
       // Sayı olarak kalır; "bordro yoksa gizle" kararını çizen taraf verir.
-      remaining: r.total - budget.spent,
+      // Kalan NAKDE dayanır: giderle aynı satırda duran gelir nakit olmalı.
+      remaining: c.total - budget.spent,
       hours: pay.totalHours,
       overtimePay: pay.overtimePay,
       isFuture: periodKey > todayStr.slice(0, 7),
@@ -403,8 +416,10 @@ export function periodsFinance(state, periodKeys, todayStr = todayISO()) {
     if (ay.isFuture) continue;
 
     received += r.total;
+    cash += c.total;
     earned += budget.earnedTotal;
     if (hasIncome) incomeMonths += 1;
+    if (hasCash) cashMonths += 1;
     if (ay.hasData) dataMonths += 1;
     spent += budget.spent;
     invested += monthInvested;
@@ -420,12 +435,14 @@ export function periodsFinance(state, periodKeys, todayStr = todayISO()) {
     from: periodKeys[0],
     to: periodKeys[periodKeys.length - 1],
     received,
+    cash,
     earned,
     incomeMonths,
+    cashMonths,
     dataMonths,
     spent,
     invested,
-    remaining: received - spent,
+    remaining: cash - spent,
     hours,
     overtimePay,
     byCategory: [...byCategory.entries()]

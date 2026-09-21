@@ -253,8 +253,9 @@ function buildYearReport({ profileName, yearSummary, settings, finance, portfoli
       <div class="stats">
         ${statCard('Yıllık mesai', formatHours(yearSummary.totalHours))}
         ${statCard('Yıllık mesai ücreti', formatMoney(yearSummary.totalOvertimePay), '#12946b')}
-        ${finance ? statCard('Eline geçen', formatMoney(finance.received, { decimals: false }), '#12946b') : statCard('Aylık ortalama', formatHours(yearSummary.totalHours / 12))}
-        ${finance ? statCard('Bordro girilen ay', `${finance.incomeMonths} / 12`) : ''}
+        ${/* Harcamanın yanında duruyor → NAKİT: o yıl fiilen cebe giren para. */''}
+        ${finance ? statCard('Eline geçen', formatMoney(finance.cash, { decimals: false }), '#12946b') : statCard('Aylık ortalama', formatHours(yearSummary.totalHours / 12))}
+        ${finance ? statCard('Para giren ay', `${finance.cashMonths} / 12`) : ''}
         ${finance ? statCard('Toplam harcama', formatMoney(finance.spent, { decimals: false }), '#c9402f') : statCard('Saat ücreti', formatMoney(settings.monthlySalary / (settings.hoursDivisor || 225)))}
         ${finance && finance.invested > 0 ? statCard('Yatırıma ayrılan', formatMoney(finance.invested, { decimals: false })) : ''}
         ${profitCard(portfolio)}

@@ -778,10 +778,12 @@ test('scopeFinance - ay kapsamı budgetSummary ile birebir tutuyor', () => {
   const budget = budgetSummary(state, '2026-07', '2026-08-24');
   assert.equal(fin.months.length, 1);
   assert.equal(fin.spent, budget.spent);
-  // periodsFinance KAZANÇ görünümünü taşır (ayın kendi bordrosu); bütçenin
-  // expectedTotal'ı ise o ay YATAN nakittir. İkisi bilerek ayrı.
-  assert.equal(fin.received, budget.received.total);
-  assert.equal(fin.remaining, budget.received.total - budget.spent);
+  // periodsFinance iki saati de taşır: `received` kazanç (ayın kendi
+  // bordrosu), `cash` bu ay yatan nakit. Kalan NAKDE dayanır — giderle
+  // aynı satırda duran gelir nakit olmalı.
+  assert.equal(fin.received, budget.received.total, 'kazanç görünümü');
+  assert.equal(fin.cash, budget.expectedTotal, 'nakit görünümü bütçeyle aynı');
+  assert.equal(fin.remaining, budget.expectedTotal - budget.spent);
   assert.equal(fin.from, '2026-07');
   assert.equal(fin.to, '2026-07');
 });
