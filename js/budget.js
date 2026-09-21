@@ -5,7 +5,7 @@ import { periodSummary } from './payroll.js';
 import { periodRange, shiftPeriod } from './period.js';
 import { loanExpensesForPeriod, loansSummary } from './loans.js';
 import { parseISODate, formatMoney, todayISO, withSuffix } from './format.js';
-import { receivedInPeriod } from './received.js';
+import { receivedInPeriod, cashInPeriod } from './received.js';
 import { investedInPeriod } from './investments.js';
 
 // Harcama kategorileri — renkler CSS değişkenlerinden bağımsız sabit hex,
@@ -80,13 +80,18 @@ export function budgetSummary(state, periodKey, todayStr = todayISO()) {
     byCategory.set(e.category, (byCategory.get(e.category) || 0) + amount);
   }
 
-  // Bütçenin dayanağı GERÇEKTEN GİREN PARA. Eskiden ayarlardaki maaştan
-  // türetiliyordu; maaş daha yatmadan bütçe varmış gibi görünüyor, ay başında
-  // olmayan parayı harcanabilir gösteriyordu. Artık bordroya girilen tutar
-  // (bir önceki dönemin bordrosu — bu ay ele geçen para) + para girişleri.
+  // Bütçenin dayanağı BU AY CEBE GİREN PARA — kazanç değil, nakit.
+  //
+  // İkisi farklı: Ağustos bordrosu Ağustos'un KAZANCIDIR ama 10 Eylül'de
+  // yatar, yani Eylül boyunca harcanan para odur. Bir süre bütçe de
+  // `receivedInPeriod` (ayın kendi bordrosu) üzerinden hesaplanıyordu ve
+  // Eylül'ün kalanı "−4.000 ₺" çıkıyordu: harcamalar Eylül'de, parası
+  // Ağustos'ta duruyordu.
+  const cash = cashInPeriod(state, periodKey);
+  // Kazanç görünümü rapor ve bordro denetimi için ayrıca taşınır.
   const received = receivedInPeriod(state, periodKey);
-  const hasSalary = received.total > 0;
-  const expectedTotal = received.total;
+  const hasSalary = cash.total > 0;
+  const expectedTotal = cash.total;
   const remaining = expectedTotal - spent;
 
   // Günlük pay yalnızca içinde bulunulan dönem için anlamlı; ayın kalan günleri
@@ -118,7 +123,9 @@ export function budgetSummary(state, periodKey, todayStr = todayISO()) {
       .filter((r) => r.active !== false && (r.since || '') === periodKey)
       .reduce((sum, r) => sum + (Number(r.amount) || 0), 0),
     expectedTotal,
-    // Bu dönem ele geçen paranın dökümü (bordro / avans / para girişi).
+    // Bu ay CEBE GİREN paranın dökümü — bütçe sayfası bunu basar.
+    cash,
+    // Ayın KENDİ kazancı (kendi bordrosu) — Özet kartı ve raporlar için.
     received,
     // Dönemin HESAPLANAN kazancı — bordro denetimi ve rapor için durur;
     // bütçe artık buradan hesaplanmıyor.

@@ -54,7 +54,7 @@ export function renderBudget(container, state, ctx) {
       ${categoryBarHTML(summary)}
       ${fixedVariableHTML(summary)}
       <div class="rows rows--receipt">
-        ${summary.received.lines.map((l) => receiptRow(
+        ${summary.cash.lines.map((l) => receiptRow(
           l.label,
           formatMoney(l.amount, { decimals: false }),
         )).join('')}

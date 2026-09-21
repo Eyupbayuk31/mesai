@@ -23,10 +23,11 @@ const baseSettings = {
   multipliers: { normal: 1.5, weekend: 2, holiday: 2 },
 };
 
-// Bütçe ayarlardaki maaştan değil, BORDRODAN hesaplanıyor. Bordro kendi
-// ayının parasıdır: Ağustos bordrosu 10 Eylül'de yatıp o gün girilse de
-// Ağustos'un bütçesine yazılır.
-const yatan = (amount, periodKey = '2026-08') => [{ id: `p_${periodKey}`, periodKey, amount }];
+// Bütçe ayarlardaki maaştan değil BU AY YATAN bordrodan hesaplanıyor:
+// '2026-08' bütçesinin parası, 10 Ağustos'ta yatan '2026-07' bordrosudur.
+// (Kazanç görünümü — ayın KENDİ bordrosu — budgetSummary.received'da ayrıca
+// duruyor; ikisi ayrı soruları cevaplıyor.)
+const yatan = (amount, periodKey = '2026-07') => [{ id: `p_${periodKey}`, periodKey, amount }];
 
 test('budgetSummary - harcamalar toplanır, dönem dışı sayılmaz, kalan hesaplanır', () => {
   const state = {
@@ -275,7 +276,7 @@ test('budgetSummary - sürekli gider sonraki aylarda otomatik sanal harcama üre
     expenses: [{ id: 'x1', date: '2026-08-05', amount: 5000, category: 'kira' }], // ilk giriş anı
     recurring: [{ id: 'r1', label: 'Kira', amount: 5000, category: 'kira', day: 5, since: '2026-08' }],
     adjustments: [],
-    payslips: [...yatan(30000, '2026-08'), ...yatan(30000, '2026-09')],
+    payslips: [...yatan(30000, '2026-07'), ...yatan(30000, '2026-08')],
   };
   // Girildiği ay: sanal üretilmez (gerçek harcama zaten var, çifte sayım olmasın)
   const aug = budgetSummary(state, '2026-08', '2026-08-21');
@@ -359,7 +360,7 @@ test('Store - sürekli gider ekle/güncelle/kaldır', async () => {
 const paceState = (expenses, recurring = []) => ({
   settings: { ...baseSettings, monthlySalary: 30000 },
   entries: [], adjustments: [], expenses, recurring,
-  payslips: [...yatan(30000, '2026-07'), ...yatan(30000, '2026-08')],
+  payslips: [...yatan(30000, '2026-06'), ...yatan(30000, '2026-07')],
 });
 
 test('spendingPace - değişken harcama ay sonuna ileri sarılır', () => {
@@ -777,8 +778,10 @@ test('scopeFinance - ay kapsamı budgetSummary ile birebir tutuyor', () => {
   const budget = budgetSummary(state, '2026-07', '2026-08-24');
   assert.equal(fin.months.length, 1);
   assert.equal(fin.spent, budget.spent);
-  assert.equal(fin.received, budget.expectedTotal);
-  assert.equal(fin.remaining, budget.expectedTotal - budget.spent);
+  // periodsFinance KAZANÇ görünümünü taşır (ayın kendi bordrosu); bütçenin
+  // expectedTotal'ı ise o ay YATAN nakittir. İkisi bilerek ayrı.
+  assert.equal(fin.received, budget.received.total);
+  assert.equal(fin.remaining, budget.received.total - budget.spent);
   assert.equal(fin.from, '2026-07');
   assert.equal(fin.to, '2026-07');
 });
@@ -801,4 +804,49 @@ test('scopeFinance - ay kapsamında da bordrosuz ay gelir uydurmaz', () => {
   assert.equal(ocak.hasIncome, false);
   assert.ok(ocak.earned > 0, 'hesaplanan kazanç ayrıca durur');
   assert.equal(fin.incomeMonths, 0);
+});
+
+// --- Bütçe nakde dayanır, kazanca değil ------------------------------------
+
+test('budgetSummary - bütçe BU AY YATAN paradan hesaplanır', () => {
+  // Kullanıcının yakaladığı mantık hatası: harcamalar Eylül'de, parası
+  // Ağustos'ta duruyordu ve Eylül "−4.000 ₺ açık" görünüyordu.
+  const state = {
+    settings: baseSettings,
+    entries: [], adjustments: [], recurring: [], loans: [],
+    payslips: [{ id: 'p1', periodKey: '2026-08', amount: 5973.78 }],
+    expenses: [
+      { id: 'x1', date: '2026-09-03', amount: 2500, category: 'market' },
+      { id: 'x2', date: '2026-09-18', amount: 1500, category: 'fatura' },
+    ],
+  };
+  const eylul = budgetSummary(state, '2026-09', '2026-09-21');
+  assert.equal(eylul.expectedTotal, 5973.78, '10 Eylül’de yatan Ağustos bordrosu');
+  assert.equal(eylul.spent, 4000);
+  assert.ok(Math.abs(eylul.remaining - 1973.78) < 0.01, 'kalan artı olmalı');
+  assert.equal(eylul.hasSalary, true);
+
+  // Kazanç görünümü ayrıca duruyor: Ağustos bordrosu Ağustos'un kazancı.
+  assert.equal(eylul.received.total, 0, 'Eylül’ün kendi bordrosu yok');
+  assert.equal(budgetSummary(state, '2026-08', '2026-09-21').received.total, 5973.78);
+});
+
+test('budgetSummary - harcamalar 1’inden ayın sonuna kadar sayılır', () => {
+  // "Ayın 10’una kadar sayıyor" şüphesi: ayın her günü sayılmalı.
+  const state = {
+    settings: baseSettings,
+    entries: [], adjustments: [], recurring: [], loans: [],
+    payslips: [{ id: 'p1', periodKey: '2026-08', amount: 10000 }],
+    expenses: [
+      { id: 'x1', date: '2026-09-01', amount: 100, category: 'market' },
+      { id: 'x2', date: '2026-09-09', amount: 200, category: 'market' },
+      { id: 'x3', date: '2026-09-10', amount: 400, category: 'market' },
+      { id: 'x4', date: '2026-09-11', amount: 800, category: 'market' },
+      { id: 'x5', date: '2026-09-30', amount: 1600, category: 'market' },
+      { id: 'x6', date: '2026-10-01', amount: 9999, category: 'market' },
+    ],
+  };
+  const b = budgetSummary(state, '2026-09', '2026-09-21');
+  assert.equal(b.spent, 3100, 'ayın 1’i de 30’u da dahil, ekim hariç');
+  assert.equal(b.expenseCount, 5);
 });

@@ -109,3 +109,57 @@ test('payslipTotal - bordrodaki avans satırı toplamdan düşülür', async () 
     5973.78,
   );
 });
+
+// --- Nakit (bütçenin dayanağı) --------------------------------------------
+
+test('cashInPeriod - bu ay YATAN bordroyu sayar, kendi bordrosunu değil', async () => {
+  const { cashInPeriod } = await import('../js/received.js');
+  const s = state({ payslips: [{ id: 'p1', periodKey: '2026-08', amount: 5973.78 }] });
+
+  // Ağustos bordrosu 10 Eylül'de yatar: Eylül'ün harcanabilir parası odur.
+  const eylul = cashInPeriod(s, '2026-09');
+  assert.equal(eylul.total, 5973.78);
+  assert.equal(eylul.payslipPeriod, '2026-08');
+  assert.equal(eylul.hasPayslip, true);
+
+  // Ağustos'un nakdi Temmuz bordrosudur; yoksa sıfırdır.
+  assert.equal(cashInPeriod(s, '2026-08').total, 0);
+});
+
+test('cashInPeriod ve receivedInPeriod AYRI sorulara cevap verir', async () => {
+  const { cashInPeriod } = await import('../js/received.js');
+  const s = state({ payslips: [{ id: 'p1', periodKey: '2026-08', amount: 5973.78 }] });
+
+  // Aynı bordro: kazanç Ağustos'un, nakit Eylül'ün.
+  assert.equal(receivedInPeriod(s, '2026-08').total, 5973.78, 'kazanç kendi ayında');
+  assert.equal(receivedInPeriod(s, '2026-09').total, 0);
+  assert.equal(cashInPeriod(s, '2026-08').total, 0);
+  assert.equal(cashInPeriod(s, '2026-09').total, 5973.78, 'nakit yattığı ayda');
+});
+
+test('cashInPeriod - para girişi ve avans girildiği döneme yazılır', async () => {
+  const { cashInPeriod } = await import('../js/received.js');
+  const s = state({
+    payslips: [{ id: 'p1', periodKey: '2026-08', amount: 5000 }],
+    adjustments: [
+      { id: 'a1', periodKey: '2026-09', kind: 'income', amount: 3000, label: 'Yan iş' },
+      { id: 'a2', periodKey: '2026-09', kind: 'advance', amount: 1000, label: '' },
+      { id: 'a3', periodKey: '2026-08', kind: 'income', amount: 9999 },
+    ],
+  });
+  const r = cashInPeriod(s, '2026-09');
+  assert.equal(r.total, 9000, '5000 bordro + 3000 giriş + 1000 avans');
+  assert.deepEqual(r.lines.map((l) => l.label), ['Bordro', 'Avans', 'Para girişi']);
+  assert.deepEqual(r.lines.find((l) => l.key === 'manual').items.map((i) => i.label), ['Yan iş']);
+});
+
+test('cashInPeriod - kaydırma yoksa ayın kendi bordrosu', async () => {
+  const { cashInPeriod } = await import('../js/received.js');
+  const s = {
+    settings: { payDay: 30, payMonthOffset: 0 },
+    payslips: [{ id: 'p1', periodKey: '2026-09', amount: 40000 }],
+    adjustments: [],
+  };
+  assert.equal(cashInPeriod(s, '2026-09').total, 40000);
+  assert.equal(cashInPeriod(s, '2026-09').payslipPeriod, '2026-09');
+});

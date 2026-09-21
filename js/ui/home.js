@@ -105,7 +105,7 @@ export function renderHome(container, state, ctx) {
     ${hasSalary ? `
     <div class="stat-strip stat-strip--kpi">
       <div class="stat-strip__item stat-strip__item--wide">
-        <div class="stat-strip__label">Bu dönem eline geçen</div>
+        <div class="stat-strip__label">Bu ayın kazancı</div>
         <div class="stat-strip__value">${received.total > 0 ? formatMoney(received.total, { decimals: false }) : '—'}</div>
       </div>
       ${/* "Bu hafta" içinde bulunulan aya ait bir sayı; Ağustos'a bakarken
@@ -428,11 +428,16 @@ function nudgeHTML() {
   `;
 }
 
-// --- Bu dönem eline geçen para --------------------------------------------
+// --- Bu ayın kazancı ------------------------------------------------------
 //
-// Eskiden burada maaş + yemek + yol tahmini yazıyordu; para daha yatmadan
-// cepte varmış gibi görünüyordu. Artık yalnız gerçekten giren para: maaş
-// yatınca girilen bordro, avans ve elle eklenen para girişleri.
+// Eskiden burada maaş + yemek + yol TAHMİNİ yazıyordu; para daha yatmadan
+// cepte varmış gibi görünüyordu. Artık yalnız gerçek kayıtlar: ayın kendi
+// bordrosu, avans ve elle eklenen para girişleri.
+//
+// Adı bilerek "eline geçen" değil: bu kart ayın KAZANCINI gösteriyor (Ağustos
+// bordrosu Ağustos'un). O paranın cebe girdiği ay farklı olabilir — 10
+// Eylül'de yatar — ve harcanabilir nakdi Gider sekmesi gösteriyor. İki ekran
+// iki ayrı soruyu cevaplıyor; aynı adı taşırlarsa biri mutlaka yalan olur.
 function receivedHTML(received) {
   // Bu ayın gelirini doldurmanın yolu BU AYIN bordrosunu girmek.
   const month = periodLabel(received.periodKey);
@@ -470,7 +475,7 @@ function receivedHTML(received) {
         `${i === 0 ? '' : '+ '}${formatMoney(l.amount, { decimals: false })}`,
         { valueCls: i === 0 ? '' : 'is-positive' },
       )).join('')}
-      ${receiptRow('Bu dönem eline geçen', formatMoney(received.total), { rowCls: 'row--total' })}
+      ${receiptRow('Bu ayın kazancı', formatMoney(received.total), { rowCls: 'row--total' })}
     </div>
     <div class="table-foot">
       <button class="btn btn--secondary btn--inline" id="receivedIncome" type="button">Para girişi ekle</button>
