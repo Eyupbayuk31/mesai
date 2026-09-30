@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mesai-v88';
+const CACHE_NAME = 'mesai-v89';
 const APP_SHELL = [
   './',
   './index.html',
@@ -143,7 +143,22 @@ self.addEventListener('fetch', (event) => {
     // yüklenemeyince de ekran tamamen boş kalıyordu.
     event.respondWith(
       fetch(event.request.url, { cache: 'no-cache', credentials: 'same-origin' })
-        .then((response) => putInCache(event.request, response))
+        .then((response) => {
+          if (response.ok) return putInCache(event.request, response);
+          // Sunucu CEVAP VERDİ ama dosyayı vermedi (404, 5xx). fetch bunu
+          // hata saymaz, o yüzden aşağıdaki catch hiç çalışmıyordu ve
+          // çevrimdışı çalışma yalnız gerçek ağ kopukluğunda geçerliydi. Site
+          // yayından düştüğünde (Pages kapanınca 404) kurulu uygulama bile
+          // GitHub'ın 404 sayfasını gösteriyordu, oysa önbellekte çalışan bir
+          // kopya duruyordu. Artık iyi olmayan cevapta önbelleğe düşülür; kopya
+          // hiç yoksa sunucunun cevabı olduğu gibi döner.
+          //
+          // index.html'e düşme yalnız gezinmede: eksik bir .js isteğine HTML
+          // dönmek modülü "yüklenemedi" diye patlatırdı.
+          return caches.match(event.request)
+            .then((cached) => cached || (event.request.mode === 'navigate' ? caches.match('./index.html') : undefined))
+            .then((cached) => cached || response);
+        })
         .catch(() => caches.match(event.request).then((cached) => cached || caches.match('./index.html')))
     );
     return;
