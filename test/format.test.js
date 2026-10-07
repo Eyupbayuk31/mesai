@@ -48,3 +48,42 @@ test('numberAblative - yıllara ayrılma hâli', () => {
   assert.equal(numberAblative(2024), "2024'ten", 'dörtten');
   assert.equal(numberAblative(2030), "2030'dan", 'otuzdan');
 });
+
+// --- parseAmount: yatırım formundaki fiyat/miktar girişi ---------------
+// Eskiden "7.100" → 7,1 okunuyordu (fiyat sessizce 1000 kat küçülüyordu).
+
+import { parseAmount } from '../js/format.js';
+
+test('parseAmount - Türkçe yazış: nokta binlik, virgül ondalık', () => {
+  assert.equal(parseAmount('7100'), 7100);
+  assert.equal(parseAmount('7.100'), 7100, 'binlik noktası');
+  assert.equal(parseAmount('1.500'), 1500);
+  assert.equal(parseAmount('1.500,50'), 1500.5);
+  assert.equal(parseAmount('7 100,5'), 7100.5);
+  assert.equal(parseAmount('41,5'), 41.5);
+  assert.equal(parseAmount('1.250.000'), 1250000);
+});
+
+test('parseAmount - noktalı ondalık ve küsurat bozulmaz', () => {
+  assert.equal(parseAmount('7.5'), 7.5);
+  assert.equal(parseAmount('41.50'), 41.5);
+  assert.equal(parseAmount('0.015'), 0.015, 'başı 0 ise ondalık');
+  assert.equal(parseAmount('0,015'), 0.015);
+  assert.equal(parseAmount('0.5'), 0.5);
+});
+
+test('parseAmount - İngilizce yazış ve birim/₺ ekleri', () => {
+  assert.equal(parseAmount('1,500.50'), 1500.5);
+  assert.equal(parseAmount('1,500,000'), 1500000);
+  assert.equal(parseAmount('7100d'), 7100);
+  assert.equal(parseAmount('7.100 TL'), 7100);
+  assert.equal(parseAmount('₺ 7.100,25'), 7100.25);
+});
+
+test('parseAmount - boş veya anlamsız giriş 0', () => {
+  assert.equal(parseAmount(''), 0);
+  assert.equal(parseAmount(null), 0);
+  assert.equal(parseAmount(undefined), 0);
+  assert.equal(parseAmount('abc'), 0);
+  assert.equal(parseAmount('-'), 0);
+});

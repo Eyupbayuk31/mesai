@@ -83,6 +83,36 @@ export function parseLocaleNumber(input) {
   return Number(normalized);
 }
 
+// Para/miktar girişini sayıya çevirir; geçersizse 0 (çağıranlar > 0 diye kontrol eder).
+// Türkçe yazış esastır: nokta binlik, virgül ondalık ayracıdır.
+//   "7100" "7.100" "7 100" → 7100    "1.500,50" → 1500,5    "41,5" → 41,5
+//   "0.015" "7.5" "41.50" → ondalık   (noktadan sonra 3 hane + başı 0 değilse binliktir)
+// Birimler ve ₺ gibi harfler atılır: "7100d", "7 100 TL" geçerlidir.
+export function parseAmount(raw) {
+  const s = String(raw ?? '').replace(/[^\d.,]/g, '');
+  if (!s) return 0;
+  const lastDot = s.lastIndexOf('.');
+  const lastComma = s.lastIndexOf(',');
+  let normalized;
+  if (lastDot >= 0 && lastComma >= 0) {
+    // İkisi birden: sonuncusu ondalık, öteki binlik ("1.500,50" ve "1,500.50").
+    const decimalAt = Math.max(lastDot, lastComma);
+    normalized = s.slice(0, decimalAt).replace(/[.,]/g, '') + '.' + s.slice(decimalAt + 1).replace(/[.,]/g, '');
+  } else if (lastComma >= 0) {
+    // Tek virgül ondalıktır; birden çok virgül binliktir ("1,500,000").
+    normalized = s.indexOf(',') === lastComma ? s.replace(',', '.') : s.replace(/,/g, '');
+  } else if (lastDot >= 0) {
+    const [head, tail] = [s.slice(0, lastDot), s.slice(lastDot + 1)];
+    const multiple = s.indexOf('.') !== lastDot;
+    const thousands = multiple || (tail.length === 3 && head.length >= 1 && head.length <= 3 && !head.startsWith('0'));
+    normalized = thousands ? s.replace(/\./g, '') : s;
+  } else {
+    normalized = s;
+  }
+  const value = Number(normalized);
+  return Number.isFinite(value) ? value : 0;
+}
+
 export function todayISO() {
   return toISODate(new Date());
 }

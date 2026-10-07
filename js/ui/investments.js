@@ -8,7 +8,7 @@ import {
   formatQuantity, quantityLabel, priceLabel, avgLabel, portfolioByKind, bestWorstAsset,
 } from '../investments.js';
 import { currentPeriodKey, periodLabel } from '../period.js';
-import { formatMoney, formatDayMonth, formatMonthYear, todayISO, toISODate } from '../format.js';
+import { formatMoney, formatDayMonth, formatMonthYear, todayISO, toISODate, parseAmount } from '../format.js';
 import { openSheet, closeSheet } from './sheet.js';
 import { showToast } from './toast.js';
 
@@ -628,13 +628,6 @@ export function openAddInvestment(ctx) {
       });
     },
   });
-}
-
-// "7100d", "7 100 TL" gibi girişleri de kabul et: sayı dışındaki her şey atılır.
-function parseAmount(raw) {
-  const cleaned = String(raw ?? '').replace(/[^\d.,]/g, '').replace(',', '.');
-  const value = Number(cleaned);
-  return Number.isFinite(value) ? value : 0;
 }
 
 function formatPct(value) {
