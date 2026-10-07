@@ -4,6 +4,7 @@
 import {
   portfolioSummary, donutSlices, DONUT_RADIUS, monthlyInvestBuckets, recentLots, formatQuantity,
   avgLabel, portfolioByKind, bestWorstAsset, isSell, pendingPlans, skipPlanMonth, unitOf,
+  goalProgress, allocationGap, cleanTargets,
 } from '../investments.js';
 import { portfolioChartHTML, bindPortfolioChart } from './investChart.js';
 import { getCachedMarket, getMarketLog, symbolForAsset, nudgeDismissed, dismissNudge } from '../marketPrices.js';
@@ -12,6 +13,7 @@ import { formatMoney, formatDayMonth, formatMonthYear, todayISO } from '../forma
 import { showToast } from './toast.js';
 import { formatPct, escapeHTML, marketTimeLabel } from './invest/shared.js';
 import { openLotSheet } from './invest/lotSheet.js';
+import { openGoalSheet } from './invest/goalSheet.js';
 import { openPriceSheet, openAssetSheet, openBulkPriceSheet } from './invest/assetSheets.js';
 import { exportLots } from './invest/lotsPage.js';
 
@@ -35,6 +37,7 @@ export function render(container, state, ctx) {
       <div class="pane">
         ${dashboardHTML(summary, market)}
         ${bestWorstHTML(summary)}
+        ${goalsCardHTML(state, summary)}
         ${portfolioChartHTML(state, range, chartExtra)}
         ${investChartHTML(state)}
       </div>
@@ -65,6 +68,7 @@ export function render(container, state, ctx) {
     }
     ctx.refreshMarket?.({ force: true });
   });
+  container.querySelectorAll('[data-open-goals]').forEach((el) => el.addEventListener('click', () => openGoalSheet(ctx)));
   container.querySelector('#planCard')?.addEventListener('click', (e) => {
     const buy = e.target.closest('[data-plan-buy]');
     const skip = e.target.closest('[data-plan-skip]');
@@ -319,6 +323,77 @@ function planCardHTML(state) {
             <button class="asset__sell" type="button" data-plan-skip="${d.asset.id}">Atla</button>
           </div>
         </div>`).join('')}
+    </div>
+  `;
+}
+
+// --- Hedefler ---------------------------------------------------------------
+
+// Birikim hedefi ilerlemesi ve hedef dağılıma göre sapma. Hedef yoksa ekranı
+// kalabalıklaştırmadan tek satırlık bir davet gösterilir.
+function goalsCardHTML(state, summary) {
+  const settings = state.settings || {};
+  const goal = goalProgress(settings.investGoal, summary.totalValue, todayISO());
+  const targets = cleanTargets(settings.investTargets);
+  if (!goal && !targets) {
+    return '<button class="goal-invite" type="button" data-open-goals>Hedef belirle: birikim tutarı, hedef dağılım ›</button>';
+  }
+
+  let goalHTML = '';
+  if (goal) {
+    const when = goal.byMonth ? ` · ${formatMonthYear(goal.byMonth)}'a kadar` : '';
+    const note = goal.reached
+      ? 'Hedefe ulaştın.'
+      : goal.overdue
+        ? `Hedef tarihi geçti; kalan ${formatMoney(goal.remaining, { decimals: false })}.`
+        : goal.byMonth
+          ? `Hedefe ${goal.monthsLeft > 0 ? `${goal.monthsLeft} ay` : 'bu ay'} kaldı: ayda yaklaşık <b>${formatMoney(goal.perMonth, { decimals: false })}</b> gerekiyor.`
+          : `Kalan ${formatMoney(goal.remaining, { decimals: false })}.`;
+    goalHTML = `
+      <div class="goal-block">
+        <div class="goal-block__head"><span>Birikim hedefi${when}</span><b>${formatMoney(goal.amount, { decimals: false })}</b></div>
+        <div class="goal-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(goal.pct)}" aria-label="Hedefe ilerleme">
+          <div class="goal-bar__fill ${goal.reached ? 'is-done' : ''}" style="width:${goal.pct.toFixed(1)}%"></div>
+        </div>
+        <div class="goal-block__sub"><span>${formatMoney(goal.value, { decimals: false })} · %${formatPct(goal.pct)}</span></div>
+        <div class="goal-block__note">${note}</div>
+      </div>`;
+  }
+
+  let allocHTML = '';
+  const gap = targets ? allocationGap(portfolioByKind(summary), targets) : [];
+  if (gap.length > 0) {
+    // Sıradaki alım önerisi: hedefin en çok altında kalan tür (en az 3 puan).
+    const behind = [...gap].filter((g) => g.diff <= -3).sort((a, b) => a.diff - b.diff)[0];
+    allocHTML = `
+      <div class="goal-block">
+        <div class="goal-block__head"><span>Hedef dağılım</span></div>
+        ${gap.map((g) => {
+    const off = Math.abs(g.diff) < 1;
+    return `
+        <div class="alloc-row">
+          <div class="alloc-row__top">
+            <span>${escapeHTML(g.label)}</span>
+            <span>%${formatPct(g.pct)} <em>/ hedef %${formatPct(g.targetPct)}</em></span>
+          </div>
+          <div class="alloc-bar" aria-hidden="true">
+            <div class="alloc-bar__fill" style="width:${Math.min(100, g.pct).toFixed(1)}%"></div>
+            <div class="alloc-bar__target" style="left:${Math.min(100, g.targetPct).toFixed(1)}%"></div>
+          </div>
+          <div class="alloc-row__shift ${off ? '' : (g.diff > 0 ? 'is-over' : 'is-under')}">${off ? 'hedefte' : `${formatMoney(Math.abs(g.shift), { decimals: false })} ${g.shift > 0 ? 'ekle' : 'azalt'} (${Math.abs(g.diff).toLocaleString('tr-TR', { maximumFractionDigits: 0 })} puan ${g.diff > 0 ? 'üstünde' : 'altında'})`}</div>
+        </div>`;
+  }).join('')}
+        ${behind ? `<div class="goal-block__note">Sıradaki alımı <b>${escapeHTML(behind.label)}</b> için yap; hedefin altında.</div>` : ''}
+      </div>`;
+  }
+
+  return `
+    <div class="card goals-card">
+      <div class="section-header" style="margin-bottom:8px;">
+        <span class="section-title" style="margin:0;">Hedefler</span>
+        <button class="section-header__link" type="button" data-open-goals>Düzenle ›</button>
+      </div>
+      ${goalHTML}${allocHTML}
     </div>
   `;
 }

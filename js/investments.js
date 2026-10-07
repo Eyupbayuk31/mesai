@@ -765,3 +765,83 @@ export function skipPlanMonth(plan, periodKey) {
   const skipped = [...(plan?.skipped || []).filter((k) => k !== periodKey), periodKey].slice(-12);
   return { ...plan, skipped };
 }
+
+// --- Hedefler: birikim hedefi ve hedef dağılım -----------------------------
+//
+// Ayarlarda durur (investGoal, investTargets) — varlık/alım kayıtlarına
+// dokunmaz. Hedefler yalnızca ekrana bilgi verir; hiçbir kaydı değiştirmez.
+
+function monthIndex(key) {
+  const [y, m] = String(key).split('-').map(Number);
+  return y * 12 + (m - 1);
+}
+
+/**
+ * Birikim hedefi ilerlemesi. Değer olarak portföyün GÜNCEL değeri alınır
+ * (gerçekleşmemiş kâr dahil); hedef tarihe kalan ay sayısına bölünerek
+ * "ayda ne kadar" bulunur. Tarih geçmişse ya da bu aysa tüm kalan bu ay istenir.
+ *
+ * @param {{amount:number, byMonth:string}|null} goal
+ * @returns {null|{amount:number, value:number, pct:number, remaining:number, monthsLeft:number, perMonth:number, reached:boolean, overdue:boolean}}
+ */
+export function goalProgress(goal, totalValue, today) {
+  const amount = Number(goal?.amount);
+  if (!(amount > 0)) return null;
+  const value = Math.max(0, Number(totalValue) || 0);
+  const remaining = Math.max(0, amount - value);
+  const reached = value >= amount;
+  const thisMonth = String(today).slice(0, 7);
+  const byMonth = /^\d{4}-\d{2}$/.test(goal?.byMonth || '') ? goal.byMonth : null;
+  const monthsLeft = byMonth ? monthIndex(byMonth) - monthIndex(thisMonth) : 0;
+  return {
+    amount,
+    value,
+    pct: Math.min(100, (value / amount) * 100),
+    remaining,
+    monthsLeft: Math.max(0, monthsLeft),
+    perMonth: reached ? 0 : remaining / Math.max(1, monthsLeft),
+    reached,
+    overdue: !!byMonth && !reached && monthsLeft < 0,
+    byMonth,
+  };
+}
+
+/** Kayıtlı hedef dağılımı temizler: yalnız bilinen türler, pozitif yüzdeler; yoksa null. */
+export function cleanTargets(targets) {
+  const out = {};
+  for (const k of ASSET_KINDS) {
+    const v = Number(targets?.[k.key]);
+    if (Number.isFinite(v) && v > 0) out[k.key] = Math.min(100, v);
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+/**
+ * Hedef dağılıma göre sapma. Hedef yüzdeleri toplamı 100 olmasa da (ör. 60 + 30)
+ * oransal olarak 100'e ölçeklenir; kullanıcıdan "tam 100 yap" diye ısrar edilmez.
+ *
+ * @param {Array} groups portfolioByKind() çıktısı (elde olan türler)
+ * @returns {Array<{kind,label,pct,targetPct,diff,shift}>} büyük sapmadan küçüğe;
+ *   diff: gerçek − hedef (puan), shift: hedefe gelmek için ₺ (+ ekle / − azalt)
+ */
+export function allocationGap(groups, targets) {
+  const clean = cleanTargets(targets);
+  if (!clean) return [];
+  const sum = Object.values(clean).reduce((t, v) => t + v, 0);
+  const total = (groups || []).reduce((t, g) => t + g.value, 0);
+  const byKind = new Map((groups || []).map((g) => [g.kind, g]));
+  const kinds = new Set([...Object.keys(clean), ...byKind.keys()]);
+  return [...kinds].map((kind) => {
+    const g = byKind.get(kind);
+    const pct = g ? g.pct : 0;
+    const targetPct = ((clean[kind] || 0) / sum) * 100;
+    return {
+      kind,
+      label: g ? g.label : kindByKey(kind).label,
+      pct,
+      targetPct,
+      diff: pct - targetPct,
+      shift: (targetPct / 100) * total - (g ? g.value : 0),
+    };
+  }).sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff) || b.pct - a.pct);
+}

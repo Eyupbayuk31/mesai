@@ -24,6 +24,7 @@ const MODULES = [
   '../js/ui/invest/lotSheet.js',
   '../js/ui/invest/assetSheets.js',
   '../js/ui/invest/lotsPage.js',
+  '../js/ui/invest/goalSheet.js',
   '../js/ui/investChart.js',
   '../js/ui/market.js',
 ];

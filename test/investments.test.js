@@ -911,3 +911,82 @@ test('buildPlan / skipPlanMonth', () => {
   assert.equal(skipPlanMonth(plan15, '2026-10').skipped.filter((k) => k === '2026-10').length, 1);
   assert.equal(plan15.skipped.length, 0, 'girdi değişmez');
 });
+
+// --- Hedefler -----------------------------------------------------------------
+
+import { goalProgress, cleanTargets, allocationGap } from '../js/investments.js';
+
+test('goalProgress - ilerleme, kalan ve ayda gereken tutar', () => {
+  const g = goalProgress({ amount: 200000, byMonth: '2026-12' }, 50000, '2026-10-07');
+  assert.equal(g.pct, 25);
+  assert.equal(g.remaining, 150000);
+  assert.equal(g.monthsLeft, 2);
+  assert.equal(g.perMonth, 75000, '150.000 / 2 ay');
+  assert.equal(g.reached, false);
+  assert.equal(g.overdue, false);
+});
+
+test('goalProgress - hedef ulaşıldıysa ayda 0, oran 100\'ü geçmez', () => {
+  const g = goalProgress({ amount: 100000, byMonth: '2026-12' }, 130000, '2026-10-07');
+  assert.equal(g.reached, true);
+  assert.equal(g.pct, 100);
+  assert.equal(g.perMonth, 0);
+  assert.equal(g.remaining, 0);
+});
+
+test('goalProgress - bu ay ya da geçmiş tarih: kalan tamamı bu ay istenir; geçmişse gecikmiş', () => {
+  const thisMonth = goalProgress({ amount: 10000, byMonth: '2026-10' }, 4000, '2026-10-07');
+  assert.equal(thisMonth.monthsLeft, 0);
+  assert.equal(thisMonth.perMonth, 6000);
+  assert.equal(thisMonth.overdue, false);
+  const past = goalProgress({ amount: 10000, byMonth: '2026-08' }, 4000, '2026-10-07');
+  assert.equal(past.overdue, true);
+  assert.equal(past.perMonth, 6000);
+});
+
+test('goalProgress - tarihsiz hedef: ayda hesabı yok sayılır, geçersiz hedef null', () => {
+  const g = goalProgress({ amount: 10000 }, 2500, '2026-10-07');
+  assert.equal(g.pct, 25);
+  assert.equal(g.byMonth, null);
+  assert.equal(g.overdue, false);
+  assert.equal(goalProgress(null, 100, '2026-10-07'), null);
+  assert.equal(goalProgress({ amount: 0 }, 100, '2026-10-07'), null);
+  assert.equal(goalProgress({ amount: 'abc' }, 100, '2026-10-07'), null);
+  assert.equal(goalProgress({ amount: 1000, byMonth: '2027-01' }, 0, '2026-12-31').monthsLeft, 1, 'yıl dönümü');
+});
+
+test('cleanTargets - yalnız bilinen türler ve pozitif yüzdeler, yoksa null', () => {
+  assert.deepEqual(cleanTargets({ altin: 60, doviz: '40', xyz: 10, hisse: 0, fon: -5, kripto: 'a' }), { altin: 60, doviz: 40 });
+  assert.equal(cleanTargets({}), null);
+  assert.equal(cleanTargets(null), null);
+  assert.deepEqual(cleanTargets({ altin: 500 }), { altin: 100 }, 'yüzde 100\'ü aşmaz');
+});
+
+test('allocationGap - hedefe göre sapma, ölçekleme ve gerekli kayma', () => {
+  const groups = [
+    { kind: 'altin', label: 'Altın', value: 70000, pct: 70 },
+    { kind: 'doviz', label: 'Döviz', value: 30000, pct: 30 },
+  ];
+  const gap = allocationGap(groups, { altin: 50, doviz: 50 });
+  assert.equal(gap[0].kind, 'altin', 'en büyük sapma önce');
+  assert.equal(gap[0].diff, 20);
+  assert.equal(gap[0].shift, -20000, 'altından 20.000 azalt');
+  assert.equal(gap[1].shift, 20000, 'dövize 20.000 ekle');
+});
+
+test('allocationGap - toplamı 100 olmayan hedef oransal ölçeklenir; elde olmayan hedef tür görünür', () => {
+  const groups = [{ kind: 'altin', label: 'Altın', value: 100000, pct: 100 }];
+  const gap = allocationGap(groups, { altin: 60, doviz: 30 }); // 60:30 = %66,7 : %33,3
+  const altin = gap.find((g) => g.kind === 'altin');
+  const doviz = gap.find((g) => g.kind === 'doviz');
+  assert.ok(Math.abs(altin.targetPct - 66.6667) < 0.001);
+  assert.ok(Math.abs(doviz.targetPct - 33.3333) < 0.001);
+  assert.equal(doviz.pct, 0);
+  assert.equal(doviz.label, 'Döviz');
+  assert.ok(Math.abs(doviz.shift - 33333.33) < 0.01);
+});
+
+test('allocationGap - hedef yoksa boş', () => {
+  assert.deepEqual(allocationGap([{ kind: 'altin', label: 'Altın', value: 1, pct: 100 }], null), []);
+  assert.deepEqual(allocationGap([], { altin: 100 }).map((g) => g.kind), ['altin']);
+});

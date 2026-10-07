@@ -69,6 +69,11 @@ const DEFAULT_SETTINGS = {
   // güncellendiği için kullanıcı bunları kendisi düzeltebilmeli; yoksa
   // uygulama eskiyip sessizce yanlış tazminat hesaplar.
   taxParams: null,
+  // Yatırım hedefleri (yalnız ekranda bilgi verir, kayıtlara dokunmaz):
+  // investGoal = { amount, byMonth: 'YYYY-MM' } birikim hedefi;
+  // investTargets = { altin: 60, doviz: 40 } hedef dağılım (yüzde, tür anahtarıyla).
+  investGoal: null,
+  investTargets: null,
 };
 
 function defaultState() {
