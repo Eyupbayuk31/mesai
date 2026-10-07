@@ -37,6 +37,9 @@ sunucuya veri gönderilmez.
 - **Yatırım**: altın, döviz, hisse gibi varlıkların alımlarını ve satışlarını gir
   (altın/hissede miktar, döviz/kripto/fonda miktar ya da ödediğin tutar). Ortalama
   maliyet, gerçekleşen ve gerçekleşmemiş kâr, değer grafiği hesaplanır.
+  - **Sayfalar**: Yatırım (alım/satım girişi, varlıklar, son alımlar), **Özet**
+    (değer, dağılım, hedefler, grafikler ve en altta **yatırım raporu** HTML/CSV
+    indirme), Piyasa fiyatları, Tüm alımlar.
   - **Aylık alım planı**: "her ay 2 gram" de; günü gelince hatırlatır, "Aldım" /
     "Atla" dersin. Kendiliğinden alım yazmaz.
   - **Hedefler**: birikim hedefi (tutar + ay → ayda ne kadar gerekir) ve hedef

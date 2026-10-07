@@ -37,6 +37,7 @@ export const NAV_TREE = [
     quick: true,
     icon: '<path d="M3.5 17.5 9.5 11l3.5 3.5L20.5 7" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 7h5.5v5.5" stroke-linecap="round" stroke-linejoin="round"/>',
     children: [
+      { page: 'summary', label: 'Özet' },
       { page: 'market', label: 'Piyasa fiyatları' },
       { page: 'lots', label: 'Tüm alımlar' },
     ],

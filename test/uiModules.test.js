@@ -25,6 +25,9 @@ const MODULES = [
   '../js/ui/invest/assetSheets.js',
   '../js/ui/invest/lotsPage.js',
   '../js/ui/invest/goalSheet.js',
+  '../js/ui/invest/summaryPage.js',
+  '../js/ui/invest/bindings.js',
+  '../js/ui/investReport.js',
   '../js/ui/investChart.js',
   '../js/ui/market.js',
 ];
@@ -38,7 +41,7 @@ for (const path of MODULES) {
 
 test('yatırım sayfasının dışa aktardıkları yönlendirici için tam', async () => {
   const mod = await import('../js/ui/investments.js');
-  for (const name of ['title', 'render', 'renderLotsPage', 'lotsPageTitle', 'openAddInvestment']) {
+  for (const name of ['title', 'render', 'renderLotsPage', 'lotsPageTitle', 'renderSummary', 'summaryPageTitle', 'openAddInvestment']) {
     assert.ok(name in mod, `${name} eksik`);
   }
 });

@@ -14,7 +14,7 @@ const TYPE_LABEL = { normal: 'Normal', weekend: 'Hafta tatili', holiday: 'Resmi 
 const TYPE_COLOR = { normal: '#3b6fe0', weekend: '#a24fd6', holiday: '#e2483d' };
 const ADJ_LABEL = { advance: 'Avans', deduction: 'Kesinti', bonus: 'Para girişi', income: 'Para girişi' };
 
-function escapeHTML(str) {
+export function escapeHTML(str) {
   return String(str ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -22,11 +22,11 @@ function escapeHTML(str) {
     .replace(/"/g, '&quot;');
 }
 
-function todayLabel() {
+export function todayLabel() {
   return formatFullDate(new Date().toISOString().slice(0, 10));
 }
 
-function statCard(label, value, accent) {
+export function statCard(label, value, accent) {
   return `
     <div class="stat">
       <div class="stat__label">${label}</div>
@@ -349,7 +349,7 @@ function buildPeriodReport({ profileName, periodKey, summary, settings, budget, 
 }
 
 // Her iki rapor türünün paylaştığı sayfa kabuğu (stiller, başlık, altbilgi).
-function htmlShell({ title, headerTitle, metaRight, body }) {
+export function htmlShell({ title, headerTitle, metaRight, body }) {
   return `<!doctype html>
 <html lang="tr">
 <head>
@@ -496,7 +496,7 @@ function htmlShell({ title, headerTitle, metaRight, body }) {
 
 // --- Gelişmiş rapor bölümleri (harcama + yatırım) -------------------------
 
-function profitCard(portfolio) {
+export function profitCard(portfolio) {
   if (!portfolio) return '';
   let html = '';
   if (portfolio.totalCost > 0) {
@@ -527,7 +527,7 @@ function realizedNote(value) {
 }
 
 // Türe göre dağılım tek satırda: "Altın %68 · Döviz %32".
-function allocationLine(portfolio) {
+export function allocationLine(portfolio) {
   const groups = portfolio ? portfolioByKind(portfolio) : [];
   if (groups.length < 2) return '';
   return `<p style="color:#5b6472;font-size:12px;margin-top:8px;">Dağılım: ${groups.map((g) => `${escapeHTML(g.label)} %${g.pct.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}`).join(' · ')}</p>`;
@@ -599,7 +599,7 @@ function categoryTable(categories, total, heading) {
 }
 
 // Portföyün o anki durumu: varlık başına maliyet, değer ve kâr/zarar.
-function portfolioTable(portfolio) {
+export function portfolioTable(portfolio) {
   const rows = (portfolio?.positions || []).filter((p) => p.hasLots && p.holding);
   if (rows.length === 0) return '';
   return `

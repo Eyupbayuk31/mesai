@@ -284,7 +284,8 @@ function boot(profileId) {
       else renderBudget(screenEl, state, ctx);
     }
     else if (tab === 'invest') {
-      if (page === 'market') marketPage.render(screenEl, state, ctx);
+      if (page === 'summary') investPage.renderSummary(screenEl, state, ctx);
+      else if (page === 'market') marketPage.render(screenEl, state, ctx);
       else if (page === 'lots') investPage.renderLotsPage(screenEl, state, ctx);
       else investPage.render(screenEl, state, ctx);
     }

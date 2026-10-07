@@ -29,3 +29,10 @@ export function marketTimeLabel(market) {
   if (toISODate(d) === todayISO()) return `bugün ${hhmm}`;
   return days <= 1 ? `dün ${hhmm}` : `${days} gün önce`;
 }
+
+/** Fiyatı eksik/eskimiş varlık uyarısı; sorun yoksa boş dizge. */
+export function priceWarning(summary) {
+  if (summary.missingPrice > 0) return `${summary.missingPrice} varlığın güncel fiyatı girilmemiş`;
+  if (summary.staleCount > 0) return `${summary.staleCount} varlığın fiyatı eskimiş`;
+  return '';
+}

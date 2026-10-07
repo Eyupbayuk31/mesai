@@ -4017,3 +4017,19 @@ button.slip-badge:active { transform: scale(0.96); }
 .goal-grid__input { display: inline-flex; align-items: center; gap: 4px; width: 92px; }
 .goal-grid__input .input { text-align: right; padding: 8px 10px; }
 .goal-grid__input em { font-style: normal; color: var(--text-tertiary); font-weight: 700; }
+
+/* --- Yatırım ana sayfası: küçük özet satırı ---------------------------------- */
+.mini-hero {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  width: 100%; margin: 0 0 14px; padding: 14px 16px; text-align: left;
+}
+.mini-hero:active { transform: scale(0.99); }
+.mini-hero__main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mini-hero__label { font-size: 11.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-tertiary); }
+.mini-hero__value { font-size: 24px; font-weight: 800; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.mini-hero__side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.mini-hero__link { font-size: 12px; font-weight: 750; color: var(--accent); }
+.mini-hero__warn { margin: -6px 0 14px; display: block; width: 100%; text-align: left; }
+
+/* hidden niteliği display:flex'e yenilmesin: ipucu yalnız imleç üstündeyken görünür */
+.invest-chart__tip[hidden], .invest-chart__cursor[hidden] { display: none; }
