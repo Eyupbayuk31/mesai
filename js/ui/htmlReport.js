@@ -4,7 +4,7 @@ import { formatMoney, formatHours, formatFullDate, formatWeekday } from '../form
 import { entryAmount, yearSummary as buildYearSummary, periodSummary as periodSummaryOf } from '../payroll.js';
 import { periodLabel, payDateForPeriod } from '../period.js';
 import { budgetSummary, yearFinance, rangeFinance, scopeFinance } from '../budget.js';
-import { portfolioSummary, investedInPeriod, formatQuantity, unitOf, kindOf, isSell } from '../investments.js';
+import { portfolioSummary, portfolioByKind, investedInPeriod, realizedInPeriod, realizedInYear, formatQuantity, unitOf, kindOf, isSell } from '../investments.js';
 import { getCachedMarket } from '../marketPrices.js';
 import { yearsWithData, compareYears, realChange, categoryTrend } from '../analysis.js';
 import { payslipRows, payslipStats, payslipLineTotals, openBalance } from '../payslip.js';
@@ -259,6 +259,7 @@ function buildYearReport({ profileName, yearSummary, settings, finance, portfoli
         ${finance ? statCard('Para giren ay', `${finance.cashMonths} / 12`) : ''}
         ${finance ? statCard('Toplam harcama', formatMoney(finance.spent, { decimals: false }), '#c9402f') : statCard('Saat ücreti', formatMoney(settings.monthlySalary / (settings.hoursDivisor || 225)))}
         ${finance && finance.invested > 0 ? statCard('Yatırıma ayrılan', formatMoney(finance.invested, { decimals: false })) : ''}
+        ${state && realizedInYear(state, year) !== 0 ? statCard(`${year} satışlarından kâr`, `${realizedInYear(state, year) >= 0 ? '+' : '−'}${formatMoney(Math.abs(realizedInYear(state, year)), { decimals: false })}`, realizedInYear(state, year) >= 0 ? '#12946b' : '#c9402f') : ''}
         ${profitCard(portfolio)}
       </div>
 
@@ -496,14 +497,40 @@ function htmlShell({ title, headerTitle, metaRight, body }) {
 // --- Gelişmiş rapor bölümleri (harcama + yatırım) -------------------------
 
 function profitCard(portfolio) {
-  if (!portfolio || portfolio.totalCost <= 0) return '';
-  const up = portfolio.totalProfit >= 0;
-  const pct = Math.abs(portfolio.profitPct).toLocaleString('tr-TR', { maximumFractionDigits: 1 });
-  return statCard(
-    'Portföy kâr/zarar',
-    `${up ? '+' : '−'}${formatMoney(Math.abs(portfolio.totalProfit), { decimals: false })} (%${pct})`,
-    up ? '#12946b' : '#c9402f',
-  );
+  if (!portfolio) return '';
+  let html = '';
+  if (portfolio.totalCost > 0) {
+    const up = portfolio.totalProfit >= 0;
+    const pct = Math.abs(portfolio.profitPct).toLocaleString('tr-TR', { maximumFractionDigits: 1 });
+    html += statCard(
+      'Portföy kâr/zarar',
+      `${up ? '+' : '−'}${formatMoney(Math.abs(portfolio.totalProfit), { decimals: false })} (%${pct})`,
+      up ? '#12946b' : '#c9402f',
+    );
+  }
+  // Satışlardan gerçekleşen (bugüne kadar toplam): elde hiç varlık kalmasa da görünür.
+  if (portfolio.totalRealized) {
+    const upR = portfolio.totalRealized >= 0;
+    html += statCard(
+      'Satışlardan gerçekleşen',
+      `${upR ? '+' : '−'}${formatMoney(Math.abs(portfolio.totalRealized), { decimals: false })}`,
+      upR ? '#12946b' : '#c9402f',
+    );
+  }
+  return html;
+}
+
+// Ay satışlarından gerçekleşen kâr/zarar (ortalama maliyete göre) — tablonun altında not.
+function realizedNote(value) {
+  if (!value) return '';
+  return `<p style="color:#5b6472;font-size:12px;margin-top:8px;">Bu ay satışlardan gerçekleşen (ortalama maliyete göre): <b style="color:${value >= 0 ? '#12946b' : '#c9402f'};">${value >= 0 ? '+' : '−'}${formatMoney(Math.abs(value), { decimals: false })}</b></p>`;
+}
+
+// Türe göre dağılım tek satırda: "Altın %68 · Döviz %32".
+function allocationLine(portfolio) {
+  const groups = portfolio ? portfolioByKind(portfolio) : [];
+  if (groups.length < 2) return '';
+  return `<p style="color:#5b6472;font-size:12px;margin-top:8px;">Dağılım: ${groups.map((g) => `${escapeHTML(g.label)} %${g.pct.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}`).join(' · ')}</p>`;
 }
 
 // Ay ay eline geçen / harcama / yatırım. Ekrandaki tabloyla aynı sayılar.
@@ -606,6 +633,7 @@ function portfolioTable(portfolio) {
       </tbody>
     </table>
     ${portfolio.estimatedCount > 0 ? '<p style="color:#5b6472;font-size:12px;margin-top:8px;">Piyasa fiyatı kullanılan varlıklarda (alış fiyatı) değerler tahminidir.</p>' : ''}
+    ${allocationLine(portfolio)}
     <p style="color:#5b6472;font-size:12px;margin-top:8px;">Maliyet toplamı: ${formatMoney(portfolio.totalCost, { decimals: false })}${portfolio.totalRealized ? ` · Satışlardan gerçekleşen: ${portfolio.totalRealized >= 0 ? '+' : '−'}${formatMoney(Math.abs(portfolio.totalRealized), { decimals: false })}` : ''}</p>
   `;
 }
@@ -640,6 +668,7 @@ function periodInvestmentTable(periodKey, periodInvested, lots, assets) {
         </tr>
       </tbody>
     </table>
+    ${realizedNote(realizedInPeriod({ assets, investments: lots }, periodKey))}
   `;
   if (rows.length === 0) return salesTable;
   return `

@@ -169,6 +169,7 @@ function replay(lots) {
   let soldQuantity = 0;
   let proceeds = 0;
   let oversold = false;
+  const sells = [];
   for (const lot of ordered) {
     const q = Number(lot.quantity) || 0;
     const unit = Number(lot.unitCost) || 0;
@@ -183,6 +184,7 @@ function replay(lots) {
     if (sold <= 0) continue;
     const avg = quantity > 0 ? cost / quantity : 0;
     realized += sold * (unit - avg);
+    sells.push({ id: lot.id, date: lot.date, realized: sold * (unit - avg), proceeds: sold * unit });
     proceeds += sold * unit;
     cost -= avg * sold;
     quantity -= sold;
@@ -190,7 +192,7 @@ function replay(lots) {
     // Kayan nokta artığı: tamamı satıldıysa kalan sıfırdır.
     if (quantity < 1e-9) { quantity = 0; cost = 0; }
   }
-  return { quantity, cost, realized, soldQuantity, proceeds, oversold };
+  return { quantity, cost, realized, soldQuantity, proceeds, oversold, sells };
 }
 
 // Piyasa fiyatı (js/marketPrices.js) isteğe bağlı bir TAHMİNDİR: varlıkta
@@ -890,4 +892,28 @@ export function portfolioUsd(state, rates, nowMs = Date.now(), market = null) {
   }
   const profit = value - cost;
   return { cost, value, profit, profitPct: cost > 0 ? (profit / cost) * 100 : 0, realized, rateNow };
+}
+
+// --- Dönem/yıl bazında gerçekleşen kâr -----------------------------------------
+//
+// Gerçekleşen kâr satışın YAPILDIĞI dönemde sayılır (alım tarihinde değil).
+// Ortalama maliyet tüm geçmişe göre bulunduğundan, bir yıl içindeki satış
+// önceki yılların alımlarına dayanabilir; bu yüzden her varlığın TÜM kayıtları
+// baştan işlenir, sonra yalnız ilgili tarihteki satışlar toplanır.
+
+function realizedWhere(state, predicate) {
+  let total = 0;
+  for (const asset of state?.assets || []) {
+    for (const sell of replay(lotsOf(state, asset.id)).sells) if (predicate(sell.date)) total += sell.realized;
+  }
+  return total;
+}
+
+export function realizedInYear(state, year) {
+  const prefix = String(year);
+  return realizedWhere(state, (d) => typeof d === 'string' && d.slice(0, 4) === prefix);
+}
+
+export function realizedInPeriod(state, periodKey) {
+  return realizedWhere(state, (d) => !!d && isDateInPeriod(d, periodKey));
 }

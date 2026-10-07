@@ -6,7 +6,7 @@
 import { yearFinance, budgetSummary, categoryOf } from './budget.js';
 import { yearSummary } from './payroll.js';
 import { shiftPeriod } from './period.js';
-import { investedInYear } from './investments.js';
+import { investedInYear, realizedInYear } from './investments.js';
 
 /** İki sayı arasındaki yüzde değişim. Taban 0 ise yüzde anlamsızdır: null. */
 export function pctChange(from, to) {
@@ -69,6 +69,10 @@ export function compareYears(state, fromYear, toYear, todayStr) {
     { key: 'invested', label: 'Yatırım', from: investedInYear(state, fromYear), to: investedInYear(state, toYear), money: true },
     { key: 'hours', label: 'Mesai saati', from: ay.totalHours, to: by.totalHours, money: false },
     { key: 'overtimePay', label: 'Mesai ücreti', from: ay.totalOvertimePay, to: by.totalOvertimePay, money: true },
+    // Satıştan gerçekleşen kâr: iki yılda da sıfırsa satır hiç görünmez.
+    ...(realizedInYear(state, fromYear) !== 0 || realizedInYear(state, toYear) !== 0
+      ? [{ key: 'realized', label: 'Yatırım satışından kâr', from: realizedInYear(state, fromYear), to: realizedInYear(state, toYear), money: true }]
+      : []),
   ].map((r) => ({
     ...r,
     diff: r.to - r.from,

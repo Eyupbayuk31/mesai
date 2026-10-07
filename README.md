@@ -34,12 +34,23 @@ sunucuya veri gönderilmez.
   dönemi → 10 Eylül'de öder)
 - **Çoklu profil**: Eyüp ve Fuat'ın kayıtları/ayarları tamamen ayrı tutulur
 - Tamamen **offline çalışır**, internet olmadan da açılır
-- **Yatırım**: altın/döviz gibi varlıkların alımlarını ve satışlarını gir; ortalama
-  maliyet, gerçekleşen/gerçekleşmemiş kâr ve değer grafiği hesaplanır. İstersen
-  gram/çeyrek altın, dolar ve euro için **piyasa alış fiyatı otomatik çekilir**
-  ve kâr/zarar "tahmini" yazar. Bu isteğe bağlıdır, varlık başına açılır; yalnızca
-  fiyat okunur, senin hiçbir verin gönderilmez. İnternet yoksa elle girdiğin fiyat
-  kullanılır.
+- **Yatırım**: altın, döviz, hisse gibi varlıkların alımlarını ve satışlarını gir
+  (altın/hissede miktar, döviz/kripto/fonda miktar ya da ödediğin tutar). Ortalama
+  maliyet, gerçekleşen ve gerçekleşmemiş kâr, değer grafiği hesaplanır.
+  - **Aylık alım planı**: "her ay 2 gram" de; günü gelince hatırlatır, "Aldım" /
+    "Atla" dersin. Kendiliğinden alım yazmaz.
+  - **Hedefler**: birikim hedefi (tutar + ay → ayda ne kadar gerekir) ve hedef
+    dağılım (altın %60, döviz %40 → sıradaki alım hangisi).
+  - **Piyasa fiyatı (isteğe bağlı)**: gram/çeyrek altın, dolar, euro gibi varlıklar
+    için piyasa **alış** fiyatı otomatik çekilir ve kâr/zarar "tahmini" yazar; ayrıca
+    Yatırım > Piyasa fiyatları sayfası var.
+  - **Dolar bazında getiri (isteğe bağlı)**: "altın dolarda kazandırdı mı?" Her
+    alımın günündeki USD/TRY kuru kullanılır.
+
+  İki isteğe bağlı özellik internetten **yalnızca fiyat okur**, senin hiçbir verin
+  gönderilmez (fiyat servisleri IP adresini görebilir). Dolar bazında getiri için
+  istek yalnızca "geçen yılın Aralık'ı → bugün" aralığını taşır, ilk alım tarihini
+  değil. İnternet yoksa elle girdiğin fiyatlar kullanılır.
 
 ## Kurulum
 

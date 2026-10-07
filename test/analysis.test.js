@@ -215,3 +215,53 @@ test('realChange - iki yıl da bordro doluysa kıyas güvenilir', () => {
   assert.equal(res.targetPayslipMonths, 8, 'içinde bulunulan yılda yalnız geçmiş aylar');
   assert.equal(res.reliable, true, 'ikisi de MIN_COMPARE_MONTHS üstünde');
 });
+
+test('compareYears - yatırım satışından kâr satırı yalnız satış varsa gelir', () => {
+  const without = compareYears(state, 2025, 2026, '2026-10-07');
+  assert.equal(without.rows.some((r) => r.key === 'realized'), false, 'satış yok → satır yok');
+
+  const withSale = compareYears({
+    ...state,
+    investments: [
+      { id: 'i1', assetId: 'a1', date: '2025-06-01', quantity: 2, unitCost: 6000 },
+      { id: 'i2', assetId: 'a1', date: '2026-03-01', quantity: 1, unitCost: 7000, side: 'sell' },
+    ],
+  }, 2025, 2026, '2026-10-07');
+  const row = withSale.rows.find((r) => r.key === 'realized');
+  assert.equal(row.from, 0);
+  assert.equal(row.to, 1000, '(7.000 − 6.000) × 1');
+  const invested = withSale.rows.find((r) => r.key === 'invested');
+  assert.equal(invested.to, 0, 'satış yatırıma ayrılana sayılmaz');
+});
+
+// --- HTML rapor: satış ve dağılım bölümleri ------------------------------------
+
+globalThis.window = globalThis.window || { localStorage: { getItem: () => null, setItem() {}, removeItem() {} } };
+
+test('HTML rapor - satış varsa gerçekleşen kâr, bu ayki satışlar ve dağılım yazılır; çökmez', async () => {
+  const { buildHtmlReport } = await import('../js/ui/htmlReport.js');
+  const { periodSummary } = await import('../js/payroll.js');
+  const st = {
+    ...state,
+    assets: [
+      { id: 'a1', label: 'Gram altın', kind: 'altin', unit: 'gram', currentPrice: 7500, priceUpdatedAt: new Date().toISOString() },
+      { id: 'a2', label: 'Dolar', kind: 'doviz', unit: 'dolar', currentPrice: 41, priceUpdatedAt: new Date().toISOString() },
+    ],
+    investments: [
+      { id: 'i1', assetId: 'a1', date: '2026-01-10', quantity: 3, unitCost: 6000 },
+      { id: 'i2', assetId: 'a1', date: '2026-03-12', quantity: 1, unitCost: 7000, side: 'sell' },
+      { id: 'i3', assetId: 'a2', date: '2026-02-01', quantity: 500, unitCost: 38 },
+    ],
+  };
+  const period = buildHtmlReport({ profileName: 'Test', periodKey: '2026-03', summary: periodSummary(st, '2026-03'), settings: st.settings, state: st });
+  assert.ok(period.includes('Bu ayki satışlar'), 'satış tablosu');
+  assert.ok(period.includes('Bu ay satışlardan gerçekleşen'), 'dönem gerçekleşen kâr');
+  assert.ok(period.includes('Satışlardan gerçekleşen'), 'toplam gerçekleşen kart');
+  assert.ok(period.includes('Dağılım: '), 'tür dağılımı');
+  assert.equal(period.includes('NaN'), false, 'NaN yok');
+
+  const { yearSummary } = await import('../js/payroll.js');
+  const year = buildHtmlReport({ profileName: 'Test', periodKey: '2026-03', scope: 'year', summary: null, settings: st.settings, state: st, yearSummary: yearSummary(st, 2026) });
+  assert.ok(year.includes('2026 satışlarından kâr'), 'yıl kartı');
+  assert.equal(year.includes('NaN'), false);
+});

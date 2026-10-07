@@ -990,3 +990,31 @@ test('allocationGap - hedef yoksa boş', () => {
   assert.deepEqual(allocationGap([{ kind: 'altin', label: 'Altın', value: 1, pct: 100 }], null), []);
   assert.deepEqual(allocationGap([], { altin: 100 }).map((g) => g.kind), ['altin']);
 });
+
+// --- Dönem/yıl bazında gerçekleşen kâr -----------------------------------------
+
+import { realizedInYear, realizedInPeriod } from '../js/investments.js';
+
+test('realizedInYear / realizedInPeriod - kâr satışın yapıldığı dönemde sayılır', () => {
+  const st = {
+    assets: [gold],
+    investments: [
+      buy('b1', '2025-06-01', 4, 6000),                 // geçen yıl alındı
+      sell('s1', '2026-02-10', 1, 7000),                // +1.000
+      sell('s2', '2026-08-05', 1, 8000),                // +2.000
+    ],
+  };
+  assert.equal(realizedInYear(st, 2026), 3000);
+  assert.equal(realizedInYear(st, 2025), 0, 'alım yılında kâr yok');
+  assert.equal(realizedInPeriod(st, '2026-02'), 1000);
+  assert.equal(realizedInPeriod(st, '2026-08'), 2000);
+  assert.equal(realizedInPeriod(st, '2026-09'), 0);
+});
+
+test('realizedInYear - toplamı varlığın gerçekleşen kârıyla tutar; satış yoksa 0', () => {
+  const st = { assets: [gold], investments: [buy('b1', '2026-01-10', 3, 6000), sell('s1', '2026-03-10', 2, 6500)] };
+  const total = portfolioSummary(st, NOW).totalRealized;
+  assert.equal(realizedInYear(st, 2026), total);
+  assert.equal(realizedInYear({ assets: [gold], investments: [buy('b1', '2026-01-10', 3, 6000)] }, 2026), 0);
+  assert.equal(realizedInYear({ assets: [], investments: [] }, 2026), 0);
+});
