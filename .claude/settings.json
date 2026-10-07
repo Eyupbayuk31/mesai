@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./fonts/**)",
+      "Read(./icons/**)",
+      "Read(./img/**)",
+      "Read(./screenshots/**)",
+      "Read(./.git/**)",
+      "Read(./node_modules/**)",
+      "Read(./package-lock.json)",
+      "Read(./**/*.min.js)",
+      "Read(./**/*.map)",
+      "Read(./.env)",
+      "Read(./.env.*)"
+    ]
+  }
+}
