@@ -4,7 +4,7 @@ import { formatMoney, formatHours, formatFullDate, formatWeekday } from '../form
 import { entryAmount, yearSummary as buildYearSummary, periodSummary as periodSummaryOf } from '../payroll.js';
 import { periodLabel, payDateForPeriod } from '../period.js';
 import { budgetSummary, yearFinance, rangeFinance, scopeFinance } from '../budget.js';
-import { portfolioSummary, investedInPeriod, formatQuantity, unitOf, kindOf } from '../investments.js';
+import { portfolioSummary, investedInPeriod, formatQuantity, unitOf, kindOf, isSell } from '../investments.js';
 import { yearsWithData, compareYears, realChange, categoryTrend } from '../analysis.js';
 import { payslipRows, payslipStats, payslipLineTotals, openBalance } from '../payslip.js';
 import { debtReport } from '../loans.js';
@@ -572,7 +572,7 @@ function categoryTable(categories, total, heading) {
 
 // Portföyün o anki durumu: varlık başına maliyet, değer ve kâr/zarar.
 function portfolioTable(portfolio) {
-  const rows = (portfolio?.positions || []).filter((p) => p.hasLots);
+  const rows = (portfolio?.positions || []).filter((p) => p.hasLots && p.holding);
   if (rows.length === 0) return '';
   return `
     <h2>Yatırım portföyü</h2>
@@ -604,37 +604,55 @@ function portfolioTable(portfolio) {
         </tr>
       </tbody>
     </table>
-    <p style="color:#5b6472;font-size:12px;margin-top:8px;">Maliyet toplamı: ${formatMoney(portfolio.totalCost, { decimals: false })}</p>
+    <p style="color:#5b6472;font-size:12px;margin-top:8px;">Maliyet toplamı: ${formatMoney(portfolio.totalCost, { decimals: false })}${portfolio.totalRealized ? ` · Satışlardan gerçekleşen: ${portfolio.totalRealized >= 0 ? '+' : '−'}${formatMoney(Math.abs(portfolio.totalRealized), { decimals: false })}` : ''}</p>
   `;
 }
 
 // O ay yapılan alımlar (portföyün tamamı değil, yalnızca dönem hareketi).
 function periodInvestmentTable(periodKey, periodInvested, lots, assets) {
-  const rows = (lots || []).filter((l) => typeof l?.date === 'string' && l.date.slice(0, 7) === periodKey);
-  if (rows.length === 0) return '';
+  const inPeriod = (lots || []).filter((l) => typeof l?.date === 'string' && l.date.slice(0, 7) === periodKey);
+  // Alımlar toplamla (periodInvested) birebir tutsun diye satışlar ayrı tabloda.
+  const rows = inPeriod.filter((l) => !isSell(l));
+  const sales = inPeriod.filter(isSell);
+  if (rows.length === 0 && sales.length === 0) return '';
   const assetOf = (assetId) => (assets || []).find((a) => a.id === assetId) || null;
   const labelOf = (assetId) => assetOf(assetId)?.label || 'Varlık';
-  return `
-    <h2>Bu ayki yatırımlar</h2>
-    <table class="table">
-      <thead><tr><th>Tarih</th><th>Varlık</th><th class="num">Miktar</th><th class="num">Birim fiyat</th><th class="num">Tutar</th></tr></thead>
-      <tbody>
-        ${rows.map((l) => `
+  const rowHTML = (l) => `
           <tr>
             <td>${formatFullDate(l.date)}</td>
             <td>${escapeHTML(labelOf(l.assetId))}</td>
             <td class="num">${formatQuantity(l.quantity, assetOf(l.assetId))} ${escapeHTML(assetOf(l.assetId) ? unitOf(assetOf(l.assetId)) : '')}</td>
             <td class="num">${formatMoney(l.unitCost)}</td>
             <td class="num">${formatMoney((Number(l.quantity) || 0) * (Number(l.unitCost) || 0), { decimals: false })}</td>
-          </tr>
-        `).join('')}
+          </tr>`;
+  const salesTotal = sales.reduce((t, l) => t + (Number(l.quantity) || 0) * (Number(l.unitCost) || 0), 0);
+  const salesTable = sales.length === 0 ? '' : `
+    <h2>Bu ayki satışlar</h2>
+    <table class="table">
+      <thead><tr><th>Tarih</th><th>Varlık</th><th class="num">Miktar</th><th class="num">Birim fiyat</th><th class="num">Tutar</th></tr></thead>
+      <tbody>
+        ${sales.map(rowHTML).join('')}
+        <tr class="total-row">
+          <td colspan="4">Toplam</td>
+          <td class="num">${formatMoney(salesTotal, { decimals: false })}</td>
+        </tr>
+      </tbody>
+    </table>
+  `;
+  if (rows.length === 0) return salesTable;
+  return `
+    <h2>Bu ayki yatırımlar</h2>
+    <table class="table">
+      <thead><tr><th>Tarih</th><th>Varlık</th><th class="num">Miktar</th><th class="num">Birim fiyat</th><th class="num">Tutar</th></tr></thead>
+      <tbody>
+        ${rows.map(rowHTML).join('')}
         <tr class="total-row">
           <td colspan="4">Toplam</td>
           <td class="num">${formatMoney(periodInvested, { decimals: false })}</td>
         </tr>
       </tbody>
     </table>
-  `;
+  ` + salesTable;
 }
 
 

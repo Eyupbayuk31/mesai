@@ -477,9 +477,149 @@ test('csvForInvestments - tarih sırasıyla, tutar hesaplanmış, noktalı virg�
     { date: '2026-06-10', label: 'Gram altın', kindLabel: 'Altın', quantity: 1, unit: 'gram', unitCost: 7100, note: 'kuyumcu; nakit' },
   ]);
   const lines = csv.split('\n');
-  assert.equal(lines[0], 'Tarih;Varlik;Tur;Miktar;Birim;Birim fiyat;Tutar;Not');
+  assert.equal(lines[0], 'Tarih;Varlik;Tur;Miktar;Birim;Birim fiyat;Tutar;Not;Islem');
   assert.ok(lines[1].startsWith('2026-06-10'), 'eskiden yeniye sıralanır');
   assert.ok(lines[1].includes('7100,00;7100,00'), 'birim fiyat ve tutar');
   assert.ok(lines[1].includes('"kuyumcu; nakit"'), 'noktalı virgüllü not tırnaklanır');
   assert.ok(lines[2].includes('39500,00'), '5 × 7.900');
+});
+
+// --- Satış ve gerçekleşen kâr/zarar --------------------------------------
+
+import { isSell, checkSell, soldInPeriod } from '../js/investments.js';
+
+const gold = { id: 'a1', label: 'Gram altın', kind: 'altin', unit: 'gram', currentPrice: 7000, priceUpdatedAt: daysAgo(0) };
+const buy = (id, date, quantity, unitCost) => ({ id, assetId: 'a1', date, quantity, unitCost });
+const sell = (id, date, quantity, unitCost) => ({ id, assetId: 'a1', date, quantity, unitCost, side: 'sell' });
+
+test('satış - ortalama maliyet değişmez, kalan miktar ve gerçekleşen kâr doğru', () => {
+  // 2×6.000 + 2×8.000 → ort. 7.000; 1 gram 9.000'e satılır.
+  const p = assetPosition(gold, [
+    buy('b1', '2026-01-10', 2, 6000),
+    buy('b2', '2026-02-10', 2, 8000),
+    sell('s1', '2026-03-10', 1, 9000),
+  ], NOW);
+  assert.equal(p.quantity, 3);
+  assert.equal(p.avgCost, 7000, 'satış ortalamayı oynatmaz');
+  assert.equal(p.cost, 21000);
+  assert.equal(p.realized, 2000, '(9.000 − 7.000) × 1');
+  assert.equal(p.proceeds, 9000);
+  assert.equal(p.value, 21000, '3 × 7.000');
+  assert.equal(p.profit, 0, 'gerçekleşmemiş kâr yalnız elde kalandan');
+  assert.equal(p.sellCount, 1);
+  assert.equal(p.buyCount, 2);
+});
+
+test('satış - zararına satış negatif gerçekleşen kâr', () => {
+  const p = assetPosition(gold, [buy('b1', '2026-01-10', 2, 8000), sell('s1', '2026-03-10', 1, 7000)], NOW);
+  assert.equal(p.realized, -1000);
+});
+
+test('satış - tamamı satılırsa miktar ve maliyet sıfır, kâr yazılı kalır', () => {
+  const p = assetPosition(gold, [buy('b1', '2026-01-10', 3, 3000), sell('s1', '2026-03-10', 3, 7000)], NOW);
+  assert.equal(p.quantity, 0);
+  assert.equal(p.cost, 0);
+  assert.equal(p.avgCost, 0);
+  assert.equal(p.realized, 12000);
+  assert.equal(p.holding, false);
+  assert.equal(p.hasLots, true);
+  assert.equal(p.stale, false, 'elde olmayan varlık bayat uyarısı vermez');
+});
+
+test('satış - küsuratlı satış kayan noktada artık bırakmaz', () => {
+  const p = assetPosition(gold, [buy('b1', '2026-01-10', 0.3, 7000), sell('s1', '2026-03-10', 0.1, 7500), sell('s2', '2026-03-11', 0.2, 7500)], NOW);
+  assert.equal(p.quantity, 0, '0,3 − 0,1 − 0,2 tam sıfır');
+  assert.equal(p.cost, 0);
+});
+
+test('satış - eldekinden fazlası satılamaz: fazlası yok sayılır ve işaretlenir', () => {
+  const p = assetPosition(gold, [buy('b1', '2026-01-10', 2, 5000), sell('s1', '2026-03-10', 5, 7000)], NOW);
+  assert.equal(p.quantity, 0);
+  assert.equal(p.oversold, true);
+  assert.equal(p.soldQuantity, 2, 'yalnız eldeki 2 gram satılmış sayılır');
+  assert.equal(p.realized, 4000);
+});
+
+test('satış - sıralama tarihe göre: satış, kendi gününden sonraki alıma güvenemez', () => {
+  // Girilme sırası ters: satış listede önce. Ama 10 Mart'ta elde 0 gram var.
+  const p = assetPosition(gold, [sell('s1', '2026-03-10', 1, 7000), buy('b1', '2026-04-01', 2, 5000)], NOW);
+  assert.equal(p.oversold, true);
+  assert.equal(p.quantity, 2);
+});
+
+test('satış - aynı gün alım satımdan önce işlenir', () => {
+  const p = assetPosition(gold, [sell('s1', '2026-03-10', 1, 7500), buy('b1', '2026-03-10', 1, 7000)], NOW);
+  assert.equal(p.oversold, false);
+  assert.equal(p.realized, 500);
+  assert.equal(p.quantity, 0);
+});
+
+test('satış - girilme sırası sonucu değiştirmez', () => {
+  const lots = [buy('b1', '2026-01-10', 2, 6000), buy('b2', '2026-02-10', 2, 8000), sell('s1', '2026-03-10', 1, 9000), buy('b3', '2026-04-10', 1, 10000), sell('s2', '2026-05-10', 2, 11000)];
+  const a = assetPosition(gold, lots, NOW);
+  const b = assetPosition(gold, [...lots].reverse(), NOW);
+  assert.equal(a.quantity, b.quantity);
+  assert.equal(a.cost, b.cost);
+  assert.equal(a.realized, b.realized);
+});
+
+test('satış - ALIMI OLAN ESKİ KAYITLARIN sayıları değişmez (side alanı yok)', () => {
+  // Arkadaşın mevcut defteri: yalnız alım, side yok. Önce/sonra aynı olmalı.
+  const eski = [
+    { id: 'i1', assetId: 'a1', date: '2026-06-10', quantity: 1, unitCost: 7100 },
+    { id: 'i2', assetId: 'a1', date: '2026-07-12', quantity: 1.5, unitCost: 7400 },
+  ];
+  const p = assetPosition(gold, eski, NOW);
+  assert.equal(p.quantity, 2.5);
+  assert.equal(p.cost, 7100 + 1.5 * 7400);
+  assert.equal(p.realized, 0);
+  assert.equal(p.sellCount, 0);
+  assert.equal(p.oversold, false);
+  assert.equal(isSell(eski[0]), false);
+});
+
+test('portfolioSummary - toplam gerçekleşen kâr, satılmış varlık portföy sayısına girmez', () => {
+  const st = {
+    assets: [gold, { id: 'a2', label: 'Dolar', kind: 'doviz', unit: 'dolar', currentPrice: 40, priceUpdatedAt: daysAgo(0) }],
+    investments: [
+      buy('b1', '2026-01-10', 2, 5000), sell('s1', '2026-03-10', 2, 7000),
+      { id: 'b2', assetId: 'a2', date: '2026-02-01', quantity: 100, unitCost: 35 },
+    ],
+  };
+  const s = portfolioSummary(st, NOW);
+  assert.equal(s.totalRealized, 4000);
+  assert.equal(s.assetCount, 1, 'yalnız elde olan');
+  assert.equal(s.soldOutCount, 1);
+  assert.equal(s.totalValue, 4000, 'yalnız elde kalan dolar');
+  assert.equal(portfolioByKind(s).map((g) => g.kind).join(), 'doviz');
+  assert.equal(bestWorstAsset(s), null);
+});
+
+test('yatırıma ayrılan yalnız alımlardır, satış ayrı toplanır', () => {
+  const st = { assets: [gold], investments: [buy('b1', '2026-08-03', 2, 5000), sell('s1', '2026-08-10', 1, 7000)] };
+  assert.equal(investedInPeriod(st, '2026-08'), 10000);
+  assert.equal(investedInYear(st, 2026), 10000);
+  assert.equal(soldInPeriod(st, '2026-08'), 7000);
+  assert.equal(soldInPeriod(st, '2026-07'), 0);
+});
+
+test('checkSell - yeterli miktar, fazlası, düzenlemede kendi kaydı hesaba katılmaz', () => {
+  const st = { assets: [gold], investments: [buy('b1', '2026-01-10', 5, 5000), sell('s1', '2026-02-10', 2, 7000)] };
+  assert.deepEqual(checkSell(st, 'a1', { date: '2026-03-01', quantity: 3, unitCost: 7000 }), { ok: true, available: 3 });
+  assert.equal(checkSell(st, 'a1', { date: '2026-03-01', quantity: 3.5, unitCost: 7000 }).ok, false);
+  // s1'i düzenlerken kendi 2 gramı yeniden satılabilir.
+  assert.equal(checkSell(st, 'a1', { date: '2026-02-10', quantity: 5, unitCost: 7000 }, 's1').ok, true);
+});
+
+test('checkSell - geçmişe dönük satış sonraki satışı geçersiz kılıyorsa reddedilir', () => {
+  const st = { assets: [gold], investments: [buy('b1', '2026-01-10', 5, 5000), sell('s1', '2026-06-10', 4, 7000)] };
+  // 1 Mart'ta 3 gram satarsa 10 Haziran'daki 4 gramlık satışa yetmez (kalan 2).
+  assert.equal(checkSell(st, 'a1', { date: '2026-03-01', quantity: 3, unitCost: 6500 }).ok, false);
+  assert.equal(checkSell(st, 'a1', { date: '2026-03-01', quantity: 1, unitCost: 6500 }).ok, true);
+});
+
+test('recentLots - satış kaydı side ile birlikte listelenir', () => {
+  const rows = recentLots({ assets: [gold], investments: [buy('b1', '2026-01-10', 2, 5000), sell('s1', '2026-03-10', 1, 7000)] }, 0);
+  assert.equal(rows[0].side, 'sell');
+  assert.equal(rows[0].total, 7000);
 });

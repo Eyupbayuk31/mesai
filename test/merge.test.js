@@ -201,3 +201,24 @@ test('merge - sıfırlamadan SONRA girilen yeni kayıt silinmez', () => {
   const { merged } = mergeStates(yerel, remote, NOW);
   assert.deepEqual(merged.entries.map((e) => e.id), ['b']);
 });
+
+// --- Satış kayıtları senkronda (arkadaşın eski sürümüyle karışma) ---------
+
+test('merge - satış kaydı (side) eski sürümün alım listesiyle birleşince korunur, hiçbir alım silinmez', () => {
+  const eskiAlimlar = [
+    { id: 'iv_1', assetId: 'as_1', date: '2026-06-10', quantity: 2, unitCost: 7000, createdAt: '2026-06-10T10:00:00.000Z', updatedAt: '2026-06-10T10:00:00.000Z' },
+    { id: 'iv_2', assetId: 'as_1', date: '2026-07-10', quantity: 1, unitCost: 7400, createdAt: '2026-07-10T10:00:00.000Z', updatedAt: '2026-07-10T10:00:00.000Z' },
+  ];
+  const satis = { id: 'iv_3', assetId: 'as_1', date: '2026-08-01', quantity: 1, unitCost: 8000, side: 'sell', createdAt: '2026-08-01T10:00:00.000Z', updatedAt: '2026-08-01T10:00:00.000Z' };
+  const bos = { entries: [], expenses: [], recurring: [], adjustments: [], loans: [], payslips: [], assets: [], absences: [], tombstones: {}, settings: {} };
+
+  // Yerelde yeni sürüm (satışlı), bulutta eski sürümün yazdığı alım listesi.
+  const yeni = { ...bos, investments: [...eskiAlimlar, satis] };
+  const eski = { ...bos, investments: eskiAlimlar };
+
+  for (const [local, remote] of [[yeni, eski], [eski, yeni]]) {
+    const { merged } = mergeStates(local, remote, Date.parse('2026-08-02T00:00:00.000Z'));
+    assert.deepEqual(merged.investments.map((i) => i.id).sort(), ['iv_1', 'iv_2', 'iv_3']);
+    assert.equal(merged.investments.find((i) => i.id === 'iv_3').side, 'sell', 'side alanı kayıpsız taşınır');
+  }
+});

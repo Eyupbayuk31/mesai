@@ -6,6 +6,7 @@ import {
   PRESET_ASSETS, nextAssetColor, DONUT_RADIUS, priceUpdateFromLot, suggestedUnitCost,
   monthlyInvestBuckets, recentLots, ASSET_KINDS, kindOf, kindByKey, unitOf, quantityPresets,
   formatQuantity, quantityLabel, priceLabel, avgLabel, portfolioByKind, bestWorstAsset,
+  isSell, checkSell,
 } from '../investments.js';
 import { currentPeriodKey, periodLabel } from '../period.js';
 import { formatMoney, formatDayMonth, formatMonthYear, todayISO, toISODate, parseAmount } from '../format.js';
@@ -59,6 +60,12 @@ export function render(container, state, ctx) {
       if (asset) openLotSheet(ctx, asset, null);
       return;
     }
+    const sellBtn = e.target.closest('[data-sell]');
+    if (sellBtn) {
+      const asset = state.assets.find((a) => a.id === sellBtn.dataset.sell);
+      if (asset) openLotSheet(ctx, asset, null, 'sell');
+      return;
+    }
     const priceBtn = e.target.closest('[data-price]');
     if (priceBtn) {
       const asset = state.assets.find((a) => a.id === priceBtn.dataset.price);
@@ -92,6 +99,7 @@ function dashboardHTML(summary) {
           <b class="${up ? 'is-positive' : 'is-negative'}">${sign}${formatMoney(Math.abs(summary.totalProfit), { decimals: false })}
           (%${formatPct(Math.abs(summary.profitPct))})</b>
         </div>
+        ${summary.totalRealized !== 0 ? `<div class="hero__sub">satışlardan gerçekleşen <b class="${summary.totalRealized >= 0 ? 'is-positive' : 'is-negative'}">${summary.totalRealized >= 0 ? '+' : '−'}${formatMoney(Math.abs(summary.totalRealized), { decimals: false })}</b></div>` : ''}
         ${warn ? `<button class="hero__note hero__note--action" id="bulkPriceBtn" type="button">${warn} · fiyatları güncelle →</button>` : ''}
       </div>
 
@@ -135,26 +143,33 @@ function donutSVG(slices) {
 
 function assetCardHTML(p) {
   const up = p.profit >= 0;
+  const realizedHTML = p.sellCount > 0
+    ? `<span class="${p.realized >= 0 ? 'is-positive' : 'is-negative'}">gerçekleşen ${p.realized >= 0 ? '+' : '−'}${formatMoney(Math.abs(p.realized), { decimals: false })}</span>`
+    : '';
   return `
     <div class="card asset" data-asset="${p.assetId}" role="button" tabindex="0">
       <div class="asset__head">
         <span class="asset__name"><span class="asset__dot" style="background:${p.color || 'var(--accent)'}"></span>${escapeHTML(p.label)}</span>
-        <span class="asset__value">${p.hasLots ? formatMoney(p.value, { decimals: false }) : ''}</span>
+        <span class="asset__value">${p.hasLots && p.holding ? formatMoney(p.value, { decimals: false }) : ''}</span>
       </div>
-      ${p.hasLots ? `
+      ${p.hasLots && p.holding ? `
       <div class="asset__meta">
         <span>${formatQuantity(p.quantity, p.asset)} ${escapeHTML(p.unit)} · ${avgLabel(p.asset)} ${formatMoney(p.avgCost)}</span>
         ${p.hasPrice
     ? `<span class="${up ? 'is-positive' : 'is-negative'}">${up ? '+' : '−'}${formatMoney(Math.abs(p.profit), { decimals: false })} (%${formatPct(Math.abs(p.profitPct))})</span>`
     : '<span class="asset__missing">fiyat girilmedi</span>'}
-      </div>` : `
+      </div>` : p.hasLots ? `
+      <div class="asset__meta"><span>Elde kalmadı — tamamı satıldı</span>${realizedHTML}</div>` : `
       <div class="asset__meta"><span>Henüz alım yok — kaç tane aldığını gir</span></div>`}
+      ${p.hasLots && p.holding && p.sellCount > 0 ? `<div class="asset__meta">${realizedHTML}</div>` : ''}
+      ${p.oversold ? '<div class="asset__stale">Satışlar elindeki miktarı aşıyor — kayıtları kontrol et</div>' : ''}
       <div class="asset__foot">
-        <span>${p.hasLots ? `${p.lotCount} alım · maliyet ${formatMoney(p.cost, { decimals: false })}` : ''}</span>
+        <span>${p.hasLots ? `${p.buyCount} alım${p.sellCount ? ` · ${p.sellCount} satış` : ''}${p.holding ? ` · maliyet ${formatMoney(p.cost, { decimals: false })}` : ''}` : ''}</span>
         <span style="display:flex; gap:8px; align-items:center;">
           <button class="asset__price" data-price="${p.assetId}" type="button">
             ${p.hasPrice ? `${formatMoney(p.price)} ${p.stale ? '⚠' : ''}` : 'Fiyat gir'}
           </button>
+          ${p.holding ? `<button class="asset__sell" data-sell="${p.assetId}" type="button">Sat</button>` : ''}
           <button class="asset__buy" data-buy="${p.assetId}" type="button">Alım ekle +</button>
         </span>
       </div>
@@ -311,46 +326,64 @@ function openAssetFormSheet(ctx, asset) {
   });
 }
 
-// --- Alım ekle / düzenle -------------------------------------------------
+// --- Alım / satış ekle / düzenle -----------------------------------------
 //
 // Adım 2: kaç tane, kaçtan? Varlık bellidir, tekrar sorulmaz. Birim fiyat
-// bilinen son fiyatla dolu gelir — aynıysa elleme.
+// bilinen son fiyatla dolu gelir — aynıysa elleme. Satış aynı formdur; eldeki
+// miktarı aşamaz ve ortalama maliyete göre ne kadar kâr/zarar yazacağını
+// kaydetmeden önce gösterir.
 
-function openLotSheet(ctx, asset, lot) {
+function openLotSheet(ctx, asset, lot, mode = 'buy') {
   const store = ctx.store;
   const isNew = !lot;
+  const sellMode = mode === 'sell' || isSell(lot);
+  const unit = unitOf(asset);
   const known = suggestedUnitCost(asset);
 
+  // Bu kayıt dışındaki alım/satımlarla elde kalan ve ortalama maliyet.
+  const othersPosition = assetPosition(
+    asset,
+    assetLots(store.getState(), asset.id).filter((l) => l.id !== lot?.id),
+  );
+
   openSheet({
-    title: isNew ? `${asset.label} · alım ekle` : 'Alımı düzenle',
+    title: isNew ? `${asset.label} · ${sellMode ? 'satış ekle' : 'alım ekle'}` : (sellMode ? 'Satışı düzenle' : 'Alımı düzenle'),
     footerHTML: `
       <button class="btn btn--primary" id="saveLotBtn" type="button">${isNew ? 'Ekle' : 'Kaydet'}</button>
-      ${isNew ? '' : '<button class="btn btn--danger btn--sm" id="removeLotBtn" type="button" style="margin-top:8px;">Alımı sil</button>'}
+      ${isNew ? '' : `<button class="btn btn--danger btn--sm" id="removeLotBtn" type="button" style="margin-top:8px;">${sellMode ? 'Satışı sil' : 'Alımı sil'}</button>`}
     `,
     build(bodyEl, footerEl) {
+      const qtyChips = sellMode
+        ? (othersPosition.quantity > 0
+          ? [{ q: othersPosition.quantity, text: `Hepsi · ${formatQuantity(othersPosition.quantity, asset)} ${unit}` }]
+          : [])
+        : quantityPresets(asset).map((q) => ({ q, text: `${String(q).replace('.', ',')} ${unit}` }));
+
       bodyEl.innerHTML = `
+        ${sellMode ? `<div class="field__hint" style="margin:-4px 0 12px;">Elinde: <b>${formatQuantity(othersPosition.quantity, asset)} ${escapeHTML(unit)}</b> · ${escapeHTML(avgLabel(asset))} ${formatMoney(othersPosition.avgCost)}</div>` : ''}
         <div class="input-row">
           <div class="field" style="margin-bottom:8px;">
-            <label class="field__label">${escapeHTML(quantityLabel(asset))}</label>
+            <label class="field__label">${sellMode ? `Kaç ${escapeHTML(unit)} sattın?` : escapeHTML(quantityLabel(asset))}</label>
             <input class="input" type="text" inputmode="decimal" id="lotQuantity"
               value="${lot ? String(lot.quantity).replace('.', ',') : ''}" placeholder="1" autocomplete="off" />
           </div>
           <div class="field" style="margin-bottom:8px;">
-            <label class="field__label">${escapeHTML(priceLabel(asset))}</label>
+            <label class="field__label">${sellMode ? `1 ${escapeHTML(unit)} kaç ₺'ye sattın?` : escapeHTML(priceLabel(asset))}</label>
             <input class="input input--amount" type="text" inputmode="decimal" id="lotUnitCost"
               value="${lot ? String(lot.unitCost).replace('.', ',') : (known ? String(known).replace('.', ',') : '')}" placeholder="7100" autocomplete="off" />
           </div>
         </div>
 
         <div class="quick-chips" id="qtyChips" style="margin-bottom:14px;">
-          ${quantityPresets(asset).map((q) => `<button class="quick-chip" type="button" data-qty="${q}">${String(q).replace('.', ',')} ${escapeHTML(unitOf(asset))}</button>`).join('')}
+          ${qtyChips.map((c) => `<button class="quick-chip" type="button" data-qty="${c.q}">${escapeHTML(c.text)}</button>`).join('')}
         </div>
 
         <div class="lot-total" id="lotTotalBox">
-          <span class="lot-total__label">Ödediğin</span>
+          <span class="lot-total__label">${sellMode ? 'Eline geçen' : 'Ödediğin'}</span>
           <span class="lot-total__value" id="lotTotalPreview">—</span>
           <span class="lot-total__calc" id="lotTotalCalc"></span>
         </div>
+        ${sellMode ? '<div class="field__hint" id="lotRealizedHint" style="margin-top:8px;"></div>' : ''}
 
         <div class="field" style="margin-top:14px;">
           <label class="field__label">Tarih</label>
@@ -374,6 +407,7 @@ function openLotSheet(ctx, asset, lot) {
       const calcEl = bodyEl.querySelector('#lotTotalCalc');
       const boxEl = bodyEl.querySelector('#lotTotalBox');
       const dateEl = bodyEl.querySelector('#lotDate');
+      const realizedEl = bodyEl.querySelector('#lotRealizedHint');
 
       // Tutar iki alan da doluyken görünür; eksikken boş kutu yerine ne
       // beklendiğini söyler.
@@ -384,8 +418,13 @@ function openLotSheet(ctx, asset, lot) {
         boxEl.classList.toggle('is-ready', ready);
         previewEl.textContent = ready ? formatMoney(q * c) : '—';
         calcEl.textContent = ready
-          ? `${formatQuantity(q, asset)} ${unitOf(asset)} × ${formatMoney(c)}`
+          ? `${formatQuantity(q, asset)} ${unit} × ${formatMoney(c)}`
           : 'Miktar ve fiyatı gir, tutarı hesaplayayım';
+        if (realizedEl) {
+          if (!ready || othersPosition.avgCost <= 0) { realizedEl.textContent = ''; return; }
+          const gain = Math.min(q, othersPosition.quantity || q) * (c - othersPosition.avgCost);
+          realizedEl.innerHTML = `Bu satıştan gerçekleşen: <b class="${gain >= 0 ? 'is-positive' : 'is-negative'}">${gain >= 0 ? '+' : '−'}${formatMoney(Math.abs(gain))}</b>`;
+        }
       };
       qtyEl.addEventListener('input', updatePreview);
       costEl.addEventListener('input', updatePreview);
@@ -417,8 +456,8 @@ function openLotSheet(ctx, asset, lot) {
       footerEl.querySelector('#saveLotBtn').addEventListener('click', () => {
         const quantity = parseAmount(qtyEl.value);
         const unitCost = parseAmount(costEl.value);
-        if (quantity <= 0) { showToast(`Kaç ${unitOf(asset)} aldığını gir`); return; }
-        if (unitCost <= 0) { showToast(`1 ${unitOf(asset)} kaç ₺ olduğunu gir`); return; }
+        if (quantity <= 0) { showToast(`Kaç ${unit} ${sellMode ? 'sattığını' : 'aldığını'} gir`); return; }
+        if (unitCost <= 0) { showToast(`1 ${unit} kaç ₺ olduğunu gir`); return; }
 
         const payload = {
           assetId: asset.id,
@@ -427,21 +466,42 @@ function openLotSheet(ctx, asset, lot) {
           date: bodyEl.querySelector('#lotDate').value || todayISO(),
           note: bodyEl.querySelector('#lotNote').value.trim(),
         };
+        const state = store.getState();
+
+        if (sellMode) {
+          // Satış, o güne kadar alınandan fazlası olamaz.
+          const check = checkSell(state, asset.id, payload, lot?.id);
+          if (!check.ok) {
+            showToast(`Eldeki miktardan fazla satamazsın (${formatQuantity(check.available, asset)} ${unit})`);
+            return;
+          }
+          payload.side = 'sell';
+        } else if (!isNew) {
+          // Alımı küçültmek/ileri almak, sonradan yapılmış bir satışı havada bırakabilir.
+          const next = assetLots(state, asset.id).map((l) => (l.id === lot.id ? { ...l, ...payload } : l));
+          if (assetPosition(asset, next).oversold && !window.confirm('Bu değişiklikten sonra bazı satışlar elindeki miktarı aşıyor. Yine de kaydedilsin mi?')) return;
+        }
+
         if (isNew) store.addInvestment(payload);
         else store.updateInvestment(lot.id, payload);
 
-        // Alım bir fiyat gözlemidir: en yeni alım güncel fiyatı da tazeler.
+        // Alım da satım da bir fiyat gözlemidir: en yeni işlem güncel fiyatı tazeler.
         const saved = store.getState().assets.find((a) => a.id === asset.id);
         const priceUpdate = priceUpdateFromLot(saved, payload);
         if (priceUpdate) store.updateAsset(asset.id, priceUpdate);
 
-        showToast(isNew ? 'Alım eklendi' : 'Alım güncellendi');
+        showToast(`${sellMode ? 'Satış' : 'Alım'} ${isNew ? 'eklendi' : 'güncellendi'}`);
         closeSheet();
       });
 
       footerEl.querySelector('#removeLotBtn')?.addEventListener('click', () => {
+        if (!sellMode) {
+          // Alımı silmek, ona dayanan satışları havada bırakabilir.
+          const next = assetLots(store.getState(), asset.id).filter((l) => l.id !== lot.id);
+          if (assetPosition(asset, next).oversold && !window.confirm('Bu alımı silersen bazı satışlar elindeki miktarı aşar. Yine de silinsin mi?')) return;
+        }
         store.removeInvestment(lot.id);
-        showToast('Alım silindi');
+        showToast(sellMode ? 'Satış silindi' : 'Alım silindi');
         closeSheet();
       });
     },
@@ -495,24 +555,26 @@ function openAssetSheet(ctx, asset) {
     title: asset.label,
     footerHTML: `
       <button class="btn btn--primary" id="addLotBtn" type="button">Alım ekle</button>
+      ${p.holding ? '<button class="btn btn--secondary btn--sm" id="sellLotBtn" type="button" style="margin-top:8px;">Satış ekle</button>' : ''}
       <button class="btn btn--secondary btn--sm" id="editAssetBtn" type="button" style="margin-top:8px;">Varlığı düzenle</button>
     `,
     build(bodyEl, footerEl) {
       bodyEl.innerHTML = `
         <div class="asset-detail">
           <div class="asset-detail__hero">
-            <div class="asset-detail__label">Bugünkü değeri</div>
+            <div class="asset-detail__label">${p.holding ? 'Bugünkü değeri' : 'Elde kalmadı'}</div>
             <div class="asset-detail__value">${formatMoney(p.value, { decimals: false })}</div>
             <div class="asset-detail__sub">
               ${formatQuantity(p.quantity, asset)} ${escapeHTML(unit)}
               ${p.hasPrice ? `· ${rate ? 'kur' : 'fiyat'} ${formatMoney(p.price)}` : ''}
             </div>
-            ${p.hasPrice ? `
+            ${!p.holding ? '' : p.hasPrice ? `
             <div class="asset-detail__pl ${up ? 'is-positive' : 'is-negative'}">
               ${up ? '+' : '−'}${formatMoney(Math.abs(p.profit), { decimals: false })}
               <span>(%${formatPct(Math.abs(p.profitPct))})</span>
             </div>` : `
             <button class="asset-detail__cta" id="setPriceBtn" type="button">Güncel ${rate ? 'kuru' : 'fiyatı'} gir →</button>`}
+            ${p.sellCount > 0 ? `<div class="asset-detail__sub">satışlardan gerçekleşen <b class="${p.realized >= 0 ? 'is-positive' : 'is-negative'}">${p.realized >= 0 ? '+' : '−'}${formatMoney(Math.abs(p.realized), { decimals: false })}</b></div>` : ''}
           </div>
 
           <div class="asset-detail__grid">
@@ -525,14 +587,14 @@ function openAssetSheet(ctx, asset) {
               <span class="asset-detail__cell-value">${formatMoney(p.avgCost)}</span>
             </div>
             <div class="asset-detail__cell">
-              <span class="asset-detail__cell-label">Alım sayısı</span>
-              <span class="asset-detail__cell-value">${lots.length}</span>
+              <span class="asset-detail__cell-label">${p.sellCount ? 'Alım / satış' : 'Alım sayısı'}</span>
+              <span class="asset-detail__cell-value">${p.sellCount ? `${p.buyCount} / ${p.sellCount}` : lots.length}</span>
             </div>
           </div>
         </div>
 
         <div class="section-header" style="margin-top:18px;">
-          <span class="section-title" style="margin:0;">Alımlar</span>
+          <span class="section-title" style="margin:0;">${p.sellCount ? 'Alım ve satışlar' : 'Alımlar'}</span>
           <span class="section-header__note">${lots.length ? 'satıra dokun, düzenle' : ''}</span>
         </div>
         ${lots.length === 0 ? `
@@ -541,14 +603,16 @@ function openAssetSheet(ctx, asset) {
           ${lots.map((l) => {
     const total = lotTotal(l);
     // Bu alım tek başına ne durumda? Ortalamaya karışmadan, kendi fiyatıyla.
-    const lotProfit = p.hasPrice ? (p.price - (Number(l.unitCost) || 0)) * (Number(l.quantity) || 0) : null;
+    // Satışta o satırın kârı ortalama maliyete bağlıdır; satır bazında gösterilmez.
+    const sold = isSell(l);
+    const lotProfit = p.hasPrice && !sold ? (p.price - (Number(l.unitCost) || 0)) * (Number(l.quantity) || 0) : null;
     const lotFlat = lotProfit !== null && Math.abs(lotProfit) < 0.005;
     const lotUp = (lotProfit || 0) >= 0;
     return `
             <button class="lot-table__row" type="button" data-lot="${l.id}">
               <span class="lot-table__date">${formatDayMonth(l.date)}</span>
-              <span class="lot-table__detail">${formatQuantity(l.quantity, asset)} ${escapeHTML(unit)} × ${formatMoney(l.unitCost)}${l.note ? `<span class="lot-row__note">${escapeHTML(l.note)}</span>` : ''}</span>
-              <span class="lot-table__total">${formatMoney(total, { decimals: false })}</span>
+              <span class="lot-table__detail">${sold ? '<b class="lot-tag lot-tag--sell">Satış</b> ' : ''}${formatQuantity(l.quantity, asset)} ${escapeHTML(unit)} × ${formatMoney(l.unitCost)}${l.note ? `<span class="lot-row__note">${escapeHTML(l.note)}</span>` : ''}</span>
+              <span class="lot-table__total">${sold ? '+' : ''}${formatMoney(total, { decimals: false })}</span>
               <span class="lot-table__pl ${lotProfit === null || lotFlat ? 'lot-table__pl--flat' : lotUp ? 'is-positive' : 'is-negative'}">
                 ${lotProfit === null ? '' : lotFlat ? '—' : `${lotUp ? '+' : '−'}${formatMoney(Math.abs(lotProfit), { decimals: false })}`}
               </span>
@@ -556,7 +620,7 @@ function openAssetSheet(ctx, asset) {
   }).join('')}
           <div class="lot-table__row lot-table__row--total">
             <span class="lot-table__date">Toplam</span>
-            <span class="lot-table__detail">${formatQuantity(p.quantity, asset)} ${escapeHTML(unit)}</span>
+            <span class="lot-table__detail">${p.holding ? `elde ${formatQuantity(p.quantity, asset)} ${escapeHTML(unit)}` : 'elde kalmadı'}</span>
             <span class="lot-table__total">${formatMoney(p.cost, { decimals: false })}</span>
             <span class="lot-table__pl ${p.hasPrice ? (up ? 'is-positive' : 'is-negative') : ''}">
               ${p.hasPrice ? `${up ? '+' : '−'}${formatMoney(Math.abs(p.profit), { decimals: false })}` : ''}
@@ -581,6 +645,11 @@ function openAssetSheet(ctx, asset) {
       footerEl.querySelector('#addLotBtn').addEventListener('click', () => {
         closeSheet();
         setTimeout(() => openLotSheet(ctx, asset, null), 280);
+      });
+
+      footerEl.querySelector('#sellLotBtn')?.addEventListener('click', () => {
+        closeSheet();
+        setTimeout(() => openLotSheet(ctx, asset, null, 'sell'), 280);
       });
 
       footerEl.querySelector('#editAssetBtn').addEventListener('click', () => {
@@ -725,8 +794,8 @@ function recentLotsHTML(state) {
               <span class="asset__dot" style="background:${l.color || 'var(--accent)'}"></span>
               <span class="lot-row__name">${escapeHTML(l.label)}${l.note ? `<span class="lot-row__note">${escapeHTML(l.note)}</span>` : ''}</span>
             </span>
-            <span class="lot-row__qty">${formatQuantity(l.quantity, l.asset)} ${escapeHTML(l.unit)} × ${formatMoney(l.unitCost)}</span>
-            <span class="lot-row__total">${formatMoney(l.total, { decimals: false })}</span>
+            <span class="lot-row__qty">${isSell(l) ? '<b class="lot-tag lot-tag--sell">Satış</b> ' : ''}${formatQuantity(l.quantity, l.asset)} ${escapeHTML(l.unit)} × ${formatMoney(l.unitCost)}</span>
+            <span class="lot-row__total">${isSell(l) ? '+' : ''}${formatMoney(l.total, { decimals: false })}</span>
           </button>
         `).join('')}
       </div>
@@ -878,8 +947,8 @@ export function renderLotsPage(container, state, ctx) {
               <span class="asset__dot" style="background:${l.color || 'var(--accent)'}"></span>
               <span class="lot-row__name">${escapeHTML(l.label)}${l.note ? `<span class="lot-row__note">${escapeHTML(l.note)}</span>` : ''}</span>
             </span>
-            <span class="lot-row__qty">${formatQuantity(l.quantity, l.asset)} ${escapeHTML(l.unit)} × ${formatMoney(l.unitCost)}</span>
-            <span class="lot-row__total">${formatMoney(l.total, { decimals: false })}</span>
+            <span class="lot-row__qty">${isSell(l) ? '<b class="lot-tag lot-tag--sell">Satış</b> ' : ''}${formatQuantity(l.quantity, l.asset)} ${escapeHTML(l.unit)} × ${formatMoney(l.unitCost)}</span>
+            <span class="lot-row__total">${isSell(l) ? '+' : ''}${formatMoney(l.total, { decimals: false })}</span>
           </button>
         `).join('')}
       </div>

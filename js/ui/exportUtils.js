@@ -40,7 +40,8 @@ export function csvForEntries(entries, settings, entryAmountFn) {
  * @param {Array} lots recentLots() gibi varlık bilgisi eklenmiş alımlar
  */
 export function csvForInvestments(lots) {
-  const header = ['Tarih', 'Varlik', 'Tur', 'Miktar', 'Birim', 'Birim fiyat', 'Tutar', 'Not'];
+  // Islem sütunu EN SONDA: eski sütunların yeri değişmesin, eldeki tablolar bozulmasın.
+  const header = ['Tarih', 'Varlik', 'Tur', 'Miktar', 'Birim', 'Birim fiyat', 'Tutar', 'Not', 'Islem'];
   const lines = [header.join(';')];
   const sorted = [...lots].sort((a, b) => (a.date < b.date ? -1 : 1));
   for (const l of sorted) {
@@ -55,6 +56,7 @@ export function csvForInvestments(lots) {
       unitCost.toFixed(2).replace('.', ','),
       (quantity * unitCost).toFixed(2).replace('.', ','),
       csvEscape(l.note || ''),
+      l.side === 'sell' ? 'Satis' : 'Alim',
     ].join(';'));
   }
   return lines.join('\n');

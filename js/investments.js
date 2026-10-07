@@ -3,6 +3,11 @@
 // servisine bağlanmadan her koşulda çalışsın diye.
 //
 // Bütçeden bağımsızdır: yatırım harcama sayılmaz, ayrı defterdir.
+//
+// Alım ve satım aynı koleksiyonda (investments) durur; satımda `side: 'sell'`
+// yazılır, alanı olmayan eski kayıt alımdır. Böylece eski sürümü açık kalmış
+// bir cihaz yeni kayıtları silmez ya da düşürmez (kayıt bazlı senkron bütün
+// kaydı olduğu gibi taşır) — yalnızca satımı alım gibi gösterebilir.
 
 import { isDateInPeriod, shiftPeriod } from './period.js';
 import { toISODate } from './format.js';
@@ -126,25 +131,79 @@ function lotsOf(state, assetId) {
   return (state?.investments || []).filter((i) => i && i.assetId === assetId);
 }
 
+/** Satım mı? `side` alanı olmayan (eski) kayıt alımdır. */
+export function isSell(lot) {
+  return lot?.side === 'sell';
+}
+
+// Alımlar ve satımlar tarih sırasıyla işlenir: satış, o güne kadar alınmış
+// olandan fazlasını satamaz. Aynı güne düşenlerde alım önce gelir (sabah alıp
+// akşam satmak mümkün), sonra oluşturulma anı.
+function chronological(lots) {
+  return [...lots].sort((a, b) => {
+    if (a.date !== b.date) return String(a.date) < String(b.date) ? -1 : 1;
+    if (isSell(a) !== isSell(b)) return isSell(a) ? 1 : -1;
+    const ta = Date.parse(a.createdAt) || 0;
+    const tb = Date.parse(b.createdAt) || 0;
+    return ta - tb;
+  });
+}
+
+/**
+ * Alım/satımları ortalama maliyet yöntemiyle işler. Satış ortalama maliyeti
+ * değiştirmez: elden çıkan miktar kadar maliyet düşer, satış fiyatı ile
+ * ortalama maliyet farkı GERÇEKLEŞEN kâr olur.
+ *
+ * Satım yoksa eski toplama aynen yapılır (sıralama bile yok) — yalnızca alımı
+ * olan mevcut kayıtların sayıları bu değişiklikten bir kuruş bile etkilenmez.
+ */
+function replay(lots) {
+  const list = (lots || []).filter(Boolean);
+  const ordered = list.some(isSell) ? chronological(list) : list;
+  let quantity = 0;
+  let cost = 0;
+  let realized = 0;
+  let soldQuantity = 0;
+  let proceeds = 0;
+  let oversold = false;
+  for (const lot of ordered) {
+    const q = Number(lot.quantity) || 0;
+    const unit = Number(lot.unitCost) || 0;
+    if (!isSell(lot)) {
+      quantity += q;
+      cost += q * unit;
+      continue;
+    }
+    // Eldekinden fazlası satılamaz; fazlası yok sayılır ve işaretlenir.
+    const sold = Math.min(q, quantity);
+    if (q > quantity + 1e-9) oversold = true;
+    if (sold <= 0) continue;
+    const avg = quantity > 0 ? cost / quantity : 0;
+    realized += sold * (unit - avg);
+    proceeds += sold * unit;
+    cost -= avg * sold;
+    quantity -= sold;
+    soldQuantity += sold;
+    // Kayan nokta artığı: tamamı satıldıysa kalan sıfırdır.
+    if (quantity < 1e-9) { quantity = 0; cost = 0; }
+  }
+  return { quantity, cost, realized, soldQuantity, proceeds, oversold };
+}
+
 /**
  * Bir varlığın pozisyonu: elindeki miktar, toplam maliyet, ortalama maliyet,
- * güncel değer ve kâr/zarar.
+ * güncel değer ve kâr/zarar (gerçekleşmemiş) ile satışlardan gerçekleşen kâr.
  *
  * Fiyat girilmemişse değer = maliyet kabul edilir; olmayan bir kârı varmış
  * gibi göstermek yerine `hasPrice: false` ile arayüze "fiyat gir" dedirtir.
  */
 export function assetPosition(asset, lots, nowMs = Date.now()) {
-  let quantity = 0;
-  let cost = 0;
-  for (const lot of lots || []) {
-    const q = Number(lot?.quantity) || 0;
-    quantity += q;
-    cost += q * (Number(lot?.unitCost) || 0);
-  }
+  const { quantity, cost, realized, soldQuantity, proceeds, oversold } = replay(lots);
   const price = Number(asset?.currentPrice) || 0;
   const hasPrice = price > 0;
   const value = hasPrice ? quantity * price : cost;
   const profit = value - cost;
+  const all = lots || [];
   return {
     assetId: asset?.id,
     label: asset?.label || '',
@@ -161,11 +220,32 @@ export function assetPosition(asset, lots, nowMs = Date.now()) {
     value,
     profit,
     profitPct: cost > 0 ? (profit / cost) * 100 : 0,
-    lotCount: (lots || []).length,
-    hasLots: (lots || []).length > 0,
-    stale: hasPrice && staleDays(asset?.priceUpdatedAt, nowMs) > STALE_DAYS,
+    realized,
+    soldQuantity,
+    proceeds,
+    oversold,
+    sellCount: all.filter(isSell).length,
+    buyCount: all.filter((l) => !isSell(l)).length,
+    lotCount: all.length,
+    hasLots: all.length > 0,
+    holding: quantity > 0,
+    stale: hasPrice && quantity > 0 && staleDays(asset?.priceUpdatedAt, nowMs) > STALE_DAYS,
     staleDays: staleDays(asset?.priceUpdatedAt, nowMs),
   };
+}
+
+/**
+ * Satım girilirken: eldeki miktar yeterli mi? Adayı (düzenlemede eski kaydın
+ * yerine) listeye koyup tüm geçmişi baştan işler — geçmiş tarihli bir satış,
+ * sonraki satışları da geçersiz kılabilir.
+ *
+ * @returns {{ok:boolean, available:number}} available: aday dışındaki alım/satımlarla elde kalan
+ */
+export function checkSell(state, assetId, candidate, excludeId = null) {
+  const others = lotsOf(state, assetId).filter((l) => l.id !== excludeId);
+  const base = replay(others);
+  const withCandidate = replay([...others, { ...candidate, assetId, side: 'sell', id: '__aday__', createdAt: new Date().toISOString() }]);
+  return { ok: !withCandidate.oversold && !base.oversold, available: base.quantity };
 }
 
 function staleDays(iso, nowMs) {
@@ -185,13 +265,16 @@ export function portfolioSummary(state, nowMs = Date.now()) {
 
   let totalCost = 0;
   let totalValue = 0;
+  let totalRealized = 0;
   let staleCount = 0;
   let missingPrice = 0;
   for (const p of positions) {
     totalCost += p.cost;
     totalValue += p.value;
+    totalRealized += p.realized;
     if (p.stale) staleCount += 1;
-    if (!p.hasPrice) missingPrice += 1;
+    // Tamamı satılmış varlığın fiyatsızlığı kimseyi ilgilendirmez.
+    if (!p.hasPrice && !(p.hasLots && !p.holding)) missingPrice += 1;
   }
   const totalProfit = totalValue - totalCost;
   return {
@@ -199,11 +282,13 @@ export function portfolioSummary(state, nowMs = Date.now()) {
     totalCost,
     totalValue,
     totalProfit,
+    totalRealized,
     profitPct: totalCost > 0 ? (totalProfit / totalCost) * 100 : 0,
     staleCount,
     missingPrice,
-    assetCount: positions.filter((p) => p.hasLots).length,
+    assetCount: positions.filter((p) => p.hasLots && p.holding).length,
     emptyCount: positions.filter((p) => !p.hasLots).length,
+    soldOutCount: positions.filter((p) => p.hasLots && !p.holding).length,
   };
 }
 
@@ -211,7 +296,7 @@ export function portfolioSummary(state, nowMs = Date.now()) {
 export function portfolioByKind(summary) {
   const groups = new Map();
   for (const p of summary?.positions || []) {
-    if (!p.hasLots) continue;
+    if (!p.hasLots || !p.holding) continue;
     const g = groups.get(p.kind) || { kind: p.kind, label: p.kindLabel, value: 0, cost: 0, count: 0 };
     g.value += p.value;
     g.cost += p.cost;
@@ -236,7 +321,7 @@ export function portfolioByKind(summary) {
  */
 export function bestWorstAsset(summary) {
   const rank = (summary?.positions || [])
-    .filter((p) => p.hasLots && p.hasPrice && p.cost > 0)
+    .filter((p) => p.holding && p.hasPrice && p.cost > 0)
     .sort((a, b) => b.profitPct - a.profitPct);
   if (rank.length < 2) return null;
   return { best: rank[0], worst: rank[rank.length - 1] };
@@ -312,10 +397,20 @@ export function suggestedUnitCost(asset) {
   return Number(asset?.currentPrice) > 0 ? Number(asset.currentPrice) : null;
 }
 
+// "Yatırıma ayrılan" yalnızca ALIMLARDIR: satış geliri bu toplamdan düşmez,
+// ayrı satırda (soldInPeriod) görünür. Aksi halde bir satış, o ay hiç
+// yatırım yapılmamış gibi gösterirdi.
 /** Bir dönemde (maaş ayı) yatırıma ayrılan para. */
 export function investedInPeriod(state, periodKey) {
   return (state?.investments || [])
-    .filter((i) => i?.date && isDateInPeriod(i.date, periodKey))
+    .filter((i) => i?.date && !isSell(i) && isDateInPeriod(i.date, periodKey))
+    .reduce((sum, i) => sum + (Number(i.quantity) || 0) * (Number(i.unitCost) || 0), 0);
+}
+
+/** Bir dönemde satışlardan gelen para. */
+export function soldInPeriod(state, periodKey) {
+  return (state?.investments || [])
+    .filter((i) => i?.date && isSell(i) && isDateInPeriod(i.date, periodKey))
     .reduce((sum, i) => sum + (Number(i.quantity) || 0) * (Number(i.unitCost) || 0), 0);
 }
 
@@ -323,7 +418,7 @@ export function investedInPeriod(state, periodKey) {
 export function investedInYear(state, year) {
   const prefix = String(year);
   return (state?.investments || [])
-    .filter((i) => typeof i?.date === 'string' && i.date.slice(0, 4) === prefix)
+    .filter((i) => typeof i?.date === 'string' && !isSell(i) && i.date.slice(0, 4) === prefix)
     .reduce((sum, i) => sum + (Number(i.quantity) || 0) * (Number(i.unitCost) || 0), 0);
 }
 
