@@ -501,6 +501,13 @@ function openLotSheet(ctx, asset, lot, mode = 'buy', opts = {}) {
 
       // Alanların altındaki canlı bilgiler: fiyatın kaynağı, satışın kârı.
       function updateExtras() {
+        const calcEl = fieldsEl.querySelector('#tCalc');
+        if (calcEl) {
+          const v = view();
+          calcEl.textContent = trade.quantity > 0 && trade.price > 0
+            ? `${formatQuantity(trade.quantity, v)} ${unitOf(v)} × ${formatMoney(trade.price)}`
+            : 'Miktar ve fiyatı gir, tutarı hesaplayayım';
+        }
         const hintEl = fieldsEl.querySelector('#tPriceHint');
         if (hintEl) {
           hintEl.textContent = suggestedFromMarket && suggested && trade.price === suggested && !trade.derived.includes('price')
@@ -519,6 +526,12 @@ function openLotSheet(ctx, asset, lot, mode = 'buy', opts = {}) {
       function paintInput(field) {
         const el = fieldsEl.querySelector(`#t_${field}`);
         if (!el) return;
+        // Tutarla girişin kapalı olduğu türlerde (altın, hisse) tutar yalnızca sonuçtur.
+        if (el.tagName !== 'INPUT') {
+          el.textContent = trade.total > 0 ? formatMoney(trade.total) : '—';
+          el.closest('.lot-total')?.classList.toggle('is-ready', trade.total > 0);
+          return;
+        }
         el.value = texts[field];
         el.classList.toggle('is-derived', trade.derived.includes(field));
       }
@@ -532,7 +545,7 @@ function openLotSheet(ctx, asset, lot, mode = 'buy', opts = {}) {
           else if (!(trade[f] > 0)) texts[f] = '';
           paintInput(f);
         }
-        fieldsEl.querySelector(`#t_${field}`)?.classList.remove('is-derived');
+        if (fieldsEl.querySelector(`#t_${field}`)?.tagName === 'INPUT') fieldsEl.querySelector(`#t_${field}`).classList.remove('is-derived');
         updateExtras();
       }
 
@@ -541,12 +554,14 @@ function openLotSheet(ctx, asset, lot, mode = 'buy', opts = {}) {
         if (!v) { partEl.hidden = true; return; }
         partEl.hidden = false;
         const unit = unitOf(v);
+        const byAmount = kindOf(v).byAmount;
         const pos = othersPosition();
         const qtyChips = sellMode
           ? (pos && pos.quantity > 0 ? [{ q: pos.quantity, text: `Hepsi · ${formatQuantity(pos.quantity, v)} ${unit}` }] : [])
           : quantityPresets(v).map((q) => ({ q, text: `${String(q).replace('.', ',')} ${unit}` }));
         fieldsEl.innerHTML = `
           ${sellMode && pos ? `<div class="field__hint" style="margin:-4px 0 12px;">Elinde: <b>${formatQuantity(pos.quantity, v)} ${escapeHTML(unit)}</b> · ${escapeHTML(avgLabel(v))} ${formatMoney(pos.avgCost)}</div>` : ''}
+          ${byAmount ? `
           <div class="input-row">
             <div class="field" style="margin-bottom:8px;">
               <label class="field__label" for="t_quantity">${sellMode ? `Kaç ${escapeHTML(unit)} sattın?` : escapeHTML(quantityLabel(v))}</label>
@@ -557,7 +572,11 @@ function openLotSheet(ctx, asset, lot, mode = 'buy', opts = {}) {
               <input class="input input--amount" type="text" inputmode="decimal" id="t_total" placeholder="5000" autocomplete="off" />
             </div>
           </div>
-          <div class="field__hint trade-hint">İkisinden birini yaz, diğeri hesaplanır.</div>
+          <div class="field__hint trade-hint">İkisinden birini yaz, diğeri hesaplanır.</div>` : `
+          <div class="field" style="margin-bottom:8px;">
+            <label class="field__label" for="t_quantity">${sellMode ? `Kaç ${escapeHTML(unit)} sattın?` : escapeHTML(quantityLabel(v))}</label>
+            <input class="input" type="text" inputmode="decimal" id="t_quantity" placeholder="1" autocomplete="off" />
+          </div>`}
           <div class="quick-chips" id="qtyChips" style="margin-bottom:14px;">
             ${qtyChips.map((c) => `<button class="quick-chip" type="button" data-qty="${c.q}">${escapeHTML(c.text)}</button>`).join('')}
           </div>
@@ -566,6 +585,12 @@ function openLotSheet(ctx, asset, lot, mode = 'buy', opts = {}) {
             <input class="input input--amount" type="text" inputmode="decimal" id="t_price" placeholder="7100" autocomplete="off" />
             <div class="field__hint" id="tPriceHint" style="margin-top:6px;"></div>
           </div>
+          ${byAmount ? '' : `
+          <div class="lot-total" id="lotTotalBox">
+            <span class="lot-total__label">${sellMode ? 'Eline geçen' : 'Ödediğin'}</span>
+            <span class="lot-total__value" id="t_total">—</span>
+            <span class="lot-total__calc" id="tCalc"></span>
+          </div>`}
           ${sellMode ? '<div class="field__hint" id="lotRealizedHint" style="margin:8px 0 4px;"></div>' : ''}
           ${!current && draft?.symbol && !sellMode ? `
           <label class="market-toggle" style="margin:12px 0 6px;">
@@ -575,7 +600,8 @@ function openLotSheet(ctx, asset, lot, mode = 'buy', opts = {}) {
         `;
         for (const f of ['quantity', 'price', 'total']) {
           paintInput(f);
-          fieldsEl.querySelector(`#t_${f}`).addEventListener('input', (e) => onEdit(f, e.target.value));
+          const el = fieldsEl.querySelector(`#t_${f}`);
+          if (el?.tagName === 'INPUT') el.addEventListener('input', (e) => onEdit(f, e.target.value));
         }
         fieldsEl.querySelector('#qtyChips').addEventListener('click', (e) => {
           const chip = e.target.closest('[data-qty]');

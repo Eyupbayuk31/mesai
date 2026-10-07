@@ -830,3 +830,8 @@ test('suggestedUnitCost - piyasa fiyatı açık ve tazeyse o, değilse elle giri
   assert.equal(suggestedUnitCost({ currentPrice: 6200 }, market), 6200, 'kaynak seçilmemişse piyasa yok sayılır');
   assert.equal(suggestedUnitCost({ currentPrice: 6200, priceSource: 'GRA' }, null), 6200);
 });
+
+test('ASSET_KINDS - tutarla giriş yalnız döviz/kripto/fon/diğerinde; altın ve hisse miktarla girilir', () => {
+  const byAmount = Object.fromEntries(ASSET_KINDS.map((k) => [k.key, k.byAmount]));
+  assert.deepEqual(byAmount, { doviz: true, altin: false, hisse: false, kripto: true, fon: true, diger: true });
+});

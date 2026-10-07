@@ -13,15 +13,18 @@ import { isDateInPeriod, shiftPeriod } from './period.js';
 import { toISODate, parseISODate } from './format.js';
 
 // Varlık türleri. Tür; birimi, formdaki soruları ve miktarın kaç ondalıkla
-// gösterileceğini belirler. Hesap her türde aynı (miktar × birim fiyat);
+// gösterileceğini belirler. `byAmount`: alım formunda "kaç liralık aldın?" diye
+// tutarla girmek anlamlı mı? Döviz/kripto/fon tutarla alınır ("1.000 ₺'lik
+// bitcoin"); altın gram/adet (1, 2, 5 gram, çeyrek) ve hisse lot olarak alınır —
+// orada tutardan 0,7664 gram çıkarmak saçmadır, tutar yalnızca sonuç olarak görünür. Hesap her türde aynı (miktar × birim fiyat);
 // değişen yalnızca dil ve gösterim — "500 adet dolar" saçmaydı, "500 dolar".
 export const ASSET_KINDS = [
-  { key: 'doviz', label: 'Döviz', defaultUnit: 'dolar', decimals: 2, rate: true },
-  { key: 'altin', label: 'Altın', defaultUnit: 'gram', decimals: 4, rate: false },
-  { key: 'hisse', label: 'Hisse', defaultUnit: 'lot', decimals: 0, rate: false },
-  { key: 'kripto', label: 'Kripto', defaultUnit: 'BTC', decimals: 8, rate: true },
-  { key: 'fon', label: 'Fon', defaultUnit: 'pay', decimals: 3, rate: false },
-  { key: 'diger', label: 'Diğer', defaultUnit: 'adet', decimals: 2, rate: false },
+  { key: 'doviz', label: 'Döviz', defaultUnit: 'dolar', decimals: 2, rate: true, byAmount: true },
+  { key: 'altin', label: 'Altın', defaultUnit: 'gram', decimals: 4, rate: false, byAmount: false },
+  { key: 'hisse', label: 'Hisse', defaultUnit: 'lot', decimals: 0, rate: false, byAmount: false },
+  { key: 'kripto', label: 'Kripto', defaultUnit: 'BTC', decimals: 8, rate: true, byAmount: true },
+  { key: 'fon', label: 'Fon', defaultUnit: 'pay', decimals: 3, rate: false, byAmount: true },
+  { key: 'diger', label: 'Diğer', defaultUnit: 'adet', decimals: 2, rate: false, byAmount: true },
 ];
 
 const KIND_BY_KEY = new Map(ASSET_KINDS.map((k) => [k.key, k]));
