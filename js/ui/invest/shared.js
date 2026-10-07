@@ -6,6 +6,11 @@ export function formatPct(value) {
   return (Number(value) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
 
+// $1.234 — dolar tutarı (kuruşsuz, Türkçe binlik ayracıyla).
+export function formatUsd(value) {
+  return `$${Math.abs(Number(value) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 0 })}`;
+}
+
 export function escapeHTML(str) {
   return String(str).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }

@@ -74,6 +74,8 @@ const DEFAULT_SETTINGS = {
   // investTargets = { altin: 60, doviz: 40 } hedef dağılım (yüzde, tür anahtarıyla).
   investGoal: null,
   investTargets: null,
+  // Panoda dolar bazında getiri satırı (geçmiş USD/TRY kuru çekilir; isteğe bağlı).
+  investUsdView: false,
 };
 
 function defaultState() {

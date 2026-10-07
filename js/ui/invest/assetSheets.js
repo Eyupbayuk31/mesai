@@ -2,11 +2,13 @@
 
 import { buildPlan, PLAN_DAYS, assetPosition, assetLots, lotTotal, PRESET_ASSETS, nextAssetColor, ASSET_KINDS, kindOf, kindByKey, unitOf, formatQuantity, priceLabel, isSell, priceObservations, priceChangePct } from '../../investments.js';
 import { assetPriceChartHTML } from '../investChart.js';
+import { portfolioUsd } from '../../investments.js';
+import { getCachedUsdRates } from '../../usdRates.js';
 import { getCachedMarket, getMarketLog, symbolForAsset, symbolLabel } from '../../marketPrices.js';
 import { formatMoney, formatDayMonth, parseAmount, todayISO } from '../../format.js';
 import { openSheet, closeSheet } from '../sheet.js';
 import { showToast } from '../toast.js';
-import { formatPct, escapeHTML, escapeAttr } from './shared.js';
+import { formatPct, escapeHTML, escapeAttr, formatUsd } from './shared.js';
 import { openLotSheet } from './lotSheet.js';
 
 export function openAssetFormSheet(ctx, asset) {
@@ -236,6 +238,9 @@ export function openAssetSheet(ctx, asset) {
   const lots = assetLots(state, asset.id);
   const market = getCachedMarket();
   const p = assetPosition(asset, lots, Date.now(), market);
+  const usdDetail = state.settings?.investUsdView && p.holding
+    ? portfolioUsd({ assets: [asset], investments: lots }, getCachedUsdRates()?.rates, Date.now(), market)
+    : null;
   const unit = unitOf(asset);
   const rate = kindOf(asset).rate;
   const up = p.profit >= 0;
@@ -263,6 +268,7 @@ export function openAssetSheet(ctx, asset) {
               <span>(%${formatPct(Math.abs(p.profitPct))})</span>
             </div>` : `
             <button class="asset-detail__cta" id="setPriceBtn" type="button">Güncel ${rate ? 'kuru' : 'fiyatı'} gir →</button>`}
+            ${usdDetail ? `<div class="asset-detail__sub">dolar bazında <b class="${usdDetail.profit >= 0 ? 'is-positive' : 'is-negative'}">${usdDetail.profit >= 0 ? '+' : '−'}%${formatPct(Math.abs(usdDetail.profitPct))} (${usdDetail.profit >= 0 ? '+' : '−'}${formatUsd(usdDetail.profit)})</b></div>` : ''}
             ${p.sellCount > 0 ? `<div class="asset-detail__sub">satışlardan gerçekleşen <b class="${p.realized >= 0 ? 'is-positive' : 'is-negative'}">${p.realized >= 0 ? '+' : '−'}${formatMoney(Math.abs(p.realized), { decimals: false })}</b></div>` : ''}
           </div>
 

@@ -20,6 +20,7 @@ import { hasPin, isUnlocked, markUnlocked, lockNow, touchUnlocked } from './lock
 import { showToast } from './ui/toast.js';
 import { SyncEngine, readStatus, relativeTime } from './sync/engine.js';
 import { getCachedMarket, refreshMarket, needsRefresh } from './marketPrices.js';
+import { getCachedUsdRates, refreshUsdRates, needsUsdFetch, usdFetchFrom } from './usdRates.js';
 import { APP_VERSION } from './ui/settings/about.js';
 
 const appEl = document.getElementById('app');
@@ -382,8 +383,28 @@ function boot(profileId) {
     }
   };
 
+  // Dolar bazında görünüm açıksa geçmiş USD/TRY kurları çekilir (yerel önbellek,
+  // en çok 6 saatte bir). Gerekmiyorsa istek atılmaz; hata sessizdir.
+  let usdBusy = false;
+  ctx.refreshUsd = async () => {
+    const st = store.getState();
+    if (!st.settings.investUsdView || usdBusy) return null;
+    const first = st.investments.map((l) => l.date).filter(Boolean).sort()[0];
+    const from = usdFetchFrom(first);
+    if (!needsUsdFetch(getCachedUsdRates(), from)) return null;
+    usdBusy = true;
+    try {
+      const res = await refreshUsdRates({ from });
+      if (res.ok) render();
+      return res;
+    } finally {
+      usdBusy = false;
+    }
+  };
+
   render();
   ctx.refreshMarket();
+  ctx.refreshUsd();
   // Kurtarma ağı (index.html) bu bayrağı görürse devreye girmez.
   window.__mesaiBooted = true;
 
@@ -449,6 +470,7 @@ function boot(profileId) {
     if (hasPin(profileId) && !isUnlocked(profileId, AUTO_LOCK_MS)) { kilitle(); return; }
     touch();
     ctx.refreshMarket();
+    ctx.refreshUsd();
   });
 
   armIdle();

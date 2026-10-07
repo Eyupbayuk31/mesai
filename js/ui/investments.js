@@ -4,14 +4,15 @@
 import {
   portfolioSummary, donutSlices, DONUT_RADIUS, monthlyInvestBuckets, recentLots, formatQuantity,
   avgLabel, portfolioByKind, bestWorstAsset, isSell, pendingPlans, skipPlanMonth, unitOf,
-  goalProgress, allocationGap, cleanTargets,
+  goalProgress, allocationGap, cleanTargets, portfolioUsd,
 } from '../investments.js';
+import { getCachedUsdRates } from '../usdRates.js';
 import { portfolioChartHTML, bindPortfolioChart } from './investChart.js';
 import { getCachedMarket, getMarketLog, symbolForAsset, nudgeDismissed, dismissNudge } from '../marketPrices.js';
 import { currentPeriodKey, periodLabel } from '../period.js';
 import { formatMoney, formatDayMonth, formatMonthYear, todayISO } from '../format.js';
 import { showToast } from './toast.js';
-import { formatPct, escapeHTML, marketTimeLabel } from './invest/shared.js';
+import { formatPct, escapeHTML, marketTimeLabel, formatUsd } from './invest/shared.js';
 import { openLotSheet } from './invest/lotSheet.js';
 import { openGoalSheet } from './invest/goalSheet.js';
 import { openPriceSheet, openAssetSheet, openBulkPriceSheet } from './invest/assetSheets.js';
@@ -28,6 +29,8 @@ export function render(container, state, ctx) {
   const chartExtra = { market, marketLog: getMarketLog(), estimated: summary.estimatedCount > 0 };
   // Açılışta/sekmeye girişte taze fiyat iste; yoksa/yeniyse hiçbir şey yapmaz.
   ctx.refreshMarket?.();
+  ctx.refreshUsd?.();
+  const usd = state.settings?.investUsdView ? portfolioUsd(state, getCachedUsdRates()?.rates, Date.now(), market) : null;
 
   const hasAnything = summary.positions.length > 0;
   container.innerHTML = !hasAnything ? emptyHTML() : `
@@ -35,7 +38,7 @@ export function render(container, state, ctx) {
     ${planCardHTML(state)}
     <div class="panes">
       <div class="pane">
-        ${dashboardHTML(summary, market)}
+        ${dashboardHTML(summary, market, state.settings?.investUsdView ? { usd } : null)}
         ${bestWorstHTML(summary)}
         ${goalsCardHTML(state, summary)}
         ${portfolioChartHTML(state, range, chartExtra)}
@@ -68,6 +71,10 @@ export function render(container, state, ctx) {
     }
     ctx.refreshMarket?.({ force: true });
   });
+  container.querySelectorAll('[data-usd-toggle]').forEach((el) => el.addEventListener('click', () => {
+    ctx.store.updateSettings({ investUsdView: !state.settings?.investUsdView });
+    ctx.refreshUsd?.();
+  }));
   container.querySelectorAll('[data-open-goals]').forEach((el) => el.addEventListener('click', () => openGoalSheet(ctx)));
   container.querySelector('#planCard')?.addEventListener('click', (e) => {
     const buy = e.target.closest('[data-plan-buy]');
@@ -123,7 +130,7 @@ export function render(container, state, ctx) {
 
 // --- Pano ----------------------------------------------------------------
 
-function dashboardHTML(summary, market) {
+function dashboardHTML(summary, market, usdView) {
   const slices = donutSlices(summary.positions);
   const up = summary.totalProfit >= 0;
   const sign = up ? '+' : '−';
@@ -142,6 +149,7 @@ function dashboardHTML(summary, market) {
           (%${formatPct(Math.abs(summary.profitPct))})</b>
         </div>
         ${summary.totalRealized !== 0 ? `<div class="hero__sub">satışlardan gerçekleşen <b class="${summary.totalRealized >= 0 ? 'is-positive' : 'is-negative'}">${summary.totalRealized >= 0 ? '+' : '−'}${formatMoney(Math.abs(summary.totalRealized), { decimals: false })}</b></div>` : ''}
+        ${usdLineHTML(usdView)}
         ${warn ? `<button class="hero__note hero__note--action" id="bulkPriceBtn" type="button">${warn} · fiyatları güncelle →</button>` : ''}
         ${summary.estimatedCount > 0 ? `<div class="hero__note">${summary.estimatedCount} varlık piyasa alış fiyatıyla <b>tahmini</b> · ${marketTimeLabel(market)} <button class="section-header__link" id="marketRefreshBtn" type="button">yenile</button></div>` : ''}
       </div>
@@ -325,6 +333,19 @@ function planCardHTML(state) {
         </div>`).join('')}
     </div>
   `;
+}
+
+// --- Dolar bazında getiri ---------------------------------------------------
+
+// Hero'da tek satır: kapalıyken davet, açıkken dolar cinsinden getiri. Kur verisi
+// henüz gelmediyse (ya da bir işlemin gününe ait kur yoksa) rakam uydurulmaz.
+function usdLineHTML(usdView) {
+  if (!usdView) return '<button class="hero__note hero__note--action" type="button" data-usd-toggle>Dolar bazında getiriyi göster ›</button>';
+  const u = usdView.usd;
+  if (!u) return '<div class="hero__note">dolar bazında hesaplanıyor… <button class="section-header__link" type="button" data-usd-toggle>kapat</button></div>';
+  const up = u.profit >= 0;
+  return `<div class="hero__sub">dolar bazında <b class="${up ? 'is-positive' : 'is-negative'}">${up ? '+' : '−'}%${formatPct(Math.abs(u.profitPct))} (${up ? '+' : '−'}${formatUsd(u.profit)})</b>
+    <button class="section-header__link" type="button" data-usd-toggle>kapat</button></div>`;
 }
 
 // --- Hedefler ---------------------------------------------------------------

@@ -845,3 +845,49 @@ export function allocationGap(groups, targets) {
     };
   }).sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff) || b.pct - a.pct);
 }
+
+// --- Dolar bazında getiri ------------------------------------------------------
+//
+// Her alım/satımın TL fiyatı, o günün USD/TRY kuruna bölünür; güncel fiyat da
+// bugünkü kura. Sonra aynı ortalama maliyet mantığı (assetPosition) dolar
+// cinsinden çalışır: "altın dolarda kazandırdı mı?" sorusunun cevabı. Bir
+// işlem gününe ait kur bilinmiyorsa (önbellek eksik) hesap YOK: yanlış bir
+// rakam göstermektense hiç göstermez.
+
+/**
+ * @param {Object<string,number>} rates usdRates: {tarih: USD/TRY}
+ * @returns {null|{cost:number, value:number, profit:number, profitPct:number, realized:number, rateNow:number}}
+ */
+export function portfolioUsd(state, rates, nowMs = Date.now(), market = null) {
+  const dates = Object.keys(rates || {}).sort();
+  if (dates.length === 0) return null;
+  const rateNow = rates[dates[dates.length - 1]];
+  const at = (date) => {
+    let found = null;
+    for (const d of dates) { if (d <= date) found = rates[d]; else break; }
+    return found;
+  };
+
+  let cost = 0;
+  let value = 0;
+  let realized = 0;
+  for (const asset of state?.assets || []) {
+    const lots = lotsOf(state, asset.id);
+    const tl = assetPosition(asset, lots, nowMs, market);
+    if (lots.length === 0) continue;
+    const lotsUsd = [];
+    for (const l of lots) {
+      const rate = at(l.date);
+      if (!(rate > 0)) return null; // o güne ait kur yok → güvenilir hesap yok
+      lotsUsd.push({ ...l, unitCost: (Number(l.unitCost) || 0) / rate });
+    }
+    // Güncel fiyat: TL pozisyonun kullandığı fiyat (piyasa ya da elle) / bugünkü kur.
+    const usdAsset = { ...asset, priceSource: undefined, currentPrice: tl.hasPrice ? tl.price / rateNow : 0 };
+    const p = assetPosition(usdAsset, lotsUsd, nowMs);
+    cost += p.cost;
+    value += p.hasPrice ? p.value : p.cost;
+    realized += p.realized;
+  }
+  const profit = value - cost;
+  return { cost, value, profit, profitPct: cost > 0 ? (profit / cost) * 100 : 0, realized, rateNow };
+}
