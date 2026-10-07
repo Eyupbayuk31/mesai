@@ -13,6 +13,7 @@
 //   4. Ayarlar tek parça: settingsUpdatedAt'i yeni olan taraf alınır.
 
 import { TOMBSTONE_COLLECTIONS, emptyTombstones } from '../store.js';
+import { unionPriceLogs } from '../investments.js';
 
 // Mezar taşları sonsuza kadar birikmesin; bu süre sonunda düşerler. Silinen bir
 // kaydın bu süre içinde her cihaza ulaşmış olması beklenir.
@@ -92,7 +93,7 @@ export function mergeStates(local, remote, nowMs = Date.now()) {
       local?.tombstones?.[coll] || {}, remote?.tombstones?.[coll] || {},
       nowMs,
     );
-    merged[coll] = res.records;
+    merged[coll] = coll === 'assets' ? withUnionedPriceLogs(res.records, local?.assets, remote?.assets) : res.records;
     tombstones[coll] = res.tombstones;
 
     const localCount = Array.isArray(local?.[coll]) ? local[coll].length : 0;
@@ -126,6 +127,20 @@ export function mergeStates(local, remote, nowMs = Date.now()) {
     changedRemote: !sameData(merged, remote),
     stats,
   };
+}
+
+// Varlık kaydı bütün olarak en yeni olan tarafla gelir; iki cihazda aynı anda
+// fiyat girildiyse kaybedenin günlüğü gitmesin diye iki günlük birleştirilir.
+// Günlüğü hiç olmayan kayda dokunulmaz (eski veride parmak izi değişmesin).
+function withUnionedPriceLogs(records, localAssets, remoteAssets) {
+  const local = byId(localAssets);
+  const remote = byId(remoteAssets);
+  return records.map((rec) => {
+    const other = (local.get(String(rec.id)) === rec ? remote : local).get(String(rec.id));
+    if (!other || !Array.isArray(other.priceLog) || other.priceLog.length === 0) return rec;
+    const union = unionPriceLogs(rec.priceLog, other.priceLog);
+    return union.length === (rec.priceLog?.length || 0) && JSON.stringify(union) === JSON.stringify(rec.priceLog) ? rec : { ...rec, priceLog: union };
+  });
 }
 
 function emptyStats() {

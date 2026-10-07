@@ -222,3 +222,26 @@ test('merge - satış kaydı (side) eski sürümün alım listesiyle birleşince
     assert.equal(merged.investments.find((i) => i.id === 'iv_3').side, 'sell', 'side alanı kayıpsız taşınır');
   }
 });
+
+test('merge - iki cihazda aynı anda girilen fiyatların günlükleri kaybolmaz', () => {
+  const bos = { entries: [], expenses: [], recurring: [], adjustments: [], loans: [], payslips: [], investments: [], absences: [], tombstones: {}, settings: {} };
+  const base = { id: 'as_1', label: 'Gram altın', createdAt: '2026-06-01T10:00:00.000Z' };
+  const telefon = { ...bos, assets: [{ ...base, currentPrice: 7300, updatedAt: '2026-08-10T10:00:00.000Z', priceLog: [{ d: '2026-08-01', p: 7000 }, { d: '2026-08-10', p: 7300 }] }] };
+  const pc = { ...bos, assets: [{ ...base, currentPrice: 7200, updatedAt: '2026-08-05T10:00:00.000Z', priceLog: [{ d: '2026-08-01', p: 7000 }, { d: '2026-08-05', p: 7200 }] }] };
+
+  for (const [local, remote] of [[telefon, pc], [pc, telefon]]) {
+    const { merged } = mergeStates(local, remote, Date.parse('2026-08-11T00:00:00.000Z'));
+    const asset = merged.assets[0];
+    assert.equal(asset.currentPrice, 7300, 'güncel fiyat en yeni kayıttan');
+    assert.deepEqual(asset.priceLog.map((e) => e.d), ['2026-08-01', '2026-08-05', '2026-08-10'], 'günlük iki taraftan birleşir');
+  }
+});
+
+test('merge - günlüksüz eski varlık kaydına priceLog eklenmez (parmak izi sabit)', () => {
+  const bos = { entries: [], expenses: [], recurring: [], adjustments: [], loans: [], payslips: [], investments: [], absences: [], tombstones: {}, settings: {} };
+  const asset = { id: 'as_1', label: 'Dolar', currentPrice: 41, updatedAt: '2026-08-10T10:00:00.000Z' };
+  const { merged, changedLocal, changedRemote } = mergeStates({ ...bos, assets: [asset] }, { ...bos, assets: [asset] });
+  assert.equal('priceLog' in merged.assets[0], false);
+  assert.equal(changedLocal, false);
+  assert.equal(changedRemote, false);
+});

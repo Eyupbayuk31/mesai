@@ -3827,3 +3827,83 @@ button.slip-badge:active { transform: scale(0.96); }
   color: var(--accent-strong);
   background: none;
 }
+
+
+/* --- Yatırım çizgi grafikleri (değer seyri, fiyat seyri) ------------------ */
+.invest-chart__ranges { margin-bottom: 10px; }
+.invest-chart__legend {
+  display: flex; flex-wrap: wrap; gap: 14px;
+  margin-bottom: 8px;
+  font-size: 11.5px; font-weight: 600; color: var(--text-secondary);
+}
+.invest-chart__key {
+  display: inline-block; width: 14px; height: 0;
+  margin-right: 6px; vertical-align: middle;
+  border-top: 2px solid var(--accent);
+}
+.invest-chart__key--cost { border-top: 2px dashed var(--text-tertiary); }
+.invest-chart__plot {
+  position: relative;
+  height: 150px;
+  touch-action: pan-y;
+  border-radius: 8px;
+  outline: none;
+}
+.invest-chart__plot:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
+.invest-chart__plot--mini { height: 96px; }
+.invest-chart__plot svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.invest-chart__grid { stroke: var(--divider); stroke-width: 1; }
+.invest-chart__area { fill: var(--accent); opacity: 0.08; }
+.invest-chart__line { stroke-linejoin: round; stroke-linecap: round; }
+.invest-chart__line--value { stroke: var(--accent); stroke-width: 2; }
+.invest-chart__line--cost { stroke: var(--text-tertiary); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.invest-chart__ymax, .invest-chart__ymin {
+  position: absolute; left: 2px;
+  font-size: 10px; font-weight: 600; color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--surface, #fff) 70%, transparent);
+  padding: 0 3px; border-radius: 4px;
+}
+.invest-chart__ymax { top: 0; }
+.invest-chart__ymin { bottom: 0; }
+.invest-chart__axis {
+  display: flex; justify-content: space-between;
+  margin-top: 6px;
+  font-size: 10.5px; font-weight: 600; color: var(--text-tertiary);
+}
+.invest-chart__cursor {
+  position: absolute; top: 0; bottom: 0; width: 0;
+  border-left: 1px solid var(--text-tertiary);
+  pointer-events: none;
+}
+.invest-chart__dot {
+  position: absolute; left: -5px; width: 10px; height: 10px; margin-top: -5px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--surface, #fff);
+}
+.invest-chart__dot--cost { background: var(--text-tertiary); }
+.invest-chart__tip {
+  position: absolute; top: -4px;
+  transform: translate(-50%, -100%);
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: var(--text, #1c1c1e); color: var(--surface, #fff);
+  font-size: 11.5px; font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+}
+.invest-chart__tip b { font-weight: 800; }
+.invest-chart__tip .is-positive { color: #7be0b0; }
+.invest-chart__tip .is-negative { color: #ff9b8f; }
+.invest-chart__table { margin-top: 10px; font-size: 12.5px; }
+.invest-chart__table summary { cursor: pointer; color: var(--text-secondary); font-weight: 700; }
+.invest-chart__tbl { width: 100%; margin-top: 8px; border-collapse: collapse; }
+.invest-chart__tbl th { text-align: left; font-size: 11px; font-weight: 700; color: var(--text-tertiary); padding: 4px 0; }
+.invest-chart__tbl td { padding: 6px 0; border-top: 1px solid var(--divider); font-variant-numeric: tabular-nums; }
+.invest-chart__tbl .num { text-align: right; }
+.invest-chart__changes { display: flex; gap: 14px; margin-top: 8px; font-size: 12px; font-weight: 700; }
+.invest-chart__chg em { font-style: normal; color: var(--text-tertiary); font-weight: 600; margin-right: 2px; }

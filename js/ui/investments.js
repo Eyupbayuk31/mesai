@@ -6,8 +6,9 @@ import {
   PRESET_ASSETS, nextAssetColor, DONUT_RADIUS, priceUpdateFromLot, suggestedUnitCost,
   monthlyInvestBuckets, recentLots, ASSET_KINDS, kindOf, kindByKey, unitOf, quantityPresets,
   formatQuantity, quantityLabel, priceLabel, avgLabel, portfolioByKind, bestWorstAsset,
-  isSell, checkSell,
+  isSell, checkSell, priceObservations, priceChangePct,
 } from '../investments.js';
+import { portfolioChartHTML, bindPortfolioChart, assetPriceChartHTML } from './investChart.js';
 import { currentPeriodKey, periodLabel } from '../period.js';
 import { formatMoney, formatDayMonth, formatMonthYear, todayISO, toISODate, parseAmount } from '../format.js';
 import { openSheet, closeSheet } from './sheet.js';
@@ -17,6 +18,7 @@ export const title = 'Yatırım';
 
 export function render(container, state, ctx) {
   const summary = portfolioSummary(state);
+  const range = ctx.investRange || '6m';
 
   const hasAnything = summary.positions.length > 0;
   container.innerHTML = !hasAnything ? emptyHTML() : `
@@ -25,6 +27,7 @@ export function render(container, state, ctx) {
       <div class="pane">
         ${dashboardHTML(summary)}
         ${bestWorstHTML(summary)}
+        ${portfolioChartHTML(state, range)}
         ${investChartHTML(state)}
       </div>
       <div class="pane">
@@ -39,6 +42,7 @@ export function render(container, state, ctx) {
     ${recentLotsHTML(state)}
   `;
 
+  bindPortfolioChart(container, state, ctx, range);
   container.querySelector('#addAssetBtn')?.addEventListener('click', () => openAssetFormSheet(ctx, null));
   container.querySelector('#bulkPriceBtn')?.addEventListener('click', () => openBulkPriceSheet(ctx));
   container.querySelector('#updatePricesBtn')?.addEventListener('click', () => openBulkPriceSheet(ctx));
@@ -592,6 +596,10 @@ function openAssetSheet(ctx, asset) {
             </div>
           </div>
         </div>
+
+        ${assetPriceChartHTML(priceObservations(asset, lots), [
+    { label: '1 hf', days: 7 }, { label: '1 ay', days: 30 }, { label: '3 ay', days: 90 },
+  ].map((c) => ({ label: c.label, pct: priceChangePct(priceObservations(asset, lots), c.days) })))}
 
         <div class="section-header" style="margin-top:18px;">
           <span class="section-title" style="margin:0;">${p.sellCount ? 'Alım ve satışlar' : 'Alımlar'}</span>

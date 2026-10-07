@@ -1,7 +1,7 @@
 // localStorage kalıcılık katmanı: şema sürümü, migration, güvenli fallback.
 // Her kullanıcı profili kendi anahtarında saklanır (mesai.state.<profil>).
 
-import { inferKind, kindByKey, PRESET_ASSETS } from './investments.js';
+import { inferKind, kindByKey, PRESET_ASSETS, recordPrice } from './investments.js';
 import { rangeOvertime } from './payroll.js';
 
 const LEGACY_STORAGE_KEY = 'mesai.state'; // profil sistemi öncesi tek kullanıcılı sürüm
@@ -434,14 +434,22 @@ export class Store {
     const id = asset.id || `as_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
     const now = new Date().toISOString();
     const record = { unit: 'adet', ...asset, id, createdAt: asset.createdAt || now, updatedAt: now };
+    // Her fiyat girişi geçmişe de yazılır (grafik için); tek yer burası ve updateAsset.
+    if (Number(record.currentPrice) > 0) record.priceLog = recordPrice(record.priceLog, record.currentPrice, record.priceUpdatedAt || now);
     this.update((s) => ({ ...s, assets: [...s.assets, record] }));
     return record;
   }
 
   updateAsset(id, partial) {
+    const now = new Date().toISOString();
     this.update((s) => ({
       ...s,
-      assets: s.assets.map((a) => (a.id === id ? { ...a, ...partial, updatedAt: new Date().toISOString() } : a)),
+      assets: s.assets.map((a) => {
+        if (a.id !== id) return a;
+        const next = { ...a, ...partial, updatedAt: now };
+        if (Number(partial?.currentPrice) > 0) next.priceLog = recordPrice(a.priceLog, partial.currentPrice, partial.priceUpdatedAt || now);
+        return next;
+      }),
     }));
   }
 

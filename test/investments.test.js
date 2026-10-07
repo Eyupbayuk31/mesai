@@ -623,3 +623,131 @@ test('recentLots - satış kaydı side ile birlikte listelenir', () => {
   assert.equal(rows[0].side, 'sell');
   assert.equal(rows[0].total, 7000);
 });
+
+// --- Fiyat geçmişi ve portföy değeri grafiği -------------------------------
+
+import {
+  recordPrice, unionPriceLogs, priceObservations, priceAt, priceChangePct, portfolioHistory,
+} from '../js/investments.js';
+
+test('recordPrice - aynı güne yazılan eskisinin yerine geçer, sıralı tutulur', () => {
+  let log = recordPrice([], 7000, '2026-08-01T10:00:00.000Z');
+  log = recordPrice(log, 7200, '2026-08-10T10:00:00.000Z');
+  log = recordPrice(log, 7100, '2026-08-01T15:00:00.000Z');
+  assert.deepEqual(log, [{ d: '2026-08-01', p: 7100 }, { d: '2026-08-10', p: 7200 }]);
+});
+
+test('recordPrice - geçersiz fiyat günlüğe girmez, verilen dizi değişmez', () => {
+  const log = [{ d: '2026-08-01', p: 7000 }];
+  assert.equal(recordPrice(log, 0, '2026-08-02T10:00:00.000Z'), log);
+  assert.equal(recordPrice(log, 7100, 'saçma'), log);
+  const next = recordPrice(log, 7100, '2026-08-02T10:00:00.000Z');
+  assert.equal(log.length, 1, 'orijinal bozulmaz');
+  assert.equal(next.length, 2);
+});
+
+test('recordPrice - eski gözlemler ayda bire iner, günlük sınırsız büyümez', () => {
+  let log = [];
+  for (let i = 0; i < 700; i += 1) {
+    const d = new Date(Date.UTC(2024, 0, 1) + i * 86400000);
+    log = recordPrice(log, 100 + i, d.toISOString());
+  }
+  assert.ok(log.length < 400, `günlük ${log.length} kayıt`);
+  const last = log[log.length - 1];
+  assert.equal(last.p, 799, 'son gözlem korunur');
+  assert.ok(log.some((e) => e.d.startsWith('2024-01')), 'eski dönemden ay temsilcisi kalır');
+});
+
+test('unionPriceLogs - iki cihazın günlüğü birleşir, aynı günde tercih edilen kazanır', () => {
+  const a = [{ d: '2026-08-01', p: 7000 }, { d: '2026-08-05', p: 7100 }];
+  const b = [{ d: '2026-08-05', p: 7150 }, { d: '2026-08-09', p: 7300 }];
+  assert.deepEqual(unionPriceLogs(a, b), [
+    { d: '2026-08-01', p: 7000 }, { d: '2026-08-05', p: 7100 }, { d: '2026-08-09', p: 7300 },
+  ]);
+  assert.deepEqual(unionPriceLogs(undefined, undefined), []);
+});
+
+test('priceObservations - alım fiyatları da gözlemdir; günlük ve güncel fiyat önüne geçer', () => {
+  const asset = { id: 'a1', currentPrice: 8000, priceUpdatedAt: '2026-08-20T12:00:00.000Z', priceLog: [{ d: '2026-07-10', p: 7450 }] };
+  const lots = [
+    { id: 'l1', assetId: 'a1', date: '2026-06-10', quantity: 1, unitCost: 7100 },
+    { id: 'l2', assetId: 'a1', date: '2026-07-10', quantity: 1, unitCost: 7400 },
+  ];
+  const obs = priceObservations(asset, lots);
+  assert.deepEqual(obs, [
+    { date: '2026-06-10', price: 7100 },
+    { date: '2026-07-10', price: 7450 }, // elle girilen, alımın önüne geçti
+    { date: '2026-08-20', price: 8000 },
+  ]);
+  assert.equal(priceAt(obs, '2026-06-09'), null, 'ilk gözlemden önce bilgi yok');
+  assert.equal(priceAt(obs, '2026-07-31'), 7450);
+  assert.equal(priceAt(obs, '2026-09-01'), 8000);
+});
+
+test('priceChangePct - son fiyat, N gün önceki bilinen fiyata göre', () => {
+  const obs = [{ date: '2026-07-01', price: 7000 }, { date: '2026-08-20', price: 7700 }];
+  const now = Date.parse('2026-08-25T12:00:00.000Z');
+  assert.equal(Math.round(priceChangePct(obs, 30, now) * 10) / 10, 10);
+  assert.equal(priceChangePct(obs, 90, now), null, 'o güne ait bilgi yoksa uydurma yok');
+  assert.equal(priceChangePct([{ date: '2026-08-20', price: 7700 }], 30, now), null);
+});
+
+const histNow = Date.parse('2026-08-25T12:00:00.000Z');
+const histState = {
+  assets: [{ id: 'a1', label: 'Gram altın', kind: 'altin', unit: 'gram', currentPrice: 8000, priceUpdatedAt: '2026-08-24T10:00:00.000Z', priceLog: [{ d: '2026-08-24', p: 8000 }] }],
+  investments: [
+    { id: 'l1', assetId: 'a1', date: '2026-06-10', quantity: 2, unitCost: 7000 },
+    { id: 'l2', assetId: 'a1', date: '2026-07-10', quantity: 1, unitCost: 7500 },
+  ],
+};
+
+test('portfolioHistory - son nokta portföy özetiyle birebir aynı', () => {
+  const summary = portfolioSummary(histState, histNow);
+  const { points } = portfolioHistory(histState, 'all', histNow);
+  const last = points[points.length - 1];
+  assert.equal(last.date, '2026-08-25');
+  assert.equal(last.value, summary.totalValue);
+  assert.equal(last.cost, summary.totalCost);
+});
+
+test('portfolioHistory - ilk alımla başlar, maliyet alımlarla basamak basamak artar', () => {
+  const { points, from } = portfolioHistory(histState, 'all', histNow);
+  assert.equal(from, '2026-06-10');
+  assert.ok(points.every((p) => p.date >= '2026-06-10'), 'ilk alımdan önce nokta yok');
+  const before = points.filter((p) => p.date < '2026-07-10');
+  const after = points.filter((p) => p.date >= '2026-07-10');
+  assert.ok(before.every((p) => p.cost === 14000), '2 gram × 7.000');
+  assert.ok(after.every((p) => p.cost === 21500), '+1 gram × 7.500');
+  assert.ok(points.every((p, i) => i === 0 || p.date > points[i - 1].date), 'tarihler artan ve tekil');
+});
+
+test('portfolioHistory - geçmiş değer o günün bilinen fiyatıyla hesaplanır (alım öncesi fiyat yok)', () => {
+  const { points } = portfolioHistory(histState, 'all', histNow);
+  // 10 Haziran–9 Temmuz: bilinen tek fiyat 7.000 → değer 2 × 7.000.
+  const june = points.find((p) => p.date >= '2026-06-10' && p.date < '2026-07-10');
+  assert.equal(june.value, 14000);
+  // 10–23 Ağustos arası bilinen son fiyat 7.500 (alım): 3 × 7.500.
+  const mid = points.find((p) => p.date >= '2026-07-10' && p.date < '2026-08-24');
+  assert.equal(mid.value, 22500);
+});
+
+test('portfolioHistory - aralık kısıtlanınca başlangıç ilerler, boş defterde boş döner', () => {
+  const three = portfolioHistory(histState, '3m', histNow).points;
+  assert.ok(three[0].date >= '2026-05-26');
+  assert.deepEqual(portfolioHistory({ assets: [], investments: [] }, '6m', histNow), { points: [], from: null });
+});
+
+test('portfolioHistory - satış sonrası miktar düşer, tamamı satılınca değer sıfırlanır', () => {
+  const st = {
+    assets: [{ id: 'a1', label: 'Gram altın', kind: 'altin', currentPrice: 9000, priceUpdatedAt: '2026-08-24T10:00:00.000Z' }],
+    investments: [
+      { id: 'l1', assetId: 'a1', date: '2026-06-10', quantity: 2, unitCost: 7000 },
+      { id: 's1', assetId: 'a1', date: '2026-07-10', quantity: 2, unitCost: 8000, side: 'sell' },
+    ],
+  };
+  const { points } = portfolioHistory(st, 'all', histNow);
+  assert.equal(points[0].value, 14000);
+  const last = points[points.length - 1];
+  assert.equal(last.value, 0);
+  assert.equal(last.cost, 0);
+});

@@ -10,7 +10,7 @@
 // kaydı olduğu gibi taşır) — yalnızca satımı alım gibi gösterebilir.
 
 import { isDateInPeriod, shiftPeriod } from './period.js';
-import { toISODate } from './format.js';
+import { toISODate, parseISODate } from './format.js';
 
 // Varlık türleri. Tür; birimi, formdaki soruları ve miktarın kaç ondalıkla
 // gösterileceğini belirler. Hesap her türde aynı (miktar × birim fiyat);
@@ -463,4 +463,167 @@ export function assetLots(state, assetId) {
 
 export function lotTotal(lot) {
   return (Number(lot?.quantity) || 0) * (Number(lot?.unitCost) || 0);
+}
+
+// --- Fiyat geçmişi ---------------------------------------------------------
+//
+// Varlıkta tek bir güncel fiyat var; geçmiş iki kaynaktan okunur:
+//   1. asset.priceLog: elle girilen/güncellenen fiyatların günlük kaydı
+//      [{d: 'YYYY-MM-DD', p: fiyat}] — varlık kaydının İÇİNDE durur, böylece
+//      eski sürüm bir cihaz kaydı taşırken geçmişi düşürmez.
+//   2. Alım/satımların kendisi: 3 Mart'ta gramı 7.100'e aldıysan o gün fiyat
+//      7.100'dür. Bu yüzden grafik, bu özellikten ÖNCE girilmiş kayıtlar için
+//      de geriye dönük çalışır; hiçbir veri taşıma gerekmez.
+
+const PRICE_LOG_MAX = 400;
+
+function localDay(iso) {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : toISODate(d);
+}
+
+/**
+ * Fiyat günlüğüne bir gözlem ekler: aynı güne düşen eskisinin yerine yazar,
+ * sıralı tutar. Günlük sonsuza dek büyümesin diye 1 yıldan eski gözlemler
+ * ayda bire iner (o ayın sonuncusu kalır) ve toplam sınırlanır.
+ *
+ * @returns {Array<{d:string,p:number}>} yeni günlük (verilen dizi değişmez)
+ */
+export function recordPrice(log, price, atISO) {
+  const p = Number(price);
+  const d = localDay(atISO);
+  if (!(p > 0) || !d) return Array.isArray(log) ? log : [];
+  const map = new Map((Array.isArray(log) ? log : []).filter((e) => e && e.d && e.p > 0).map((e) => [e.d, e.p]));
+  map.set(d, p);
+  let list = [...map].map(([day, price2]) => ({ d: day, p: price2 })).sort((a, b) => (a.d < b.d ? -1 : 1));
+
+  if (list.length > 60) {
+    const cutoff = new Date(list[list.length - 1].d);
+    cutoff.setFullYear(cutoff.getFullYear() - 1);
+    const cut = toISODate(cutoff);
+    const lastOfMonth = new Map();
+    for (const e of list) if (e.d < cut) lastOfMonth.set(e.d.slice(0, 7), e);
+    list = [...lastOfMonth.values(), ...list.filter((e) => e.d >= cut)];
+  }
+  return list.length > PRICE_LOG_MAX ? list.slice(-PRICE_LOG_MAX) : list;
+}
+
+/** İki günlüğü birleştirir (senkron): aynı günde `preferred` kazanır. */
+export function unionPriceLogs(preferred, other) {
+  const map = new Map();
+  for (const e of Array.isArray(other) ? other : []) if (e?.d && e.p > 0) map.set(e.d, e.p);
+  for (const e of Array.isArray(preferred) ? preferred : []) if (e?.d && e.p > 0) map.set(e.d, e.p);
+  return [...map].map(([d, p]) => ({ d, p })).sort((a, b) => (a.d < b.d ? -1 : 1));
+}
+
+/**
+ * Bir varlığın bilinen fiyat gözlemleri, eskiden yeniye: günlük + alım/satım
+ * fiyatları + güncel fiyat. Aynı güne düşenlerde elle girilen günlük, o da
+ * güncel fiyat, alım/satımın önüne geçer.
+ *
+ * @returns {Array<{date:string, price:number}>}
+ */
+export function priceObservations(asset, lots) {
+  const map = new Map();
+  const ordered = [...(lots || [])].filter((l) => l?.date && Number(l.unitCost) > 0)
+    .sort((a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : (Date.parse(a.createdAt) || 0) - (Date.parse(b.createdAt) || 0)));
+  for (const l of ordered) map.set(l.date, Number(l.unitCost));
+  for (const e of Array.isArray(asset?.priceLog) ? asset.priceLog : []) if (e?.d && e.p > 0) map.set(e.d, e.p);
+  const current = Number(asset?.currentPrice);
+  const currentDay = asset?.priceUpdatedAt ? localDay(asset.priceUpdatedAt) : null;
+  if (current > 0 && currentDay) map.set(currentDay, current);
+  return [...map].map(([date, price]) => ({ date, price })).sort((a, b) => (a.date < b.date ? -1 : 1));
+}
+
+/** `date` gününde (dahil) bilinen son fiyat; hiç gözlem yoksa null. */
+export function priceAt(observations, date) {
+  let found = null;
+  for (const o of observations || []) {
+    if (o.date <= date) found = o.price;
+    else break;
+  }
+  return found;
+}
+
+/** Fiyatın son `days` günde yüzde değişimi; o güne ait bilgi yoksa null. */
+export function priceChangePct(observations, days, nowMs = Date.now()) {
+  if (!observations || observations.length < 2) return null;
+  const last = observations[observations.length - 1];
+  const since = new Date(nowMs);
+  since.setDate(since.getDate() - days);
+  const before = priceAt(observations, toISODate(since));
+  if (!(before > 0)) return null;
+  return ((last.price - before) / before) * 100;
+}
+
+export const HISTORY_RANGES = [
+  { key: '3m', label: '3 ay', days: 91 },
+  { key: '6m', label: '6 ay', days: 182 },
+  { key: '1y', label: '1 yıl', days: 365 },
+  { key: 'all', label: 'Tümü', days: null },
+];
+
+const HISTORY_POINTS = 24;
+
+/**
+ * Portföy değerinin zaman içindeki seyri: her tarihte o güne kadarki alım/
+ * satımlarla elde olan miktar × o günün bilinen fiyatı. Maliyet çizgisi de
+ * (yatırılan para) aynı noktalarda hesaplanır; ikisi arasındaki fark kârdır.
+ *
+ * Son nokta portfolioSummary ile BİREBİR aynıdır (pano ile grafik çelişmesin).
+ * Ilk alımdan önceki günler yoktur: grafik ilk alımla başlar.
+ *
+ * @returns {{points:Array<{date:string,value:number,cost:number}>, from:string|null}}
+ */
+export function portfolioHistory(state, rangeKey = '6m', nowMs = Date.now()) {
+  const summary = portfolioSummary(state, nowMs);
+  const dates = (state?.investments || []).map((l) => l?.date).filter(Boolean).sort();
+  if (dates.length === 0 || summary.positions.length === 0) return { points: [], from: null };
+
+  const today = toISODate(new Date(nowMs));
+  const first = dates[0] < today ? dates[0] : today;
+  const range = HISTORY_RANGES.find((r) => r.key === rangeKey) || HISTORY_RANGES[1];
+  let start = first;
+  if (range.days) {
+    const d = new Date(nowMs);
+    d.setDate(d.getDate() - range.days);
+    const rs = toISODate(d);
+    if (rs > first) start = rs;
+  }
+
+  // Gün farkları yerel takvimle hesaplanır (DST'de 23/25 saatlik günler olsa da şaşmaz).
+  const startDate = parseISODate(start);
+  const spanDays = Math.max(1, Math.round((parseISODate(today) - startDate) / 86400000));
+  const steps = Math.min(HISTORY_POINTS, spanDays);
+  const days = new Set([today]);
+  for (let i = 0; i <= steps; i += 1) {
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + Math.round((spanDays * i) / steps));
+    days.add(toISODate(d));
+  }
+
+  const prepared = summary.positions.map((p) => {
+    const lots = lotsOf(state, p.assetId);
+    return { lots, obs: priceObservations(p.asset, lots) };
+  });
+
+  const points = [...days].sort().filter((d) => d <= today).map((date) => {
+    let value = 0;
+    let cost = 0;
+    for (const { lots, obs } of prepared) {
+      const upTo = lots.filter((l) => l.date <= date);
+      if (upTo.length === 0) continue;
+      const r = replay(upTo);
+      if (r.quantity <= 0) continue;
+      const price = priceAt(obs, date);
+      value += price > 0 ? r.quantity * price : r.cost;
+      cost += r.cost;
+    }
+    return { date, value, cost };
+  }).filter((pt) => pt.cost > 0 || pt.value > 0);
+
+  if (points.length > 0) {
+    points[points.length - 1] = { date: today, value: summary.totalValue, cost: summary.totalCost };
+  }
+  return { points, from: points[0]?.date || null };
 }

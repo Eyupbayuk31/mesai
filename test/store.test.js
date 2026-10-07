@@ -343,3 +343,25 @@ test('Store.reset({syncDeletion:false}) - iz bırakmaz (bulut yedeği korunur)',
   assert.equal(s.tombstones.entries[e.id], undefined);
   assert.equal(s.settingsUpdatedAt, null);
 });
+
+// --- Fiyat geçmişi: her fiyat girişi varlığın günlüğüne yazılır -------------
+
+test('Store - fiyat güncellemesi varlığın priceLog günlüğüne yazılır', () => {
+  const store = freshStore();
+  const asset = store.addAsset({ label: 'Gram altın', kind: 'altin', unit: 'gram', currentPrice: 7000, priceUpdatedAt: '2026-08-01T10:00:00.000Z' });
+  assert.deepEqual(store.getState().assets[0].priceLog, [{ d: '2026-08-01', p: 7000 }]);
+
+  store.updateAsset(asset.id, { currentPrice: 7400, priceUpdatedAt: '2026-08-10T10:00:00.000Z' });
+  store.setAssetPrice(asset.id, 7600);
+  const log = store.getState().assets[0].priceLog;
+  assert.equal(log[0].p, 7000, 'eski gözlem korunur');
+  assert.equal(log[1].p, 7400);
+  assert.equal(log[log.length - 1].p, 7600, 'setAssetPrice de günlüğe yazar');
+});
+
+test('Store - fiyatı olmayan varlığa ad değişikliği günlük açmaz; eski varlık günlüksüz çalışır', () => {
+  const store = freshStore();
+  const asset = store.addAsset({ label: 'Hisse', kind: 'hisse' });
+  store.updateAsset(asset.id, { label: 'THYAO' });
+  assert.equal('priceLog' in store.getState().assets[0], false);
+});
