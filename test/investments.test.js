@@ -751,3 +751,82 @@ test('portfolioHistory - satış sonrası miktar düşer, tamamı satılınca de
   assert.equal(last.value, 0);
   assert.equal(last.cost, 0);
 });
+
+// --- Alım formu: miktar / fiyat / tutar iki yönlü ----------------------------
+
+import { emptyTrade, applyTradeEdit, formatInputNumber } from '../js/investments.js';
+
+test('applyTradeEdit - fiyat önerilmişken miktar yazılınca tutar hesaplanır', () => {
+  const s = applyTradeEdit(emptyTrade(6500), 'quantity', 5);
+  assert.equal(s.quantity, 5);
+  assert.equal(s.price, 6500);
+  assert.equal(s.total, 32500);
+  assert.deepEqual(s.derived, ['total']);
+});
+
+test('applyTradeEdit - tutar yazılınca miktar hesaplanır, fiyat korunur', () => {
+  const s = applyTradeEdit(emptyTrade(6500), 'total', 5000);
+  assert.equal(s.total, 5000);
+  assert.equal(s.price, 6500, 'önerilen fiyatın üstüne yazılmaz');
+  assert.ok(Math.abs(s.quantity - 5000 / 6500) < 1e-12);
+  assert.deepEqual(s.derived, ['quantity']);
+});
+
+test('applyTradeEdit - fiyat yoksa miktar + tutar fiyatı verir', () => {
+  let s = applyTradeEdit(emptyTrade(), 'quantity', 2);
+  assert.equal(s.total, 0, 'fiyat da tutar da yok, hesaplanacak bir şey yok');
+  s = applyTradeEdit(s, 'total', 13000);
+  assert.equal(s.price, 6500);
+  assert.deepEqual(s.derived, ['price']);
+});
+
+test('applyTradeEdit - fiyatı değiştirmek tutarı yeniden hesaplar', () => {
+  let s = applyTradeEdit(emptyTrade(6500), 'quantity', 4);
+  s = applyTradeEdit(s, 'price', 7000);
+  assert.equal(s.total, 28000);
+  assert.equal(s.price, 7000);
+  assert.equal(s.quantity, 4, 'yazılan miktara dokunulmaz');
+});
+
+test('applyTradeEdit - tutar yazıp sonra miktar yazılırsa tutar yeniden hesaplanır (en son yazılan öncelikli)', () => {
+  let s = applyTradeEdit(emptyTrade(6000), 'total', 6000);
+  assert.equal(s.quantity, 1);
+  s = applyTradeEdit(s, 'quantity', 2);
+  assert.equal(s.total, 12000);
+  assert.deepEqual(s.derived, ['total']);
+});
+
+test('applyTradeEdit - alan boşaltılınca ondan hesaplananlar da boşalır', () => {
+  let s = applyTradeEdit(emptyTrade(6500), 'quantity', 5);
+  s = applyTradeEdit(s, 'quantity', 0);
+  assert.equal(s.quantity, 0);
+  assert.equal(s.total, 0, 'eski tutar kalmaz');
+  assert.equal(s.price, 6500);
+  assert.deepEqual(s.derived, []);
+  assert.equal(applyTradeEdit(s, 'quantity', NaN).quantity, 0);
+});
+
+test('applyTradeEdit - girdi nesnesini değiştirmez', () => {
+  const start = emptyTrade(6500);
+  const copy = JSON.stringify(start);
+  applyTradeEdit(start, 'quantity', 5);
+  assert.equal(JSON.stringify(start), copy);
+});
+
+test('formatInputNumber - ondalıklı virgüllü, sondaki sıfırlar atılır, tam sayı bozulmaz', () => {
+  assert.equal(formatInputNumber(0.7692307, 4), '0,7692');
+  assert.equal(formatInputNumber(2.5, 4), '2,5');
+  assert.equal(formatInputNumber(100, 2), '100');
+  assert.equal(formatInputNumber(100, 0), '100', 'tam sayının sıfırı silinmez');
+  assert.equal(formatInputNumber(6523.87, 2), '6523,87');
+  assert.equal(formatInputNumber(0, 2), '');
+  assert.equal(formatInputNumber(NaN, 2), '');
+});
+
+test('suggestedUnitCost - piyasa fiyatı açık ve tazeyse o, değilse elle girilen', () => {
+  const market = { fetchedAt: new Date().toISOString(), quotes: { GRA: { buy: 6523.87, sell: 6527 } } };
+  assert.equal(suggestedUnitCost({ currentPrice: 6200, priceSource: 'GRA' }, market), 6523.87);
+  assert.equal(suggestedUnitCost({ priceSource: 'GRA' }, market), 6523.87, 'fiyatı hiç girilmemiş varlık da');
+  assert.equal(suggestedUnitCost({ currentPrice: 6200 }, market), 6200, 'kaynak seçilmemişse piyasa yok sayılır');
+  assert.equal(suggestedUnitCost({ currentPrice: 6200, priceSource: 'GRA' }, null), 6200);
+});

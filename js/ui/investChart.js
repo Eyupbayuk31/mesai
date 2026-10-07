@@ -51,12 +51,18 @@ export function portfolioChartHTML(state, rangeKey, extra = {}) {
     </div>`;
 
   if (points.length < 2) {
-    // Aralığı daraltınca nokta kalmayabilir: seçici yine de görünsün ki geri dönülebilsin.
+    // Hiç geçmiş yoksa kart açmak yerine tek satırlık not: boş bir kart ekranın
+    // yarısını yer. Aralığı daraltınca nokta kalmadıysa seçici görünür kalır
+    // ki geri dönülebilsin.
+    const hasHistory = rangeKey !== 'all' && portfolioHistory(state, 'all', Date.now(), extra).points.length >= 2;
+    if (!hasHistory) {
+      return '<p class="field__hint invest-chart__empty">Değer grafiği, farklı günlerde alım yaptıkça ya da fiyat güncellendikçe burada belirir.</p>';
+    }
     return `
       <div class="card">
         <div class="section-header" style="margin-bottom:10px;"><span class="section-title" style="margin:0;">Değer seyri</span></div>
         ${ranges}
-        <div class="field__hint">Grafik için en az iki farklı günde bilgi gerekir. Alım ekledikçe ya da fiyatı güncelledikçe dolar.</div>
+        <div class="field__hint">Bu aralıkta yeterli veri yok; daha uzun bir aralık seç.</div>
       </div>`;
   }
 

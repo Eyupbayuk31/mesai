@@ -412,9 +412,70 @@ export function priceUpdateFromLot(asset, lot, nowMs = Date.now()) {
   return { currentPrice: unitCost, priceUpdatedAt };
 }
 
-/** Bir varlığın alım formunda önerilecek birim fiyat: bilinen son fiyat. */
-export function suggestedUnitCost(asset) {
+/**
+ * Bir varlığın alım formunda önerilecek birim fiyat. Piyasa fiyatı açıksa ve
+ * tazeyse o (alış), değilse bilinen son fiyat. Yoksa null.
+ */
+export function suggestedUnitCost(asset, market = null, nowMs = Date.now()) {
+  const live = marketPriceFor(asset, market, nowMs);
+  if (live) return live.price;
   return Number(asset?.currentPrice) > 0 ? Number(asset.currentPrice) : null;
+}
+
+// --- Alım formu: miktar / birim fiyat / toplam tutar -----------------------
+//
+// Üçünden ikisi bilinince üçüncüsü hesaplanır: "5 gram" yazarsan tutar çıkar,
+// "5.000 ₺" yazarsan gram çıkar. Hangi alanın hesaplandığı yazılana göre
+// seçilir ve kullanıcının yazdığı hiçbir alanın üstüne yazılmaz — yalnızca
+// az önce hesaplanmış alanlar yeniden hesaplanır.
+//
+//   miktar yazıldı  → fiyat varsa tutar, yoksa (tutar varsa) fiyat
+//   tutar yazıldı   → fiyat varsa miktar, yoksa (miktar varsa) fiyat
+//   fiyat yazıldı   → miktar varsa tutar, yoksa (tutar varsa) miktar
+//
+// Alan boşaltılırsa o alandan hesaplananlar da boşalır; eski sayı kalıp
+// yanlış kaydedilmesin.
+
+/** @returns {{quantity:number, price:number, total:number, derived:string[]}} */
+export function emptyTrade(price = 0) {
+  return { quantity: 0, price: Number(price) > 0 ? Number(price) : 0, total: 0, derived: [] };
+}
+
+/**
+ * @param {{quantity:number, price:number, total:number, derived:string[]}} state
+ * @param {'quantity'|'price'|'total'} field yazılan alan
+ * @param {number} value yazılan değer (boş/geçersiz = 0)
+ */
+export function applyTradeEdit(state, field, value) {
+  const next = { quantity: state.quantity, price: state.price, total: state.total, derived: [...state.derived] };
+  // Önceki hesaplamaları at: kullanıcının yazdıkları kalsın, gerisi yeniden hesaplansın.
+  next.derived = next.derived.filter((f) => f !== field);
+  for (const f of next.derived) next[f] = 0;
+  next.derived = [];
+
+  const v = Number(value);
+  next[field] = Number.isFinite(v) && v > 0 ? v : 0;
+  if (!(next[field] > 0)) return next;
+
+  const { quantity: q, price: p, total: t } = next;
+  let target = null;
+  if (field === 'quantity') target = p > 0 ? 'total' : (t > 0 ? 'price' : null);
+  else if (field === 'total') target = p > 0 ? 'quantity' : (q > 0 ? 'price' : null);
+  else target = q > 0 ? 'total' : (t > 0 ? 'quantity' : null);
+
+  if (target === 'total') next.total = q * p;
+  else if (target === 'quantity') next.quantity = t / p;
+  else if (target === 'price') next.price = t / q;
+  if (target) next.derived = [target];
+  return next;
+}
+
+/** Girdi kutusuna yazılacak sayı: en çok `decimals` ondalık, sondaki sıfırlar atılır, virgüllü. */
+export function formatInputNumber(value, decimals = 2) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  const fixed = n.toFixed(decimals);
+  return (fixed.includes('.') ? fixed.replace(/\.?0+$/, '') : fixed).replace('.', ',');
 }
 
 // "Yatırıma ayrılan" yalnızca ALIMLARDIR: satış geliri bu toplamdan düşmez,
