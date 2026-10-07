@@ -34,6 +34,12 @@ sunucuya veri gönderilmez.
   dönemi → 10 Eylül'de öder)
 - **Çoklu profil**: Eyüp ve Fuat'ın kayıtları/ayarları tamamen ayrı tutulur
 - Tamamen **offline çalışır**, internet olmadan da açılır
+- **Yatırım**: altın/döviz gibi varlıkların alımlarını ve satışlarını gir; ortalama
+  maliyet, gerçekleşen/gerçekleşmemiş kâr ve değer grafiği hesaplanır. İstersen
+  gram/çeyrek altın, dolar ve euro için **piyasa alış fiyatı otomatik çekilir**
+  ve kâr/zarar "tahmini" yazar. Bu isteğe bağlıdır, varlık başına açılır; yalnızca
+  fiyat okunur, senin hiçbir verin gönderilmez. İnternet yoksa elle girdiğin fiyat
+  kullanılır.
 
 ## Kurulum
 

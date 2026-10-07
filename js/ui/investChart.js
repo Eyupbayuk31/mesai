@@ -43,8 +43,8 @@ function pathOf(points, y) {
  * Portföy değeri grafiği kartı. Veri yoksa ya da tek nokta varsa boş döner:
  * tek noktalı "grafik" bilgi taşımaz.
  */
-export function portfolioChartHTML(state, rangeKey) {
-  const { points } = portfolioHistory(state, rangeKey);
+export function portfolioChartHTML(state, rangeKey, extra = {}) {
+  const { points } = portfolioHistory(state, rangeKey, Date.now(), extra);
   const ranges = `
     <div class="chips invest-chart__ranges" id="chartRange" role="group" aria-label="Zaman aralığı">
       ${HISTORY_RANGES.map((r) => `<button class="quick-chip ${r.key === rangeKey ? 'is-active' : ''}" type="button" data-range="${r.key}">${r.label}</button>`).join('')}
@@ -105,7 +105,7 @@ export function portfolioChartHTML(state, rangeKey) {
       </div>
       <div class="invest-chart__axis">
         <span>${escapeHTML(dateLabel(first.date, crossYear))}</span>
-        <span>bugün</span>
+        <span>${extra.estimated ? 'bugün · tahmini' : 'bugün'}</span>
       </div>
       <details class="invest-chart__table">
         <summary>Tablo olarak gör</summary>
@@ -123,7 +123,7 @@ export function portfolioChartHTML(state, rangeKey) {
  * Zaman aralığı seçicisi ve imleç/ipucu. `points` yeniden hesaplanır: DOM'daki
  * veriyle değil, aynı fonksiyonla — ekranda görünenle ipucu hep tutarlı.
  */
-export function bindPortfolioChart(container, state, ctx, rangeKey) {
+export function bindPortfolioChart(container, state, ctx, rangeKey, extra = {}) {
   container.querySelector('#chartRange')?.addEventListener('click', (e) => {
     const chip = e.target.closest('[data-range]');
     if (!chip) return;
@@ -133,7 +133,7 @@ export function bindPortfolioChart(container, state, ctx, rangeKey) {
 
   const plot = container.querySelector('#chartPlot');
   if (!plot) return;
-  const { points } = portfolioHistory(state, rangeKey);
+  const { points } = portfolioHistory(state, rangeKey, Date.now(), extra);
   if (points.length < 2) return;
 
   const values = points.flatMap((p) => [p.value, p.cost]);

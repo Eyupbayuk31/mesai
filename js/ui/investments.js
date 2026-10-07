@@ -9,6 +9,9 @@ import {
   isSell, checkSell, priceObservations, priceChangePct,
 } from '../investments.js';
 import { portfolioChartHTML, bindPortfolioChart, assetPriceChartHTML } from './investChart.js';
+import {
+  getCachedMarket, getMarketLog, symbolForAsset, symbolLabel, nudgeDismissed, dismissNudge,
+} from '../marketPrices.js';
 import { currentPeriodKey, periodLabel } from '../period.js';
 import { formatMoney, formatDayMonth, formatMonthYear, todayISO, toISODate, parseAmount } from '../format.js';
 import { openSheet, closeSheet } from './sheet.js';
@@ -17,17 +20,22 @@ import { showToast } from './toast.js';
 export const title = 'Yatırım';
 
 export function render(container, state, ctx) {
-  const summary = portfolioSummary(state);
+  const market = getCachedMarket();
+  const summary = portfolioSummary(state, Date.now(), market);
   const range = ctx.investRange || '6m';
+  const chartExtra = { market, marketLog: getMarketLog(), estimated: summary.estimatedCount > 0 };
+  // Açılışta/sekmeye girişte taze fiyat iste; yoksa/yeniyse hiçbir şey yapmaz.
+  ctx.refreshMarket?.();
 
   const hasAnything = summary.positions.length > 0;
   container.innerHTML = !hasAnything ? emptyHTML() : `
     ${kpiStripHTML(summary)}
+    ${marketNudgeHTML(state)}
     <div class="panes">
       <div class="pane">
-        ${dashboardHTML(summary)}
+        ${dashboardHTML(summary, market)}
         ${bestWorstHTML(summary)}
-        ${portfolioChartHTML(state, range)}
+        ${portfolioChartHTML(state, range, chartExtra)}
         ${investChartHTML(state)}
       </div>
       <div class="pane">
@@ -42,9 +50,22 @@ export function render(container, state, ctx) {
     ${recentLotsHTML(state)}
   `;
 
-  bindPortfolioChart(container, state, ctx, range);
+  bindPortfolioChart(container, state, ctx, range, chartExtra);
   container.querySelector('#addAssetBtn')?.addEventListener('click', () => openAssetFormSheet(ctx, null));
   container.querySelector('#bulkPriceBtn')?.addEventListener('click', () => openBulkPriceSheet(ctx));
+  container.querySelector('#marketRefreshBtn')?.addEventListener('click', async () => {
+    const res = await ctx.refreshMarket?.({ force: true });
+    if (res && !res.ok) showToast('Fiyat alınamadı — son bilinen fiyat kullanılıyor');
+    else if (res?.ok) showToast('Piyasa fiyatı güncellendi');
+  });
+  container.querySelector('#marketNudgeOn')?.addEventListener('click', () => {
+    for (const a of state.assets) {
+      const symbol = symbolForAsset(a);
+      if (symbol && !a.priceSource) ctx.store.updateAsset(a.id, { priceSource: symbol });
+    }
+    ctx.refreshMarket?.({ force: true });
+  });
+  container.querySelector('#marketNudgeOff')?.addEventListener('click', () => { dismissNudge(); ctx.rerender(); });
   container.querySelector('#updatePricesBtn')?.addEventListener('click', () => openBulkPriceSheet(ctx));
   container.querySelector('#allLotsBtn')?.addEventListener('click', () => ctx.navigate({ tab: 'invest', page: 'lots' }));
   container.querySelector('#exportLotsBtn')?.addEventListener('click', () => exportLots(ctx, state));
@@ -85,7 +106,7 @@ export function render(container, state, ctx) {
 
 // --- Pano ----------------------------------------------------------------
 
-function dashboardHTML(summary) {
+function dashboardHTML(summary, market) {
   const slices = donutSlices(summary.positions);
   const up = summary.totalProfit >= 0;
   const sign = up ? '+' : '−';
@@ -105,6 +126,7 @@ function dashboardHTML(summary) {
         </div>
         ${summary.totalRealized !== 0 ? `<div class="hero__sub">satışlardan gerçekleşen <b class="${summary.totalRealized >= 0 ? 'is-positive' : 'is-negative'}">${summary.totalRealized >= 0 ? '+' : '−'}${formatMoney(Math.abs(summary.totalRealized), { decimals: false })}</b></div>` : ''}
         ${warn ? `<button class="hero__note hero__note--action" id="bulkPriceBtn" type="button">${warn} · fiyatları güncelle →</button>` : ''}
+        ${summary.estimatedCount > 0 ? `<div class="hero__note">${summary.estimatedCount} varlık piyasa alış fiyatıyla <b>tahmini</b> · ${marketTimeLabel(market)} <button class="section-header__link" id="marketRefreshBtn" type="button">yenile</button></div>` : ''}
       </div>
 
       <div class="donut-block">
@@ -171,7 +193,7 @@ function assetCardHTML(p) {
         <span>${p.hasLots ? `${p.buyCount} alım${p.sellCount ? ` · ${p.sellCount} satış` : ''}${p.holding ? ` · maliyet ${formatMoney(p.cost, { decimals: false })}` : ''}` : ''}</span>
         <span style="display:flex; gap:8px; align-items:center;">
           <button class="asset__price" data-price="${p.assetId}" type="button">
-            ${p.hasPrice ? `${formatMoney(p.price)} ${p.stale ? '⚠' : ''}` : 'Fiyat gir'}
+            ${p.hasPrice ? `${formatMoney(p.price)}${p.estimated ? ' · tahmini' : ''} ${p.stale ? '⚠' : ''}` : 'Fiyat gir'}
           </button>
           ${p.holding ? `<button class="asset__sell" data-sell="${p.assetId}" type="button">Sat</button>` : ''}
           <button class="asset__buy" data-buy="${p.assetId}" type="button">Alım ekle +</button>
@@ -251,6 +273,13 @@ function openAssetFormSheet(ctx, asset) {
           </div>
         </div>
         <div class="field__hint" id="assetPriceHint" style="margin:-10px 0 0;"></div>
+        <label class="market-toggle" id="marketToggle" hidden>
+          <input type="checkbox" id="assetAuto" ${asset?.priceSource ? 'checked' : ''} />
+          <span>
+            <b>Fiyatı otomatik güncelle <em>(tahmini)</em></b>
+            <small id="assetAutoHint"></small>
+          </span>
+        </label>
       `;
 
       const unitEl = bodyEl.querySelector('#assetUnit');
@@ -265,8 +294,26 @@ function openAssetFormSheet(ctx, asset) {
           ? `Bugünkü kur. Alım eklerken "kaç ${escapeHTML(unit)} aldın" diye sorulur, TL karşılığını uygulama hesaplar.`
           : `1 ${escapeHTML(unit)} bugün kaç lira? Kâr/zarar buna göre hesaplanır; alım eklersen kendiliğinden tazelenir.`;
       };
+      // Piyasada karşılığı varsa (gram altın, dolar…) otomatik fiyat seçeneği çıkar.
+      const labelEl = bodyEl.querySelector('#assetLabel');
+      const autoBox = bodyEl.querySelector('#assetAuto');
+      const syncAuto = () => {
+        const symbol = symbolForAsset({ label: labelEl.value, kind: selectedKind });
+        const toggle = bodyEl.querySelector('#marketToggle');
+        toggle.hidden = !symbol;
+        bodyEl.querySelector('#assetAutoHint').textContent = symbol
+          ? `Piyasadaki ${symbolLabel(symbol)} alış fiyatı kullanılır; kâr/zarar "tahmini" yazar. İstediğin an elle girdiğin fiyata dönebilirsin.`
+          : '';
+        // Yeni varlıkta uygun bulunca varsayılan açık; düzenlemede kullanıcının seçimi korunur.
+        if (isNew && symbol && !toggle.dataset.touched) autoBox.checked = true;
+        if (!symbol) autoBox.checked = false;
+      };
+      autoBox.addEventListener('change', () => { bodyEl.querySelector('#marketToggle').dataset.touched = '1'; });
+      labelEl.addEventListener('input', syncAuto);
+
       syncLabels();
       unitEl.addEventListener('input', syncLabels);
+      syncAuto();
 
       bodyEl.querySelector('#kindChips').addEventListener('click', (e) => {
         const chip = e.target.closest('[data-kind]');
@@ -279,6 +326,7 @@ function openAssetFormSheet(ctx, asset) {
           unitEl.value = kindByKey(selectedKind).defaultUnit;
         }
         syncLabels();
+        syncAuto();
       });
 
       bodyEl.querySelector('#presetChips')?.addEventListener('click', (e) => {
@@ -289,6 +337,7 @@ function openAssetFormSheet(ctx, asset) {
         selectedKind = chip.dataset.kind;
         bodyEl.querySelectorAll('#kindChips .cat-chip').forEach((c) => c.classList.toggle('is-active', c.dataset.kind === selectedKind));
         syncLabels();
+        syncAuto();
       });
 
       footerEl.querySelector('#saveAssetBtn').addEventListener('click', () => {
@@ -304,10 +353,15 @@ function openAssetFormSheet(ctx, asset) {
           payload.currentPrice = price;
           payload.priceUpdatedAt = new Date().toISOString();
         }
+        // Kaynak yalnız seçiliyse yazılır; kapatınca null (eski kayıtlarda alan hiç yok).
+        const symbol = symbolForAsset({ label, kind: selectedKind });
+        if (symbol && autoBox.checked) payload.priceSource = symbol;
+        else if (!isNew && asset.priceSource) payload.priceSource = null;
 
         if (isNew) {
           const preset = PRESET_ASSETS.find((pr) => pr.label.toLowerCase() === label.toLowerCase());
           const created = store.addAsset({ ...payload, color: preset?.color || nextAssetColor(store.getState().assets) });
+          if (created.priceSource) ctx.refreshMarket?.({ force: true });
           showToast('Varlık eklendi');
           closeSheet();
           // Sıradaki adım belli: kaç tane aldığını hemen sor.
@@ -315,6 +369,7 @@ function openAssetFormSheet(ctx, asset) {
           return;
         }
         store.updateAsset(asset.id, payload);
+        if (payload.priceSource) ctx.refreshMarket?.({ force: true });
         showToast('Varlık güncellendi');
         closeSheet();
       });
@@ -550,7 +605,8 @@ function openPriceSheet(ctx, asset) {
 function openAssetSheet(ctx, asset) {
   const state = ctx.store.getState();
   const lots = assetLots(state, asset.id);
-  const p = assetPosition(asset, lots);
+  const market = getCachedMarket();
+  const p = assetPosition(asset, lots, Date.now(), market);
   const unit = unitOf(asset);
   const rate = kindOf(asset).rate;
   const up = p.profit >= 0;
@@ -570,7 +626,7 @@ function openAssetSheet(ctx, asset) {
             <div class="asset-detail__value">${formatMoney(p.value, { decimals: false })}</div>
             <div class="asset-detail__sub">
               ${formatQuantity(p.quantity, asset)} ${escapeHTML(unit)}
-              ${p.hasPrice ? `· ${rate ? 'kur' : 'fiyat'} ${formatMoney(p.price)}` : ''}
+              ${p.hasPrice ? `· ${rate ? 'kur' : 'fiyat'} ${formatMoney(p.price)}${p.estimated ? ' (tahmini)' : ''}` : ''}
             </div>
             ${!p.holding ? '' : p.hasPrice ? `
             <div class="asset-detail__pl ${up ? 'is-positive' : 'is-negative'}">
@@ -597,9 +653,9 @@ function openAssetSheet(ctx, asset) {
           </div>
         </div>
 
-        ${assetPriceChartHTML(priceObservations(asset, lots), [
+        ${assetPriceChartHTML(priceObservations(asset, lots, getMarketLog()), [
     { label: '1 hf', days: 7 }, { label: '1 ay', days: 30 }, { label: '3 ay', days: 90 },
-  ].map((c) => ({ label: c.label, pct: priceChangePct(priceObservations(asset, lots), c.days) })))}
+  ].map((c) => ({ label: c.label, pct: priceChangePct(priceObservations(asset, lots, getMarketLog()), c.days) })))}
 
         <div class="section-header" style="margin-top:18px;">
           <span class="section-title" style="margin:0;">${p.sellCount ? 'Alım ve satışlar' : 'Alımlar'}</span>
@@ -717,6 +773,39 @@ function escapeHTML(str) {
 
 function escapeAttr(str) {
   return escapeHTML(str);
+}
+
+// --- Piyasa fiyatı (tahmini) ----------------------------------------------
+
+// "bugün 11:42" / "dün 18:05" / "3 gün önce"
+function marketTimeLabel(market) {
+  const t = Date.parse(market?.fetchedAt);
+  if (!Number.isFinite(t)) return '';
+  const d = new Date(t);
+  const hhmm = d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  const days = Math.floor((Date.now() - t) / 86400000);
+  if (toISODate(d) === todayISO()) return `bugün ${hhmm}`;
+  return days <= 1 ? `dün ${hhmm}` : `${days} gün önce`;
+}
+
+// Kaynağı henüz seçilmemiş ama piyasada karşılığı olan varlıklar için tek
+// seferlik öneri. Sessizce açılmaz: elle girilmiş fiyatlar bu kullanıcının
+// kararıdır; "Aç" demeden hiçbir varlığa dokunulmaz.
+function marketNudgeHTML(state) {
+  if (nudgeDismissed()) return '';
+  const candidates = (state.assets || []).filter((a) => !a.priceSource && symbolForAsset(a));
+  if (candidates.length === 0) return '';
+  const names = candidates.map((a) => escapeHTML(a.label)).join(', ');
+  return `
+    <div class="card market-nudge">
+      <div class="market-nudge__title">Fiyatı otomatik takip edelim mi?</div>
+      <div class="market-nudge__sub"><b>${names}</b> için güncel piyasa alış fiyatı çekilir, kâr/zarar <b>tahmini</b> olarak gösterilir. Alımlarını yine sen girersin; veri göndermez. Elle girdiğin fiyat silinmez.</div>
+      <div class="market-nudge__actions">
+        <button class="btn btn--primary btn--sm" id="marketNudgeOn" type="button">Aç</button>
+        <button class="btn btn--secondary btn--sm" id="marketNudgeOff" type="button">Şimdilik hayır</button>
+      </div>
+    </div>
+  `;
 }
 
 // --- Üst KPI şeridi ------------------------------------------------------

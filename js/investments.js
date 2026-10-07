@@ -190,6 +190,21 @@ function replay(lots) {
   return { quantity, cost, realized, soldQuantity, proceeds, oversold };
 }
 
+// Piyasa fiyatı (js/marketPrices.js) isteğe bağlı bir TAHMİNDİR: varlıkta
+// `priceSource` (ör. 'GRA') varsa ve önbellek tazeyse elle girilen fiyatın
+// yerine alış fiyatı kullanılır. Varlık kaydına yazılmaz; hesap anında seçilir.
+const MARKET_FRESH_MS = 3 * 24 * 60 * 60 * 1000;
+
+/** @returns {{price:number, fetchedAt:string}|null} kullanılacak piyasa fiyatı, yoksa null */
+export function marketPriceFor(asset, market, nowMs = Date.now()) {
+  const symbol = asset?.priceSource;
+  if (!symbol || !market?.quotes) return null;
+  const buy = Number(market.quotes[symbol]?.buy);
+  const at = Date.parse(market.fetchedAt);
+  if (!(buy > 0) || !Number.isFinite(at) || nowMs - at > MARKET_FRESH_MS) return null;
+  return { price: buy, fetchedAt: market.fetchedAt };
+}
+
 /**
  * Bir varlığın pozisyonu: elindeki miktar, toplam maliyet, ortalama maliyet,
  * güncel değer ve kâr/zarar (gerçekleşmemiş) ile satışlardan gerçekleşen kâr.
@@ -197,13 +212,16 @@ function replay(lots) {
  * Fiyat girilmemişse değer = maliyet kabul edilir; olmayan bir kârı varmış
  * gibi göstermek yerine `hasPrice: false` ile arayüze "fiyat gir" dedirtir.
  */
-export function assetPosition(asset, lots, nowMs = Date.now()) {
+export function assetPosition(asset, lots, nowMs = Date.now(), market = null) {
   const { quantity, cost, realized, soldQuantity, proceeds, oversold } = replay(lots);
-  const price = Number(asset?.currentPrice) || 0;
+  const live = marketPriceFor(asset, market, nowMs);
+  const price = live ? live.price : (Number(asset?.currentPrice) || 0);
   const hasPrice = price > 0;
   const value = hasPrice ? quantity * price : cost;
   const profit = value - cost;
   const all = lots || [];
+  // Piyasa fiyatı kullanılıyorsa "bayat" ölçüsü onun çekilme anıdır.
+  const priceStamp = live ? live.fetchedAt : asset?.priceUpdatedAt;
   return {
     assetId: asset?.id,
     label: asset?.label || '',
@@ -229,8 +247,9 @@ export function assetPosition(asset, lots, nowMs = Date.now()) {
     lotCount: all.length,
     hasLots: all.length > 0,
     holding: quantity > 0,
-    stale: hasPrice && quantity > 0 && staleDays(asset?.priceUpdatedAt, nowMs) > STALE_DAYS,
-    staleDays: staleDays(asset?.priceUpdatedAt, nowMs),
+    estimated: !!live,
+    stale: hasPrice && quantity > 0 && staleDays(priceStamp, nowMs) > STALE_DAYS,
+    staleDays: staleDays(priceStamp, nowMs),
   };
 }
 
@@ -256,11 +275,11 @@ function staleDays(iso, nowMs) {
 }
 
 /** Tüm portföy: değere göre büyükten küçüğe pozisyonlar + toplamlar. */
-export function portfolioSummary(state, nowMs = Date.now()) {
+export function portfolioSummary(state, nowMs = Date.now(), market = null) {
   // Alımı olmayan varlık da listede kalır: kullanıcı önce varlığı tanımlayıp
   // sonra alım ekliyor; arada kart kaybolursa "nereye gitti?" sorusu doğar.
   const positions = (state?.assets || [])
-    .map((a) => assetPosition(a, lotsOf(state, a.id), nowMs))
+    .map((a) => assetPosition(a, lotsOf(state, a.id), nowMs, market))
     .sort((a, b) => b.value - a.value);
 
   let totalCost = 0;
@@ -289,6 +308,7 @@ export function portfolioSummary(state, nowMs = Date.now()) {
     assetCount: positions.filter((p) => p.hasLots && p.holding).length,
     emptyCount: positions.filter((p) => !p.hasLots).length,
     soldOutCount: positions.filter((p) => p.hasLots && !p.holding).length,
+    estimatedCount: positions.filter((p) => p.holding && p.estimated).length,
   };
 }
 
@@ -523,11 +543,14 @@ export function unionPriceLogs(preferred, other) {
  *
  * @returns {Array<{date:string, price:number}>}
  */
-export function priceObservations(asset, lots) {
+export function priceObservations(asset, lots, marketLog = null) {
   const map = new Map();
   const ordered = [...(lots || [])].filter((l) => l?.date && Number(l.unitCost) > 0)
     .sort((a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : (Date.parse(a.createdAt) || 0) - (Date.parse(b.createdAt) || 0)));
   for (const l of ordered) map.set(l.date, Number(l.unitCost));
+  // Bu cihazda biriken piyasa kayıtları (yalnız fiyat kaynağı seçilmiş varlıkta).
+  const sourceLog = asset?.priceSource && marketLog ? marketLog[asset.priceSource] : null;
+  for (const e of Array.isArray(sourceLog) ? sourceLog : []) if (e?.d && e.p > 0) map.set(e.d, e.p);
   for (const e of Array.isArray(asset?.priceLog) ? asset.priceLog : []) if (e?.d && e.p > 0) map.set(e.d, e.p);
   const current = Number(asset?.currentPrice);
   const currentDay = asset?.priceUpdatedAt ? localDay(asset.priceUpdatedAt) : null;
@@ -575,8 +598,8 @@ const HISTORY_POINTS = 24;
  *
  * @returns {{points:Array<{date:string,value:number,cost:number}>, from:string|null}}
  */
-export function portfolioHistory(state, rangeKey = '6m', nowMs = Date.now()) {
-  const summary = portfolioSummary(state, nowMs);
+export function portfolioHistory(state, rangeKey = '6m', nowMs = Date.now(), { market = null, marketLog = null } = {}) {
+  const summary = portfolioSummary(state, nowMs, market);
   const dates = (state?.investments || []).map((l) => l?.date).filter(Boolean).sort();
   if (dates.length === 0 || summary.positions.length === 0) return { points: [], from: null };
 
@@ -604,7 +627,7 @@ export function portfolioHistory(state, rangeKey = '6m', nowMs = Date.now()) {
 
   const prepared = summary.positions.map((p) => {
     const lots = lotsOf(state, p.assetId);
-    return { lots, obs: priceObservations(p.asset, lots) };
+    return { lots, obs: priceObservations(p.asset, lots, marketLog) };
   });
 
   const points = [...days].sort().filter((d) => d <= today).map((date) => {

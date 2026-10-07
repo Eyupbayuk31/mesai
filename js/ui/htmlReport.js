@@ -5,6 +5,7 @@ import { entryAmount, yearSummary as buildYearSummary, periodSummary as periodSu
 import { periodLabel, payDateForPeriod } from '../period.js';
 import { budgetSummary, yearFinance, rangeFinance, scopeFinance } from '../budget.js';
 import { portfolioSummary, investedInPeriod, formatQuantity, unitOf, kindOf, isSell } from '../investments.js';
+import { getCachedMarket } from '../marketPrices.js';
 import { yearsWithData, compareYears, realChange, categoryTrend } from '../analysis.js';
 import { payslipRows, payslipStats, payslipLineTotals, openBalance } from '../payslip.js';
 import { debtReport } from '../loans.js';
@@ -154,7 +155,7 @@ function yearTableRows(ySummary, withMeal, withTransport) {
 export function buildHtmlReport({ profileName, periodKey, summary, settings, scope = 'period', state = null, yearSummary = null, periodKeys = null, scopeLabel = null }) {
   const year = Number(periodKey.slice(0, 4));
   const ySummary = yearSummary || (state ? buildYearSummary(state, year) : null);
-  const portfolio = state ? portfolioSummary(state) : null;
+  const portfolio = state ? portfolioSummary(state, Date.now(), getCachedMarket()) : null;
 
   if (scope === 'range' && state) {
     return buildRangeReport({
@@ -604,6 +605,7 @@ function portfolioTable(portfolio) {
         </tr>
       </tbody>
     </table>
+    ${portfolio.estimatedCount > 0 ? '<p style="color:#5b6472;font-size:12px;margin-top:8px;">Piyasa fiyatı kullanılan varlıklarda (alış fiyatı) değerler tahminidir.</p>' : ''}
     <p style="color:#5b6472;font-size:12px;margin-top:8px;">Maliyet toplamı: ${formatMoney(portfolio.totalCost, { decimals: false })}${portfolio.totalRealized ? ` · Satışlardan gerçekleşen: ${portfolio.totalRealized >= 0 ? '+' : '−'}${formatMoney(Math.abs(portfolio.totalRealized), { decimals: false })}` : ''}</p>
   `;
 }

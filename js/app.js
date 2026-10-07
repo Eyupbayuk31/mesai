@@ -18,6 +18,7 @@ import { getActiveProfile, profileName } from './profile.js';
 import { hasPin, isUnlocked, markUnlocked, lockNow, touchUnlocked } from './lock.js';
 import { showToast } from './ui/toast.js';
 import { SyncEngine, readStatus, relativeTime } from './sync/engine.js';
+import { getCachedMarket, refreshMarket, needsRefresh } from './marketPrices.js';
 import { APP_VERSION } from './ui/settings/about.js';
 
 const appEl = document.getElementById('app');
@@ -361,7 +362,25 @@ function boot(profileId) {
     document.body.appendChild(banner);
   }
 
+  // Piyasa fiyatı (tahmini): yalnız fiyat kaynağı seçilmiş varlık varsa çekilir.
+  // Önbellek 10 dk'dan tazeyse hiç istek atılmaz; hata sessizdir, elle girilen
+  // fiyat geçerli kalır. Çekilen fiyat varlık kaydına YAZILMAZ (senkron yok).
+  let marketBusy = false;
+  ctx.refreshMarket = async ({ force = false } = {}) => {
+    if (!store.getState().assets.some((a) => a.priceSource)) return null;
+    if (marketBusy || (!force && !needsRefresh(getCachedMarket()))) return null;
+    marketBusy = true;
+    try {
+      const res = await refreshMarket();
+      if (res.ok) render();
+      return res;
+    } finally {
+      marketBusy = false;
+    }
+  };
+
   render();
+  ctx.refreshMarket();
   // Kurtarma ağı (index.html) bu bayrağı görürse devreye girmez.
   window.__mesaiBooted = true;
 
@@ -426,6 +445,7 @@ function boot(profileId) {
     if (document.visibilityState !== 'visible') return;
     if (hasPin(profileId) && !isUnlocked(profileId, AUTO_LOCK_MS)) { kilitle(); return; }
     touch();
+    ctx.refreshMarket();
   });
 
   armIdle();

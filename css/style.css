@@ -3907,3 +3907,22 @@ button.slip-badge:active { transform: scale(0.96); }
 .invest-chart__tbl .num { text-align: right; }
 .invest-chart__changes { display: flex; gap: 14px; margin-top: 8px; font-size: 12px; font-weight: 700; }
 .invest-chart__chg em { font-style: normal; color: var(--text-tertiary); font-weight: 600; margin-right: 2px; }
+
+/* --- Piyasa fiyatı (tahmini) ---------------------------------------------- */
+.market-toggle {
+  display: flex; gap: 12px; align-items: flex-start;
+  margin-top: 14px; padding: 12px 14px;
+  border: 1px solid var(--divider); border-radius: 12px;
+  background: var(--surface-2, transparent);
+  font-size: 13px;
+}
+.market-toggle[hidden] { display: none; }
+.market-toggle input { margin-top: 3px; width: 18px; height: 18px; accent-color: var(--accent); flex: none; }
+.market-toggle b { display: block; font-weight: 750; }
+.market-toggle em { font-style: normal; color: var(--text-tertiary); font-weight: 600; }
+.market-toggle small { display: block; margin-top: 3px; color: var(--text-secondary); font-size: 12px; line-height: 1.4; }
+.market-nudge { margin: 14px 0; }
+.market-nudge__title { font-weight: 800; font-size: 14px; margin-bottom: 6px; }
+.market-nudge__sub { font-size: 12.5px; line-height: 1.45; color: var(--text-secondary); }
+.market-nudge__actions { display: flex; gap: 8px; margin-top: 12px; }
+.market-nudge__actions .btn { width: auto; flex: 1; }

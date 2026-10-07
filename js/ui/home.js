@@ -15,6 +15,7 @@ import {
 import { readStatus, relativeTime } from '../sync/engine.js';
 import { loansSummary } from '../loans.js';
 import { portfolioSummary } from '../investments.js';
+import { getCachedMarket } from '../marketPrices.js';
 import { budgetSummary } from '../budget.js';
 import { receivedInPeriod } from '../received.js';
 import { openAdjustmentSheet } from './income.js';
@@ -728,7 +729,7 @@ function handleDelete(store, id) {
 // --- Net değer: yatırım − kalan borç -------------------------------------
 
 function netWorthHTML(state) {
-  const portfolio = portfolioSummary(state);
+  const portfolio = portfolioSummary(state, Date.now(), getCachedMarket());
   const loans = loansSummary(state, currentPeriodKey());
   const debt = loans.totalRemaining || 0;
   // İkisi de yoksa kart anlamsız — hiç basılmaz.
