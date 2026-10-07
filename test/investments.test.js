@@ -835,3 +835,79 @@ test('ASSET_KINDS - tutarla giriş yalnız döviz/kripto/fon/diğerinde; altın 
   const byAmount = Object.fromEntries(ASSET_KINDS.map((k) => [k.key, k.byAmount]));
   assert.deepEqual(byAmount, { doviz: true, altin: false, hisse: false, kripto: true, fon: true, diger: true });
 });
+
+// --- Aylık alım planı -------------------------------------------------------
+
+import { pendingPlans, buildPlan, skipPlanMonth, PLAN_DAYS } from '../js/investments.js';
+
+const planAsset = (plan) => ({ id: 'a1', label: 'Gram altın', kind: 'altin', unit: 'gram', plan });
+const plan15 = { quantity: 2, day: 15, since: '2026-08', skipped: [] };
+
+test('pendingPlans - günü gelmemiş plan beklemez, günü gelen bekler', () => {
+  const st = { assets: [planAsset(plan15)], investments: [] };
+  assert.equal(pendingPlans(st, '2026-10-14').length, 0, '14\'ü: henüz vakti yok');
+  const due = pendingPlans(st, '2026-10-15');
+  assert.equal(due.length, 1);
+  assert.equal(due[0].overdue, false);
+  assert.equal(due[0].periodKey, '2026-10');
+  assert.equal(pendingPlans(st, '2026-10-20')[0].overdue, true, 'gün geçtiyse gecikti');
+});
+
+test('pendingPlans - o ay planla yapılmış alım varsa kalkar; başka ayın alımı saymaz', () => {
+  const done = { id: 'l1', assetId: 'a1', date: '2026-10-16', quantity: 2, unitCost: 6500, planPeriod: '2026-10' };
+  const lastMonth = { id: 'l0', assetId: 'a1', date: '2026-09-16', quantity: 2, unitCost: 6400, planPeriod: '2026-09' };
+  assert.equal(pendingPlans({ assets: [planAsset(plan15)], investments: [done] }, '2026-10-20').length, 0);
+  assert.equal(pendingPlans({ assets: [planAsset(plan15)], investments: [lastMonth] }, '2026-10-20').length, 1);
+  // Plansız ama aynı ay yapılan alım hatırlatmayı kaldırmaz: işaret ister (kullanıcı kararı).
+  const manual = { id: 'l2', assetId: 'a1', date: '2026-10-16', quantity: 2, unitCost: 6500 };
+  assert.equal(pendingPlans({ assets: [planAsset(plan15)], investments: [manual] }, '2026-10-20').length, 1);
+});
+
+test('pendingPlans - satış plan alımı sayılmaz; atlanan ay beklemez; başlangıçtan önceki ay yok', () => {
+  const sellMarked = { id: 's1', assetId: 'a1', date: '2026-10-16', quantity: 1, unitCost: 7000, side: 'sell', planPeriod: '2026-10' };
+  assert.equal(pendingPlans({ assets: [planAsset(plan15)], investments: [sellMarked] }, '2026-10-20').length, 1);
+  assert.equal(pendingPlans({ assets: [planAsset({ ...plan15, skipped: ['2026-10'] })], investments: [] }, '2026-10-20').length, 0);
+  assert.equal(pendingPlans({ assets: [planAsset({ ...plan15, since: '2026-11' })], investments: [] }, '2026-10-20').length, 0);
+});
+
+test('pendingPlans - geçen ayın kaçırılan planı birikmez, yalnız bu ay sayılır', () => {
+  const st = { assets: [planAsset(plan15)], investments: [] };
+  const due = pendingPlans(st, '2026-10-20');
+  assert.equal(due.length, 1, 'ağustos/eylül yığılmaz');
+});
+
+test('pendingPlans - bozuk/eksik plan sessizce yok sayılır, sıra ayın gününe göre', () => {
+  const st = {
+    assets: [
+      { id: 'x', label: 'X', plan: { quantity: 0, day: 5 } },
+      { id: 'y', label: 'Y', plan: null },
+      { id: 'b', label: 'B', plan: { quantity: 1, day: 20, since: '2026-01' } },
+      { id: 'a', label: 'A', plan: { quantity: 1, day: 5, since: '2026-01' } },
+      { id: 'z', label: 'Z' },
+    ],
+    investments: [],
+  };
+  assert.deepEqual(pendingPlans(st, '2026-10-25').map((d) => d.asset.id), ['a', 'b']);
+});
+
+test('pendingPlans - gün 28\'e sıkıştırılır (şubatta da gelir)', () => {
+  const st = { assets: [planAsset({ quantity: 1, day: 31, since: '2026-01' })], investments: [] };
+  assert.equal(pendingPlans(st, '2027-02-28').length, 1);
+  assert.equal(pendingPlans(st, '2027-02-27').length, 0);
+  assert.equal(PLAN_DAYS, 28);
+});
+
+test('buildPlan / skipPlanMonth', () => {
+  assert.equal(buildPlan(null, { quantity: 0, day: 5 }, '2026-10-07'), null);
+  const p = buildPlan(null, { quantity: 2, day: 40 }, '2026-10-07');
+  assert.deepEqual(p, { quantity: 2, day: 28, since: '2026-10', skipped: [] });
+  const edited = buildPlan({ quantity: 2, day: 15, since: '2026-03', skipped: ['2026-08'] }, { quantity: 3, day: 10 }, '2026-10-07');
+  assert.equal(edited.since, '2026-03', 'başlangıç ve atlananlar düzenlemede korunur');
+  assert.deepEqual(edited.skipped, ['2026-08']);
+
+  let q = plan15;
+  for (let m = 1; m <= 14; m += 1) q = skipPlanMonth(q, `2026-${String(m).padStart(2, '0')}`);
+  assert.equal(q.skipped.length, 12, 'son 12 ay tutulur');
+  assert.equal(skipPlanMonth(plan15, '2026-10').skipped.filter((k) => k === '2026-10').length, 1);
+  assert.equal(plan15.skipped.length, 0, 'girdi değişmez');
+});

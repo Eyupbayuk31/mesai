@@ -3,12 +3,12 @@
 
 import {
   portfolioSummary, donutSlices, DONUT_RADIUS, monthlyInvestBuckets, recentLots, formatQuantity,
-  avgLabel, portfolioByKind, bestWorstAsset, isSell,
+  avgLabel, portfolioByKind, bestWorstAsset, isSell, pendingPlans, skipPlanMonth, unitOf,
 } from '../investments.js';
 import { portfolioChartHTML, bindPortfolioChart } from './investChart.js';
 import { getCachedMarket, getMarketLog, symbolForAsset, nudgeDismissed, dismissNudge } from '../marketPrices.js';
 import { currentPeriodKey, periodLabel } from '../period.js';
-import { formatMoney, formatDayMonth, formatMonthYear } from '../format.js';
+import { formatMoney, formatDayMonth, formatMonthYear, todayISO } from '../format.js';
 import { showToast } from './toast.js';
 import { formatPct, escapeHTML, marketTimeLabel } from './invest/shared.js';
 import { openLotSheet } from './invest/lotSheet.js';
@@ -30,6 +30,7 @@ export function render(container, state, ctx) {
   const hasAnything = summary.positions.length > 0;
   container.innerHTML = !hasAnything ? emptyHTML() : `
     ${marketNudgeHTML(state)}
+    ${planCardHTML(state)}
     <div class="panes">
       <div class="pane">
         ${dashboardHTML(summary, market)}
@@ -63,6 +64,19 @@ export function render(container, state, ctx) {
       if (symbol && !a.priceSource) ctx.store.updateAsset(a.id, { priceSource: symbol });
     }
     ctx.refreshMarket?.({ force: true });
+  });
+  container.querySelector('#planCard')?.addEventListener('click', (e) => {
+    const buy = e.target.closest('[data-plan-buy]');
+    const skip = e.target.closest('[data-plan-skip]');
+    if (!buy && !skip) return;
+    const id = (buy || skip).dataset.planBuy || (buy || skip).dataset.planSkip;
+    const due = pendingPlans(ctx.store.getState(), todayISO()).find((d) => d.asset.id === id);
+    if (!due) return;
+    if (buy) openLotSheet(ctx, due.asset, null, 'buy', { plan: { quantity: due.plan.quantity, periodKey: due.periodKey } });
+    else {
+      ctx.store.updateAsset(id, { plan: skipPlanMonth(due.plan, due.periodKey) });
+      showToast('Bu ay atlandı');
+    }
   });
   container.querySelector('#marketNudgeOff')?.addEventListener('click', () => { dismissNudge(); ctx.rerender(); });
   container.querySelector('#updatePricesBtn')?.addEventListener('click', () => openBulkPriceSheet(ctx));
@@ -187,6 +201,7 @@ function assetCardHTML(p) {
       <div class="asset__meta"><span>Elde kalmadı — tamamı satıldı</span>${realizedHTML}</div>` : `
       <div class="asset__meta"><span>Henüz alım yok — kaç tane aldığını gir</span></div>`}
       ${p.hasLots && p.holding && p.sellCount > 0 ? `<div class="asset__meta">${realizedHTML}</div>` : ''}
+      ${p.asset?.plan ? `<div class="asset__meta"><span>Aylık plan: ${formatQuantity(p.asset.plan.quantity, p.asset)} ${escapeHTML(p.unit)} · ayın ${p.asset.plan.day}'i</span></div>` : ''}
       ${p.oversold ? '<div class="asset__stale">Satışlar elindeki miktarı aşıyor — kayıtları kontrol et</div>' : ''}
       <div class="asset__foot">
         <span>${p.hasLots ? `${p.buyCount} alım${p.sellCount ? ` · ${p.sellCount} satış` : ''}${p.holding ? ` · maliyet ${formatMoney(p.cost, { decimals: false })}` : ''}` : ''}</span>
@@ -279,6 +294,31 @@ function marketNudgeHTML(state) {
         <button class="btn btn--primary btn--sm" id="marketNudgeOn" type="button">Aç</button>
         <button class="btn btn--secondary btn--sm" id="marketNudgeOff" type="button">Şimdilik hayır</button>
       </div>
+    </div>
+  `;
+}
+
+// --- Bu ayın alım planı ----------------------------------------------------
+
+// Planı olan varlık için bu ay vakti gelen ve henüz yapılmamış alımlar.
+// Kendiliğinden alım yazmaz: "Aldım" formu planlanan miktarla açar, "Atla" ayı geçer.
+function planCardHTML(state) {
+  const due = pendingPlans(state, todayISO());
+  if (due.length === 0) return '';
+  return `
+    <div class="card plan-card" id="planCard">
+      <div class="plan-card__title">Bu ay planladığın alım</div>
+      ${due.map((d) => `
+        <div class="plan-row">
+          <div class="plan-row__text">
+            <b>${escapeHTML(d.asset.label)}</b> · ${formatQuantity(d.plan.quantity, d.asset)} ${escapeHTML(unitOf(d.asset))}
+            <small>ayın ${d.day}'i${d.overdue ? ' · gecikti' : ''}</small>
+          </div>
+          <div class="plan-row__actions">
+            <button class="asset__buy" type="button" data-plan-buy="${d.asset.id}">Aldım</button>
+            <button class="asset__sell" type="button" data-plan-skip="${d.asset.id}">Atla</button>
+          </div>
+        </div>`).join('')}
     </div>
   `;
 }

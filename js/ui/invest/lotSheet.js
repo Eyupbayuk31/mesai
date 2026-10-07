@@ -54,6 +54,11 @@ export function openLotSheet(ctx, asset, lot, mode = 'buy', opts = {}) {
     setTexts();
   } else if (current) {
     startTrade();
+    // Plandan geliyorsa planlanan miktar hazır yazılı gelir.
+    if (opts.plan) {
+      trade = applyTradeEdit(trade, 'quantity', Number(opts.plan.quantity));
+      setTexts();
+    }
   }
 
   const titleText = pickable
@@ -366,6 +371,9 @@ export function openLotSheet(ctx, asset, lot, mode = 'buy', opts = {}) {
           });
           payload.assetId = target.id;
         }
+
+        // Plandan yapılan alım işaretlenir: bu ay "yapıldı" sayılsın, hatırlatma kalksın.
+        if (isNew && opts.plan && !sellMode) payload.planPeriod = opts.plan.periodKey;
 
         if (isNew) store.addInvestment(payload);
         else store.updateInvestment(lot.id, payload);

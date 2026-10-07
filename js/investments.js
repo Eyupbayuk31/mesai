@@ -714,3 +714,54 @@ export function portfolioHistory(state, rangeKey = '6m', nowMs = Date.now(), { m
   }
   return { points, from: points[0]?.date || null };
 }
+
+// --- Aylık alım planı --------------------------------------------------------
+//
+// "Her ay 2 gram altın alacağım" bir HATIRLATMADIR: alım kendiliğinden yazılmaz
+// (fiyat elle/piyasadan belli olur, otomatik alım gerçek bir alım olmazdı).
+// Plan varlık kaydının içinde durur (`asset.plan`) — varlık kaydı bütün olarak
+// senkronlandığından eski sürüm bir cihaz planı düşürmez. Yapılan alım
+// `planPeriod: 'YYYY-MM'` ile işaretlenir; "bu ay yapıldı mı?" buna bakar.
+//
+// asset.plan = { quantity, day (1-28), since: 'YYYY-MM', skipped: ['YYYY-MM', …] }
+// Yalnızca İÇİNDEKİ AY sayılır: geçen ayın kaçırılan planı birikip kullanıcıyı
+// yığılmış bir listeyle karşılamaz.
+
+export const PLAN_DAYS = 28;
+
+/** @returns {Array<{asset, plan, periodKey, day, overdue:boolean}>} bugün için bekleyen alım planları */
+export function pendingPlans(state, today) {
+  const periodKey = String(today).slice(0, 7);
+  const dayOfMonth = Number(String(today).slice(8, 10));
+  const out = [];
+  for (const asset of state?.assets || []) {
+    const plan = asset?.plan;
+    if (!plan || !(Number(plan.quantity) > 0)) continue;
+    const day = Math.min(PLAN_DAYS, Math.max(1, Number(plan.day) || 1));
+    if (plan.since && periodKey < plan.since) continue;
+    if (dayOfMonth < day) continue;
+    if ((plan.skipped || []).includes(periodKey)) continue;
+    const done = (state?.investments || []).some((l) => l?.assetId === asset.id && l.planPeriod === periodKey && !isSell(l));
+    if (done) continue;
+    out.push({ asset, plan, periodKey, day, overdue: dayOfMonth > day });
+  }
+  return out.sort((a, b) => a.day - b.day);
+}
+
+/** Plan kaydı: yeni kayıtta `since` bu ay; düzenlemede eski `since` ve atlananlar korunur. */
+export function buildPlan(previous, { quantity, day }, today) {
+  const q = Number(quantity);
+  if (!(q > 0)) return null;
+  return {
+    quantity: q,
+    day: Math.min(PLAN_DAYS, Math.max(1, Math.round(Number(day)) || 1)),
+    since: previous?.since || String(today).slice(0, 7),
+    skipped: Array.isArray(previous?.skipped) ? previous.skipped : [],
+  };
+}
+
+/** Bu ayı atla: son 12 ayı tutar, plan büyümesin. */
+export function skipPlanMonth(plan, periodKey) {
+  const skipped = [...(plan?.skipped || []).filter((k) => k !== periodKey), periodKey].slice(-12);
+  return { ...plan, skipped };
+}

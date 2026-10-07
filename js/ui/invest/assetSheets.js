@@ -1,9 +1,9 @@
 // Varlık pencereleri: varlık düzenle, güncel fiyat, varlık detayı (alım listesi), toplu fiyat.
 
-import { assetPosition, assetLots, lotTotal, PRESET_ASSETS, nextAssetColor, ASSET_KINDS, kindOf, kindByKey, unitOf, formatQuantity, priceLabel, isSell, priceObservations, priceChangePct } from '../../investments.js';
+import { buildPlan, PLAN_DAYS, assetPosition, assetLots, lotTotal, PRESET_ASSETS, nextAssetColor, ASSET_KINDS, kindOf, kindByKey, unitOf, formatQuantity, priceLabel, isSell, priceObservations, priceChangePct } from '../../investments.js';
 import { assetPriceChartHTML } from '../investChart.js';
 import { getCachedMarket, getMarketLog, symbolForAsset, symbolLabel } from '../../marketPrices.js';
-import { formatMoney, formatDayMonth, parseAmount } from '../../format.js';
+import { formatMoney, formatDayMonth, parseAmount, todayISO } from '../../format.js';
 import { openSheet, closeSheet } from '../sheet.js';
 import { showToast } from '../toast.js';
 import { formatPct, escapeHTML, escapeAttr } from './shared.js';
@@ -58,7 +58,30 @@ export function openAssetFormSheet(ctx, asset) {
             <small id="assetAutoHint"></small>
           </span>
         </label>
+        ${isNew ? '' : `
+        <label class="market-toggle" id="planToggle">
+          <input type="checkbox" id="planOn" ${asset?.plan ? 'checked' : ''} />
+          <span>
+            <b>Her ay düzenli alım planı</b>
+            <small>Hatırlatır, kendiliğinden alım yazmaz: o gün gelince "Aldım" ya da "Atla" dersin.</small>
+          </span>
+        </label>
+        <div class="input-row" id="planFields" ${asset?.plan ? '' : 'hidden'}>
+          <div class="field">
+            <label class="field__label" id="planQtyLabel" for="planQty">Her ay kaç ${escapeHTML(unitOf(asset))}?</label>
+            <input class="input" type="text" inputmode="decimal" id="planQty" value="${asset?.plan ? String(asset.plan.quantity).replace('.', ',') : ''}" placeholder="2" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label class="field__label" for="planDay">Ayın kaçında? (1-${PLAN_DAYS})</label>
+            <input class="input" type="text" inputmode="numeric" id="planDay" value="${asset?.plan ? asset.plan.day : '15'}" placeholder="15" autocomplete="off" />
+          </div>
+        </div>`}
       `;
+
+      bodyEl.querySelector('#planOn')?.addEventListener('change', (e) => {
+        bodyEl.querySelector('#planFields').hidden = !e.target.checked;
+        if (e.target.checked) setTimeout(() => bodyEl.querySelector('#planQty')?.focus(), 50);
+      });
 
       const unitEl = bodyEl.querySelector('#assetUnit');
       const priceLabelEl = bodyEl.querySelector('#assetPriceLabel');
@@ -135,6 +158,20 @@ export function openAssetFormSheet(ctx, asset) {
         const symbol = symbolForAsset({ label, kind: selectedKind });
         if (symbol && autoBox.checked) payload.priceSource = symbol;
         else if (!isNew && asset.priceSource) payload.priceSource = null;
+
+        // Aylık plan: kapalıysa kaldırılır; açıksa miktar şart.
+        if (!isNew) {
+          if (bodyEl.querySelector('#planOn').checked) {
+            const plan = buildPlan(asset.plan, {
+              quantity: parseAmount(bodyEl.querySelector('#planQty').value),
+              day: parseAmount(bodyEl.querySelector('#planDay').value),
+            }, todayISO());
+            if (!plan) { showToast('Her ay kaç tane alacağını yaz'); return; }
+            payload.plan = plan;
+          } else if (asset.plan) {
+            payload.plan = null;
+          }
+        }
 
         if (isNew) {
           const preset = PRESET_ASSETS.find((pr) => pr.label.toLowerCase() === label.toLowerCase());
