@@ -3926,3 +3926,47 @@ button.slip-badge:active { transform: scale(0.96); }
 .market-nudge__sub { font-size: 12.5px; line-height: 1.45; color: var(--text-secondary); }
 .market-nudge__actions { display: flex; gap: 8px; margin-top: 12px; }
 .market-nudge__actions .btn { width: auto; flex: 1; }
+
+/* --- Piyasa fiyatları sayfası ---------------------------------------------- */
+.mkt__bar { display: flex; align-items: center; justify-content: space-between; margin: 2px 2px 14px; }
+.mkt__stamp { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 650; color: var(--text-secondary); }
+.mkt__live {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--positive);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--positive) 45%, transparent);
+  animation: mktPulse 2.4s ease-out infinite;
+}
+.mkt__live.is-stale { background: var(--warning, var(--text-tertiary)); animation: none; }
+@keyframes mktPulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--positive) 45%, transparent); }
+  70%, 100% { box-shadow: 0 0 0 7px transparent; }
+}
+@media (prefers-reduced-motion: reduce) { .mkt__live { animation: none; } }
+.mkt__warn { margin-bottom: 14px; font-size: 12.5px; line-height: 1.45; color: var(--text-secondary); }
+.mkt__group { margin-bottom: 8px; }
+.mkt__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+@media (min-width: 760px) { .mkt__grid { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); } }
+.mkt__grid > .mkt__tile { padding: 14px 14px 12px; margin: 0; }
+.mkt__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mkt__name { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 750; min-width: 0; }
+.mkt__chg { font-size: 11px; font-weight: 800; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mkt__chg--flat { color: var(--text-tertiary); }
+.mkt__price { margin-top: 10px; font-size: 22px; font-weight: 800; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.mkt__sub { margin-top: 1px; font-size: 11.5px; font-weight: 600; color: var(--text-tertiary); }
+.mkt__row { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; margin-top: 10px; min-height: 28px; }
+.mkt__sell { font-size: 11.5px; font-weight: 600; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.mkt__sell b { font-weight: 750; color: var(--text); }
+.mkt__spark { display: block; flex: none; }
+.mkt__held {
+  margin-top: 10px; padding-top: 9px;
+  border-top: 1px dashed var(--divider);
+  font-size: 11.5px; font-weight: 600; color: var(--text-secondary);
+}
+.mkt__held b { color: var(--text); font-weight: 750; }
+.mkt__conv { margin-top: 6px; }
+.mkt__conv select.input { appearance: auto; }
+.mkt__conv-out { margin-top: 12px; display: flex; justify-content: space-between; gap: 10px; align-items: baseline; font-size: 13px; font-weight: 650; color: var(--text-secondary); }
+.mkt__conv-out b { font-size: 18px; color: var(--text); font-variant-numeric: tabular-nums; }
+.mkt__hint { font-weight: 600; color: var(--text-tertiary); font-size: 12.5px; }
+.mkt__foot { margin: 14px 2px 4px; font-size: 11.5px; line-height: 1.5; color: var(--text-tertiary); }
+.mkt__foot a { color: inherit; text-decoration: underline; }

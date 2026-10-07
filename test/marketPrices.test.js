@@ -26,7 +26,7 @@ const okFetch = (body = SAMPLE) => async () => ({ ok: true, json: async () => bo
 
 test('parseMarket - alış/satış alınır, sıfır ve eksik fiyatlar atılır', () => {
   const q = parseMarket(SAMPLE);
-  assert.deepEqual(q.GRA, { buy: 6526.09, sell: 6527.04 });
+  assert.deepEqual(q.GRA, { buy: 6526.09, sell: 6527.04, change: null });
   assert.equal(q.USD.buy, 49.19);
   assert.equal('ONS' in q, false);
   assert.equal('GBP' in q, false, 'kaynakta olmayan sembol yok');
@@ -152,4 +152,72 @@ test('geçmiş - piyasa günlüğü gözlem olur; son nokta piyasa fiyatlı öze
   assert.equal(points[points.length - 1].value, 13000);
   const sep = points.find((pt) => pt.date >= '2026-09-15' && pt.date < '2026-09-30');
   assert.equal(sep.value, 2 * 6350, 'günlük gözlemi o günden itibaren kullanılır');
+});
+
+// --- Piyasa sayfası görünüm modeli -----------------------------------------
+
+const { marketRows, convertToTry, MARKET_GROUPS } = await import('../js/marketPrices.js');
+
+const rich = {
+  fetchedAt: '2026-10-07T09:00:00.000Z',
+  quotes: {
+    USD: { buy: 49.19, sell: 49.2, change: 0.06 },
+    EUR: { buy: 55.11, sell: 55.12, change: -0.52 },
+    GRA: { buy: 6526.09, sell: 6527.04, change: -0.86 },
+    CEYREKALTIN: { buy: 10537.87, sell: 10778.65, change: null },
+  },
+};
+
+test('parseMarket - günlük değişim alınır, yoksa null', () => {
+  const q = parseMarket({ GRA: { Buying: 6526, Selling: 6527, Change: -0.86 }, USD: { Buying: 49, Selling: 49.1 }, EUR: { Buying: 55, Selling: 55.1, Change: 0 } });
+  assert.equal(q.GRA.change, -0.86);
+  assert.equal(q.USD.change, null);
+  assert.equal(q.EUR.change, 0, 'sıfır değişim null değildir');
+});
+
+test('marketRows - gruplar sırayla, yalnız fiyatı olan kalemler', () => {
+  const groups = marketRows(rich);
+  assert.deepEqual(groups.map((g) => g.key), MARKET_GROUPS.map((g) => g.key));
+  const doviz = groups.find((g) => g.key === 'doviz');
+  assert.deepEqual(doviz.items.map((i) => i.symbol), ['USD', 'EUR'], 'GBP kaynakta yok, listelenmez');
+  const altin = groups.find((g) => g.key === 'altin');
+  assert.deepEqual(altin.items.map((i) => i.symbol), ['GRA', 'CEYREKALTIN']);
+  assert.equal(altin.items[0].unit, '1 gram');
+  assert.equal(altin.items[1].unit, '1 adet');
+});
+
+test('marketRows - boş/eksik önbellekte boş döner', () => {
+  assert.deepEqual(marketRows(null), []);
+  assert.deepEqual(marketRows({ fetchedAt: 'x', quotes: {} }), []);
+});
+
+test('marketRows - cihazda biriken geçmiş seri olarak gelir (son 30)', () => {
+  const log = { GRA: Array.from({ length: 45 }, (_, i) => ({ d: `2026-08-${String((i % 28) + 1).padStart(2, '0')}`, p: 6000 + i })) };
+  const gra = marketRows(rich, log).flatMap((g) => g.items).find((i) => i.symbol === 'GRA');
+  assert.equal(gra.series.length, 30);
+  assert.equal(gra.series[29].p, 6044);
+});
+
+test('marketRows - elindeki miktar yalnızca kaynağı seçilmiş ve elde olan varlıktan', () => {
+  const positions = [
+    { holding: true, quantity: 3, unit: 'gram', asset: { priceSource: 'GRA' } },
+    { holding: true, quantity: 2, unit: 'gram', asset: { priceSource: 'GRA' } },
+    { holding: true, quantity: 100, unit: 'dolar', asset: {} }, // kaynak seçilmemiş
+    { holding: false, quantity: 0, unit: 'euro', asset: { priceSource: 'EUR' } },
+  ];
+  const items = marketRows(rich, {}, positions).flatMap((g) => g.items);
+  const gra = items.find((i) => i.symbol === 'GRA');
+  assert.equal(gra.held.quantity, 5);
+  assert.equal(gra.held.value, 5 * 6526.09);
+  assert.equal(items.find((i) => i.symbol === 'USD').held, null);
+  assert.equal(items.find((i) => i.symbol === 'EUR').held, null);
+});
+
+test('convertToTry - miktar × alış; geçersiz girişte 0', () => {
+  assert.equal(convertToTry(rich, 'USD', 100), 4919);
+  assert.equal(convertToTry(rich, 'GRA', 2.5), 2.5 * 6526.09);
+  assert.equal(convertToTry(rich, 'USD', 0), 0);
+  assert.equal(convertToTry(rich, 'USD', 'abc'), 0);
+  assert.equal(convertToTry(rich, 'XYZ', 5), 0);
+  assert.equal(convertToTry(null, 'USD', 5), 0);
 });

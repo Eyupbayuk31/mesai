@@ -28,15 +28,23 @@ const NUDGE_KEY = 'mesai.marketNudgeDismissed';
 // Hangi varlık hangi kaynak kodunu kullanır. Sıra önemli: "gram altın",
 // genel "altın"dan önce eşleşmeli.
 const SYMBOLS = [
-  { symbol: 'GRA', label: 'Gram altın', words: ['gram altın', 'gram altin', 'gramaltın', 'has altın'] },
-  { symbol: 'CEYREKALTIN', label: 'Çeyrek altın', words: ['çeyrek', 'ceyrek'] },
-  { symbol: 'YARIMALTIN', label: 'Yarım altın', words: ['yarım altın', 'yarim altin', 'yarım'] },
-  { symbol: 'TAMALTIN', label: 'Tam altın', words: ['tam altın', 'tam altin'] },
-  { symbol: 'GUMUS', label: 'Gümüş', words: ['gümüş', 'gumus'] },
-  { symbol: 'USD', label: 'Dolar', words: ['dolar', 'usd'] },
-  { symbol: 'EUR', label: 'Euro', words: ['euro', 'eur'] },
-  { symbol: 'GBP', label: 'Sterlin', words: ['sterlin', 'gbp'] },
+  { symbol: 'GRA', label: 'Gram altın', group: 'altin', words: ['gram altın', 'gram altin', 'gramaltın', 'has altın'] },
+  { symbol: 'CEYREKALTIN', label: 'Çeyrek altın', group: 'altin', words: ['çeyrek', 'ceyrek'] },
+  { symbol: 'YARIMALTIN', label: 'Yarım altın', group: 'altin', words: ['yarım altın', 'yarim altin', 'yarım'] },
+  { symbol: 'TAMALTIN', label: 'Tam altın', group: 'altin', words: ['tam altın', 'tam altin'] },
+  { symbol: 'CUMHURIYETALTINI', label: 'Cumhuriyet', group: 'altin', words: ['cumhuriyet'] },
+  { symbol: 'GUMUS', label: 'Gümüş', group: 'altin', words: ['gümüş', 'gumus'] },
+  { symbol: 'USD', label: 'Dolar', group: 'doviz', words: ['dolar', 'usd'] },
+  { symbol: 'EUR', label: 'Euro', group: 'doviz', words: ['euro', 'eur'] },
+  { symbol: 'GBP', label: 'Sterlin', group: 'doviz', words: ['sterlin', 'gbp'] },
 ];
+
+export const MARKET_GROUPS = [
+  { key: 'doviz', label: 'Döviz' },
+  { key: 'altin', label: 'Altın ve gümüş' },
+];
+// Sayfada gösterilen birim (fiyat neyin kaç lirası): gram, adet ya da 1 birim döviz.
+const UNIT_OF = { GRA: '1 gram', GUMUS: '1 gram', CEYREKALTIN: '1 adet', YARIMALTIN: '1 adet', TAMALTIN: '1 adet', CUMHURIYETALTINI: '1 adet', USD: '1 dolar', EUR: '1 euro', GBP: '1 sterlin' };
 
 export function symbolLabel(symbol) {
   return SYMBOLS.find((s) => s.symbol === symbol)?.label || symbol;
@@ -50,7 +58,7 @@ export function symbolForAsset(asset) {
   const kind = asset?.kind;
   for (const s of SYMBOLS) {
     if (!s.words.some((w) => label.includes(w))) continue;
-    const isFx = ['USD', 'EUR', 'GBP'].includes(s.symbol);
+    const isFx = s.group === 'doviz';
     if (isFx && kind && kind !== 'doviz') continue;
     if (!isFx && kind && kind !== 'altin') continue;
     return s.symbol;
@@ -68,8 +76,14 @@ export function parseMarket(json) {
     const q = json?.[symbol];
     const buy = Number(q?.Buying);
     const sell = Number(q?.Selling);
+    // Change: kaynağın bildirdiği günlük yüzde değişim; yoksa/anlamsızsa null.
+    const change = q?.Change === undefined || q?.Change === null ? NaN : Number(q.Change);
     if (Number.isFinite(buy) && buy > 0) {
-      quotes[symbol] = { buy, sell: Number.isFinite(sell) && sell > 0 ? sell : buy };
+      quotes[symbol] = {
+        buy,
+        sell: Number.isFinite(sell) && sell > 0 ? sell : buy,
+        change: Number.isFinite(change) ? change : null,
+      };
     }
   }
   return quotes;
@@ -153,4 +167,42 @@ export function nudgeDismissed() {
 
 export function dismissNudge() {
   try { window.localStorage.setItem(NUDGE_KEY, '1'); } catch {}
+}
+
+/**
+ * Piyasa sayfasının görünüm modeli: gruplar ve her kalem için fiyat, günlük
+ * değişim, bu cihazda biriken geçmişten küçük seri ve (varsa) kullanıcının
+ * elindeki miktar/değeri. Saf fonksiyon — DOM'a dokunmaz.
+ *
+ * @param {object|null} market getCachedMarket()
+ * @param {object} marketLog getMarketLog()
+ * @param {Array} positions portfolioSummary().positions (elindekini eşlemek için)
+ */
+export function marketRows(market, marketLog = {}, positions = []) {
+  const quotes = market?.quotes || {};
+  return MARKET_GROUPS.map((group) => ({
+    ...group,
+    items: SYMBOLS.filter((s) => s.group === group.key && quotes[s.symbol]).map((s) => {
+      const q = quotes[s.symbol];
+      const held = positions.filter((p) => p.holding && p.asset?.priceSource === s.symbol);
+      const quantity = held.reduce((t, p) => t + p.quantity, 0);
+      return {
+        symbol: s.symbol,
+        label: s.label,
+        unit: UNIT_OF[s.symbol] || '',
+        buy: q.buy,
+        sell: q.sell,
+        change: q.change ?? null,
+        series: (Array.isArray(marketLog?.[s.symbol]) ? marketLog[s.symbol] : []).slice(-30),
+        held: quantity > 0 ? { quantity, value: quantity * q.buy, unit: held[0].unit } : null,
+      };
+    }),
+  })).filter((g) => g.items.length > 0);
+}
+
+/** Çevirici: miktar × alış fiyatı. Geçersiz miktar ya da kalem için 0. */
+export function convertToTry(market, symbol, amount) {
+  const buy = Number(market?.quotes?.[symbol]?.buy);
+  const n = Number(amount);
+  return buy > 0 && Number.isFinite(n) && n > 0 ? n * buy : 0;
 }

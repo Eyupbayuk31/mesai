@@ -13,6 +13,7 @@ import { renderReportRoute } from './ui/report/index.js';
 import { renderBudget } from './ui/budget.js';
 import * as loansPage from './ui/loans.js';
 import * as investPage from './ui/investments.js';
+import * as marketPage from './ui/market.js';
 import { renderSettingsRoute, settingsPageTitle } from './ui/settings/index.js';
 import { getActiveProfile, profileName } from './profile.js';
 import { hasPin, isUnlocked, markUnlocked, lockNow, touchUnlocked } from './lock.js';
@@ -282,7 +283,8 @@ function boot(profileId) {
       else renderBudget(screenEl, state, ctx);
     }
     else if (tab === 'invest') {
-      if (page === 'lots') investPage.renderLotsPage(screenEl, state, ctx);
+      if (page === 'market') marketPage.render(screenEl, state, ctx);
+      else if (page === 'lots') investPage.renderLotsPage(screenEl, state, ctx);
       else investPage.render(screenEl, state, ctx);
     }
     else if (tab === 'settings') renderSettingsRoute(screenEl, state, ctx, page);
@@ -366,8 +368,9 @@ function boot(profileId) {
   // Önbellek 10 dk'dan tazeyse hiç istek atılmaz; hata sessizdir, elle girilen
   // fiyat geçerli kalır. Çekilen fiyat varlık kaydına YAZILMAZ (senkron yok).
   let marketBusy = false;
-  ctx.refreshMarket = async ({ force = false } = {}) => {
-    if (!store.getState().assets.some((a) => a.priceSource)) return null;
+  ctx.refreshMarket = async ({ force = false, always = false } = {}) => {
+    // always: Piyasa sayfası fiyatı kendisi gösterir, varlık seçili olmasa da çeker.
+    if (!always && !store.getState().assets.some((a) => a.priceSource)) return null;
     if (marketBusy || (!force && !needsRefresh(getCachedMarket()))) return null;
     marketBusy = true;
     try {
